@@ -1,0 +1,12 @@
+{
+  "campaign": "loqua",
+  "updated": "2026-08-24T00:00:00Z",
+  "tasks": {
+    "t1_open":     {"state": "pending"},
+    "t2_register": {"state": "pending"},
+    "t3_profile":  {"state": "pending"},
+    "t4_quest":    {"state": "pending"},
+    "t5_claim":    {"state": "pending"}
+  },
+  "notes": "seed file — the commander/compiler maintains this; workers only touch their own task entries"
+}

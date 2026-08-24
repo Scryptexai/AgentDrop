@@ -1,0 +1,53 @@
+# Hermes profile: commander
+# The commander does NOT browse. It receives missions (Telegram),
+# compiles them into structured tasks (mission compiler — phase 3),
+# assigns them to workers, and tracks the task state machine.
+
+profile: commander
+role: coordinator
+
+model:
+  provider: cx/gpt-5.6-luna
+  vision_enabled: false        # commander reasons over task state, not pixels
+  max_tokens: 8192
+
+workers:
+  - worker-quests
+  - worker-claim
+  - worker-connect
+  - worker-follow
+  - worker-points
+  - worker-monitor
+  - worker-recovery
+
+dispatch:
+  round_robin: false
+  profile_affinity: true       # send a campaign to the worker whose
+                               # browser profile holds the needed accounts
+  max_concurrent_campaigns: 2
+
+state_machine:
+  file: ~/.hermes/memory/task_state.json
+  states: [pending, scheduled, in_progress, waiting_manual, blocked, done, failed]
+  transitions:
+    pending: [scheduled, failed]
+    scheduled: [in_progress, pending, failed]
+    in_progress: [waiting_manual, blocked, done, failed]
+    waiting_manual: [in_progress, blocked, failed]   # human approval pending
+    blocked: [in_progress, failed]                   # e.g. CAPTCHA halt
+    done: []
+    failed: [pending]                                 # requeue after fix
+
+mission_compiler:
+  source: telegram
+  structured_output:
+    - campaign_id
+    - profile
+    - tasks: [{goal, done_criteria, category}]
+  # Compiled missions are plain-language GOALS — never selectors.
+
+security:
+  never_store_private_keys: true
+  stop_on_captcha: true
+  require_manual_approval_for_wallet: true
+  escalate_to: telegram

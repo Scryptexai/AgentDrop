@@ -1,0 +1,63 @@
+# Loqua Airdrop — benchmark campaign (5 tasks)
+#
+# Vision-first: tasks are GOALS, not selectors. The agent finds every
+# button/field on the screenshot itself. If Loqua restyles the site,
+# nothing here needs to change.
+#
+# NOTE: `url` values are placeholders — set LIVE_URL to the real Loqua
+# airdrop page on the target machine (or pass --url). The benchmark
+# harness runs the same 5 tasks against the local replica in
+# tests/e2e/loqua_site (real browser) and fakesites/loqua (offline).
+id: loqua
+name: Loqua Airdrop
+profile: execution
+notes: >
+  Benchmark campaign. Five tasks, must complete in under 50 loop steps,
+  with first-attempt click accuracy >= 90%. The offline PoC runs this
+  exact sequence against the pixel-rendered replica.
+
+tasks:
+  - id: t1_open
+    goal: >
+      Open the Loqua airdrop landing page and enter the airdrop flow:
+      find the 'Get Started' (or equivalent 'Enter'/'Start') button on
+      the landing page and click it.
+    done_criteria: >
+      The airdrop flow is entered: the landing hero is gone and a
+      registration / sign-up screen is visible.
+    url: "{LIVE_URL}/"
+
+  - id: t2_register
+    goal: >
+      Register for the airdrop: enter your account email into the email
+      field, then submit the registration form (the primary button such
+      as 'Continue' or 'Submit').
+    done_criteria: >
+      The registration was accepted: a profile / next step screen is
+      visible, no error message is shown.
+    url: "{LIVE_URL}/register"
+
+  - id: t3_profile
+    goal: >
+      Complete your profile: enter your display name in the name field
+      and connect your X (Twitter) account using the connect button.
+    done_criteria: >
+      The display name is saved and the X account shows as connected.
+    url: "{LIVE_URL}/profile"
+
+  - id: t4_quest
+    goal: >
+      Complete both follow quests on the quest board: follow @loqua on
+      X, then join the official Discord. If a quest button is not
+      visible, scroll to find it.
+    done_criteria: >
+      Both quests show as completed / checked off on the quest board.
+    url: "{LIVE_URL}/quest"
+
+  - id: t5_claim
+    goal: >
+      Claim your airdrop points: click the claim button and wait for the
+      confirmation that points were credited.
+    done_criteria: >
+      A success message confirms the points were claimed/credited.
+    url: "{LIVE_URL}/claim"

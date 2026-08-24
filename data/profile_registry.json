@@ -1,0 +1,29 @@
+{
+  "$comment": "Single source of truth for browser profiles. All workers resolve profile -> path/cdp_port through this file (agentdrop.registry.ProfileRegistry). Never hardcode paths or ports in skills or worker configs.",
+  "profiles": {
+    "hana": {
+      "path": "/home/nurkahfi/agentdrop/browser-profiles/hana",
+      "cdp_port": 9222,
+      "hermes_reference": "~/.hermes/browser_profiles/hana_kucoin",
+      "status": "ready",
+      "accounts": ["google", "email", "x", "kucoin", "gleam"],
+      "notes": "Primary farming profile (Kucoin/Gleam focused)."
+    },
+    "execution": {
+      "path": "/home/nurkahfi/agentdrop/browser-profiles/execution",
+      "cdp_port": 9223,
+      "hermes_reference": "~/.hermes/browser_profiles/telegram_airdrop",
+      "status": "ready",
+      "accounts": ["google", "email", "telegram", "discord", "phantom", "okx"],
+      "notes": "Default execution profile for worker-quests (Loqua PoC). Must be started manually: scripts/start-browser.sh execution"
+    },
+    "discord": {
+      "path": "/home/nurkahfi/agentdrop/browser-profiles/discord",
+      "cdp_port": 9224,
+      "hermes_reference": "~/.hermes/browser_profiles/discord",
+      "status": "ready",
+      "accounts": ["google", "email", "discord", "x"],
+      "notes": "Discord-native profile for discord-linked quests."
+    }
+  }
+}

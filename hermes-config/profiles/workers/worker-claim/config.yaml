@@ -1,0 +1,49 @@
+# Hermes profile: worker-claim
+# Same vision-first contract as worker-quests (see its config for the
+# full documentation of every block). Claims airdrop rewards once quests complete (claim screens get the wallet gate).
+
+profile: worker-claim
+
+model:
+  provider: cx/gpt-5.6-luna
+  vision_enabled: true
+  max_tokens: 8192
+
+tools:
+  - browser_screenshot
+  - browser_click_coordinate
+  - browser_type
+  - browser_scroll
+  - browser_wait
+  - browser_verify
+
+computer_use:
+  enabled: true
+  vision_first: true
+  fallback_to_dom: false
+  verify_each_step: true
+  max_retries_on_error: 3
+  screenshot_before_each_action: true
+  verify_after_action: true
+  max_steps: 50
+  screenshot_interval: always
+  recovery_attempts: 3
+  coordinate_system: "absolute"
+  mouse_actions: ["click", "double_click", "right_click", "drag", "scroll"]
+  keyboard_actions: ["type", "key_down", "key_up", "hotkey"]
+
+browser:
+  profile_reference: execution
+  persistent_profile: true
+  start_on_demand: false
+  viewport: [1280, 800]
+
+security:
+  never_store_private_keys: true
+  stop_on_captcha: true
+  require_manual_approval_for_wallet: true
+  screenshot_each_step: true
+
+role: claim
+
+evidence_dir: runs

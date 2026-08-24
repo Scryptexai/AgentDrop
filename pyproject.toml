@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agentdrop"
+version = "0.1.0"
+description = "Vision-first computer-use browser agents for airdrop campaigns (screenshot -> reason -> pixel action -> verify)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "websocket-client>=1.6",
+    "pillow>=10.0",
+    "numpy>=1.24",
+    "requests>=2.31",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+e2e = ["playwright>=1.40"]
+
+[project.scripts]
+agentdrop = "agentdrop.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["agentdrop*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    "e2e: real-browser benchmark (needs Chromium with CDP + a vision API key)",
+]

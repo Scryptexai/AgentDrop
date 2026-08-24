@@ -1,0 +1,51 @@
+# Hermes profile: worker-quests (VISION-FIRST PoC profile)
+#
+# This is the profile that runs the Loqua benchmark. It is the template
+# for all 7 workers — the computer_use + security blocks are the contract.
+
+profile: worker-quests
+
+model:
+  provider: cx/gpt-5.6-luna        # confirmed: vision (image input) + computer-use
+                                   # fallbacks: anthropic/claude-sonnet-4-20250514,
+                                   # deepseek-v4-pro-vision, local/qwen2.5-vl-72b
+  vision_enabled: true
+  max_tokens: 8192
+
+tools:
+  - browser_screenshot
+  - browser_click_coordinate
+  - browser_type
+  - browser_scroll
+  - browser_wait
+  - browser_verify
+
+computer_use:
+  enabled: true
+  vision_first: true               # NEVER use DOM selectors
+  fallback_to_dom: false           # force vision-only (the whole point)
+  verify_each_step: true           # screenshot comparison after every action
+  max_retries_on_error: 3          # recovery budget (re-observe & adapt)
+  screenshot_before_each_action: true
+  verify_after_action: true
+  max_steps: 50                    # campaign budget (benchmark target: <50)
+  screenshot_interval: always
+  recovery_attempts: 3
+  coordinate_system: "absolute"    # X,Y pixel coordinates
+  mouse_actions: ["click", "double_click", "right_click", "drag", "scroll"]
+  keyboard_actions: ["type", "key_down", "key_up", "hotkey"]
+
+browser:
+  profile_reference: execution     # resolved via data/profile_registry.json
+  cdp_port: 9223                   # must match the registry; kept here for ops visibility
+  persistent_profile: true
+  start_on_demand: false           # must be started manually: scripts/start-browser.sh execution
+  viewport: [1280, 800]
+
+security:
+  never_store_private_keys: true
+  stop_on_captcha: true            # halt worker + save evidence screenshot
+  require_manual_approval_for_wallet: true
+  screenshot_each_step: true
+
+evidence_dir: runs

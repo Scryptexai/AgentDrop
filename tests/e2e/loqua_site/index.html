@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Loqua Airdrop</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    background: #111827; color: #e5e7eb; min-height: 100vh;
+  }
+  nav {
+    background: #0f172a; padding: 22px 40px; border-bottom: 2px solid #334155;
+    font-size: 30px; font-weight: 700; color: #38bdf8; letter-spacing: 1px;
+  }
+  .screen { display: none; padding: 70px 90px; }
+  .screen.active { display: block; }
+  h1 { font-size: 44px; margin-bottom: 18px; }
+  .sub { color: #94a3b8; font-size: 20px; margin-bottom: 40px; }
+  .hero { margin-top: 90px; }
+  .hero h1 { font-size: 52px; max-width: 1100px; }
+  label { display: block; font-size: 20px; margin: 28px 0 10px; color: #cbd5e1; }
+  input[type="email"], input[type="text"] {
+    width: 620px; max-width: 100%; padding: 16px 18px; font-size: 20px;
+    background: #0f172a; color: #f1f5f9; border: 2px solid #475569; border-radius: 8px;
+  }
+  input[type="email"]:focus, input[type="text"]:focus { outline: none; border-color: #38bdf8; }
+  .note { color: #64748b; font-size: 16px; margin-top: 10px; }
+  button {
+    margin-top: 46px; padding: 18px 44px; font-size: 22px; font-weight: 600;
+    background: #2563eb; color: #fff; border: none; border-radius: 8px; cursor: pointer;
+  }
+  button:hover { background: #1d4ed8; }
+  button.green { background: #16a34a; }
+  button.green:hover { background: #15803d; }
+  button:disabled { background: #334155; cursor: default; }
+  .status { margin-top: 22px; font-size: 20px; color: #4ade80; min-height: 28px; }
+  .quest { margin-top: 34px; display: flex; align-items: center; gap: 26px; }
+  .quest .status { margin-top: 0; }
+  .spacer { height: 520px; }
+  #claimStatus.ok { color: #4ade80; }
+</style>
+</head>
+<body>
+<nav>LOQUA</nav>
+
+<section id="landing" class="screen active hero">
+  <h1>Claim your share of the $LOQUA points airdrop</h1>
+  <p class="sub" style="margin-top:18px">Register, complete quests, and claim — takes about a minute.</p>
+  <button id="getStarted">Get Started</button>
+</section>
+
+<section id="register" class="screen">
+  <h1>Create your airdrop account</h1>
+  <label for="email">Email address</label>
+  <input type="email" id="email" placeholder="you@example.com" autocomplete="off">
+  <p class="note">We only use this to credit your points.</p>
+  <button id="continue">Continue</button>
+  <div class="status" id="regStatus"></div>
+</section>
+
+<section id="profile" class="screen">
+  <h1>Complete your profile</h1>
+  <label for="name">Display name</label>
+  <input type="text" id="name" placeholder="Your name or handle" autocomplete="off">
+  <label>Social</label>
+  <div class="quest">
+    <button id="connectX">Connect X (Twitter)</button>
+    <div class="status" id="xStatus">Not connected</div>
+  </div>
+</section>
+
+<section id="quest" class="screen">
+  <h1>Quest board</h1>
+  <p class="sub">Complete both quests to unlock claiming.</p>
+  <div class="quest">
+    <button id="follow">Follow @loqua on X</button>
+    <div class="status" id="q1">0 / 2 quests</div>
+  </div>
+  <!-- The second quest sits far down the page on purpose: a vision agent
+       must SCROLL to find it, exactly like a human. -->
+  <div class="spacer"></div>
+  <div class="quest">
+    <button id="discord">Join official Discord</button>
+    <div class="status" id="q2">not joined</div>
+  </div>
+  <div class="quest" id="claimRow" style="display:none">
+    <button id="goClaim" class="green">Both quests done — Go claim →</button>
+  </div>
+</section>
+
+<section id="claim" class="screen">
+  <h1>Claim your points</h1>
+  <p class="sub" id="balance">Eligible: 500 LOQUA points</p>
+  <button id="claimBtn" class="green">Claim Points</button>
+  <div class="status" id="claimStatus">Awaiting claim</div>
+</section>
+
+<script>
+(function () {
+  const $ = (id) => document.getElementById(id);
+  const state = { registered: false, xConnected: false, followed: false, discord: false, claimed: false };
+  let done = 0;
+
+  function show(id) {
+    document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+    $(id).classList.add("active");
+    window.scrollTo(0, 0);
+  }
+
+  function refreshQuests() {
+    done = (state.followed ? 1 : 0) + (state.discord ? 1 : 0);
+    $("q1").textContent = state.followed ? "✓ done" : done + " / 2 quests";
+    $("q2").textContent = state.discord ? "✓ done" : "not joined";
+    if (done === 2) $("claimRow").style.display = "flex";
+  }
+
+  $("getStarted").onclick = () => show("register");
+
+  $("continue").onclick = () => {
+    const email = $("email").value.trim();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      $("regStatus").style.color = "#f87171";
+      $("regStatus").textContent = "Please enter a valid email address.";
+      return;
+    }
+    state.registered = true;
+    show("profile");
+  };
+
+  $("connectX").onclick = () => {
+    if (!$("name").value.trim()) {
+      $("xStatus").style.color = "#f87171";
+      $("xStatus").textContent = "Set a display name first.";
+      return;
+    }
+    state.xConnected = true;
+    $("connectX").textContent = "X connected ✓";
+    $("connectX").disabled = true;
+    $("xStatus").style.color = "#4ade80";
+    $("xStatus").textContent = "Connected: @agentdrop";
+    show("quest");
+  };
+
+  $("follow").onclick = () => {
+    if (state.followed) return;
+    state.followed = true;
+    $("follow").textContent = "Following @loqua ✓";
+    $("follow").disabled = true;
+    refreshQuests();
+  };
+
+  $("discord").onclick = () => {
+    if (state.discord) return;
+    state.discord = true;
+    $("discord").textContent = "In Discord ✓";
+    $("discord").disabled = true;
+    refreshQuests();
+  };
+
+  $("goClaim").onclick = () => show("claim");
+
+  $("claimBtn").onclick = () => {
+    if (!state.followed || !state.discord) {
+      $("claimStatus").style.color = "#f87171";
+      $("claimStatus").textContent = "Complete all quests first.";
+      return;
+    }
+    state.claimed = true;
+    $("claimBtn").textContent = "Claimed ✓";
+    $("claimBtn").disabled = true;
+    $("claimStatus").classList.add("ok");
+    $("claimStatus").textContent = "✓ 500 LOQUA points credited to your account";
+  };
+})();
+</script>
+</body>
+</html>

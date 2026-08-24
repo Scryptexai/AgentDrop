@@ -1,0 +1,48 @@
+# AgentDrop security policy (applies to every profile and skill).
+# Enforced in code by agentdrop.loop.security + the engine config loader.
+
+version: 1
+
+keys:
+  never_store_private_keys: true
+  # The config/campaign loader and the log redactor reject any
+  # private-key / seed-phrase-shaped string BEFORE it is written
+  # anywhere. Patterns: PEM headers, 64-hex private keys, 12+ word
+  # seed phrases, long base58/bech32 words.
+  reject_at_load: true
+  redact_in_logs: true
+
+captchas:
+  stop_on_captcha: true
+  # The vision model reports captcha_detected from the screenshot.
+  # On detection the worker HALTS, saves an evidence screenshot
+  # (HALT_captcha.png), and the commander may route it to
+  # worker-recovery or notify a human. Workers NEVER attempt to
+  # solve CAPTCHAs.
+  do_not_attempt_solve: true
+  save_evidence: true
+
+wallet:
+  require_manual_approval_for_wallet: true
+  # When the vision model detects a wallet connect / tx sign /
+  # seed-phrase entry screen:
+  #   - no approver configured (headless)  -> halt worker
+  #   - approver says no                   -> halt worker
+  #   - approver says yes                  -> the task STILL refuses
+  #     to click wallet controls; it reports and stops (policy is
+  #     "observe, never interact" — a human takes over manually)
+  never_interact_even_if_approved: true
+  approval_channel: telegram
+
+actions:
+  # Read-only workers must not execute mutating actions
+  enforce_read_only: true
+  # Campaigns that touch a wallet category require the commander to
+  # set approval explicitly in the mission
+  wallet_categories: [claim, wallet]
+
+network:
+  # Workers only talk to: their campaign's URLs + the vision model
+  # endpoint. No arbitrary exfiltration paths.
+  allowlist_cdn_only: false
+  log_all_navigations: true

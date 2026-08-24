@@ -1,0 +1,21 @@
+{
+  "site": "loqua",
+  "learned": "2026-08-24",
+  "anchors": {
+    "get_started": "blue 'Get Started' button, centred below the airdrop headline on the landing page",
+    "email_field": "single email input under an 'Email address' label on the registration form",
+    "submit_register": "primary button (Continue/Submit) below the email field",
+    "name_field": "text input under a 'Display name' label on the profile form",
+    "connect_x": "button labelled 'Connect X (Twitter)' in the social section of the profile form",
+    "follow_quest": "'Follow @loqua on X' button, first quest card on the quest board",
+    "discord_quest": "'Join official Discord' button, second quest card, near the bottom of the quest board — scroll required",
+    "claim_link": "appears below the quest board once both quests are completed",
+    "claim_button": "green 'Claim Points' button on the claim page",
+    "success_banner": "green confirmation line stating points were credited"
+  },
+  "known_variants": {
+    "get_started": ["Get Started", "Enter", "Start"],
+    "submit_register": ["Continue", "Submit", "Sign up"]
+  },
+  "notes": "anchors are visual descriptions for re-matching on fresh screenshots — never selectors, never stale coordinates"
+}

@@ -1,0 +1,71 @@
+# Global Hermes configuration for AgentDrop (vision-first).
+# Installed at ~/.hermes/hermes.yaml
+
+version: 1
+
+# ---------------------------------------------------------------------------
+# Model registry. Vision capability is MANDATORY for browser agents.
+#
+#   gpt-5.6-luna  — confirmed: image input (vision) + computer-use tool
+#                   support per OpenAI model docs; cheapest of the 5.6
+#                   family ($0.20/MTok in). Good default.
+#   claude-sonnet-4 / claude-opus-4 — best-in-class visual grounding;
+#                   use for hard sites or when accuracy > cost.
+#   deepseek-v4-pro-vision — cheaper alternative with vision.
+#   qwen2.5-vl-72b — self-hostable fallback (vLLM), keeps secrets on-host.
+#
+# Any provider speaking the OpenAI Chat Completions protocol (image_url
+# content) works via AGENTDROP_VISION_BASE_URL — including HNCSEC-style
+# proxies, so "cx/gpt-5.6-luna" keeps working if the proxy forwards
+# image content blocks.
+# ---------------------------------------------------------------------------
+models:
+  default_vision:
+    provider: cx/gpt-5.6-luna
+    vision: true
+    notes: "confirmed vision + computer-use capable"
+  fallback_vision:
+    provider: anthropic/claude-sonnet-4-20250514
+    vision: true
+  self_hosted_vision:
+    provider: local/qwen2.5-vl-72b
+    vision: true
+    base_url: "http://127.0.0.1:8000/v1"
+
+# ---------------------------------------------------------------------------
+# MCP servers. The browser agents talk to the computer-use MCP server
+# (mcp/server in this repo) which wraps the CDP profile endpoints.
+# NOTE: the plan referenced "@opencode/computer-use" — that package does
+# not exist on npm; the closest real package (open-computer-use) is a
+# DESKTOP automation server (OS-level mouse/keyboard), which cannot drive
+# a headless browser. For browser agents a CDP-based MCP server is the
+# correct layer, so we ship one (zero-dependency, Node >= 21).
+# ---------------------------------------------------------------------------
+mcp:
+  servers:
+    computer-use:
+      command: node
+      args: ["{repo}/mcp/server/server.js"]
+      env:
+        CDP_PORT: "9223"        # from profile_registry.json (execution)
+        CDP_HOST: "127.0.0.1"
+
+# ---------------------------------------------------------------------------
+# Browser profiles come from the registry — NEVER hardcode ports/paths.
+# ---------------------------------------------------------------------------
+browser:
+  registry: "{repo}/data/profile_registry.json"
+
+# ---------------------------------------------------------------------------
+# Evidence & logs
+# ---------------------------------------------------------------------------
+evidence:
+  dir: "{home}/agentdrop/runs"
+  keep_screenshots: true
+  log_steps_jsonl: true
+
+logging:
+  level: info
+  # never log model responses verbatim (they contain page content that may
+  # include account data); log action summaries + reasoning only
+  redact_model_output: true
