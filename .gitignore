@@ -59,3 +59,12 @@ Thumbs.db
 .idea/
 .vscode/
 *.swp
+
+# ============================================================================
+# PRIVATE KEY DAEMON SIGNING — tidak boleh pernah masuk git.
+# Path default-nya di luar repo (~/.hermes/), tapi kalau ada yang menaruhnya
+# di dalam repo, pola ini yang menangkap.
+# ============================================================================
+agentdrop-signer.key
+*.signer.key
+signer.key

@@ -771,6 +771,42 @@ def check_signing_policy() -> None:
         n = ran.group(1) if ran else "?"
         print(f"  · {n} test policy engine lolos")
 
+    # 1b. Test daemon signing. eth-account adalah dependency nyata daemon,
+    # jadi kalau tidak ada di lingkungan ini laporkan sebagai peringatan —
+    # bukan error, karena validator boleh jalan di mesin yang belum memasang
+    # dependency runtime.
+    dsuite = REPO / "tools" / "test_signing_daemon.py"
+    daemon = REPO / "tools" / "signing_daemon.py"
+    if dsuite.exists() and daemon.exists():
+        checks += 1
+        probe = subprocess.run([sys.executable, "-c", "import eth_account"],
+                               capture_output=True, text=True)
+        if probe.returncode != 0:
+            warn("eth-account belum terpasang — test daemon signing dilewati. "
+                 "Pasang: pip install eth-account")
+        else:
+            dproc = subprocess.run([sys.executable, str(dsuite)],
+                                   capture_output=True, text=True)
+            if dproc.returncode != 0:
+                err(f"test_signing_daemon.py GAGAL (exit {dproc.returncode}):\n"
+                    f"{(dproc.stderr or dproc.stdout).strip()[-1200:]}")
+            else:
+                ran = re.search(r"Ran (\d+) tests", dproc.stderr + dproc.stdout)
+                print(f"  · {ran.group(1) if ran else '?'} test daemon signing lolos")
+        # Daemon tidak boleh pernah bind ke semua antarmuka.
+        # Yang diperiksa adalah PEMANGGILAN bind-nya, bukan sembarang sebutan:
+        # docstring daemon memang menulis "tidak pernah 0.0.0.0", dan cek
+        # substring naif salah menuduh kalimat larangan itu.
+        dtext = daemon.read_text()
+        bind_all = re.search(r'(?:HTTPServer|TCPServer|socket\w*)\s*\(\s*\(\s*["\']0\.0\.0\.0["\']',
+                             dtext)
+        if bind_all:
+            err("signing_daemon.py bind ke 0.0.0.0 — daemon pemegang private key "
+                "tidak boleh terbuka ke jaringan")
+        if not re.search(r'(?:HTTPServer|TCPServer)\s*\(\s*\(\s*["\']127\.0\.0\.1["\']',
+                         dtext):
+            err("signing_daemon.py tidak bind ke 127.0.0.1 secara eksplisit")
+
     # 2. Kebijakan yang termuat harus konsisten dengan yang diklaim file.
     # Import biasa lewat sys.path: spec_from_file_location tanpa mendaftarkan
     # modul ke sys.modules membuat @dataclass gagal (dataclasses mencari
@@ -816,6 +852,19 @@ def check_signing_policy() -> None:
     ) if v]
     if longgar:
         print(f"  · postur aktif: OTONOM — {', '.join(longgar)}")
+
+    # 6. Private key tidak boleh pernah masuk .env.example.
+    checks += 1
+    env_text = (REPO / ".env.example").read_text()
+    if "AGENTDROP_PRIVATE_KEY=" in env_text:
+        err(".env.example memuat AGENTDROP_PRIVATE_KEY — file ini ikut tersalin "
+            "ke enam profil. Gunakan AGENTDROP_KEY_FILE.")
+    for needle in ("AGENTDROP_KEY_FILE=", "AGENTDROP_SIGNER_TOKEN="):
+        if needle not in env_text:
+            err(f".env.example kehilangan {needle}")
+    gi = (REPO / ".gitignore").read_text()
+    if "agentdrop-signer.key" not in gi:
+        err(".gitignore tidak menutup agentdrop-signer.key")
 
 
 def check_no_stray_cjk() -> None:

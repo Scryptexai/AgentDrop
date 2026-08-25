@@ -130,6 +130,24 @@ else
 fi
 
 # ----------------------------------------------------------------------------
+# 2d. eth-account — dibutuhkan tools/signing_daemon.py
+# ----------------------------------------------------------------------------
+# Tanpa ini daemon signing tidak bisa jalan, artinya rute wallet otonom mati
+# dan setiap signature harus dikerjakan manual.
+if command -v python3 >/dev/null 2>&1; then
+  if python3 -c "import eth_account" >/dev/null 2>&1; then
+    ok "eth-account ada"
+  else
+    log "Menginstal eth-account (dibutuhkan daemon signing)"
+    python3 -m pip install --quiet eth-account 2>/dev/null \
+      || python3 -m pip install --quiet --user eth-account 2>/dev/null \
+      || python3 -m pip install --quiet --break-system-packages eth-account 2>/dev/null \
+      || warn "gagal menginstal eth-account — daemon signing tidak akan jalan."
+    python3 -c "import eth_account" >/dev/null 2>&1 && ok "eth-account terpasang"
+  fi
+fi
+
+# ----------------------------------------------------------------------------
 # 3. Instal Hermes Agent
 # ----------------------------------------------------------------------------
 if command -v hermes >/dev/null 2>&1; then
