@@ -1,0 +1,60 @@
+# ============================================================================
+# WORKER: QUESTS — eksekusi campaign multi-langkah (Galxe, Layer3, Zealy, dll.)
+# ============================================================================
+# Dipasang ke: ~/.hermes/profiles/worker-quests/config.yaml
+# Profil = HERMES_HOME terpisah penuh. Tidak mewarisi config utama.
+# ============================================================================
+
+model:
+  # Eksekusi campaign = banyak keputusan navigasi. Butuh model kuat.
+  default: "anthropic/claude-sonnet-4"
+  provider: "auto"
+  base_url: "https://openrouter.ai/api/v1"
+
+toolsets:
+  - hermes-cli
+  - browser
+  - file
+  - web
+  - todo
+
+agent:
+  # Campaign multi-langkah dengan banyak halaman. 60 turn realistis.
+  max_turns: 60
+  reasoning_effort: "high"
+
+browser:
+  # 1800 (30 menit), disamakan dengan SESSION_TIMEOUT_MS Camofox.
+  # Default Hermes 120 detik terlalu pendek: sesi login dashboard
+  # bisa tertutup di tengah rangkaian aksi.
+  inactivity_timeout: 1800
+  command_timeout: 30
+  # Halaman quest sering panjang (daftar task, syarat, footer).
+  snapshot_threshold: 20000
+  record_sessions: true
+  allow_private_urls: false
+
+  # headed HANYA berlaku untuk browser lokal Hermes (agent-browser), BUKAN
+  # Camofox. GUI di setup ini datang dari plugin vnc Camofox
+  # (Xvfb 1920x1080 -> x11vnc :5900 -> noVNC :6080). Biarkan false.
+  headed: false
+  camofox:
+    managed_persistence: true
+    adopt_existing_tab: true
+
+terminal:
+  backend: "local"
+  cwd: "."
+  timeout: 180
+  home_mode: "profile"
+
+compression:
+  enabled: true
+
+tool_loop_guardrails:
+  warnings_enabled: true
+  hard_stop_enabled: true
+  warn_after:
+    exact_failure: 2
+    same_tool_failure: 3
+    idempotent_no_progress: 2

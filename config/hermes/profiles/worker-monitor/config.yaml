@@ -1,0 +1,68 @@
+# ============================================================================
+# WORKER: MONITOR — verifikasi, pelaporan, deteksi anomali
+# ============================================================================
+# Dipasang ke: ~/.hermes/profiles/worker-monitor/config.yaml
+# Profil = HERMES_HOME terpisah penuh. Tidak mewarisi config utama.
+#
+# Worker ini MEMBACA dan MEMVERIFIKASI lewat browser, tapi tidak mengeksekusi.
+# Toolset terminal sengaja tidak diaktifkan: monitor boleh melihat, tidak boleh
+# mengubah sistem.
+# ============================================================================
+
+model:
+  # Sintesis lintas campaign + penilaian tren. Butuh penalaran baik.
+  default: "anthropic/claude-sonnet-4"
+  provider: "auto"
+  base_url: "https://openrouter.ai/api/v1"
+
+toolsets:
+  - hermes-cli
+  - browser
+  - file
+  - web
+  - memory
+
+agent:
+  max_turns: 40
+  reasoning_effort: "high"
+
+# ----------------------------------------------------------------------------
+# BROWSER
+# ----------------------------------------------------------------------------
+# worker-monitor diberi akses browser karena tugasnya MEMVERIFIKASI klaim
+# worker lain. Verifikasi yang hanya membaca progress.json bisa dibohongi oleh
+# laporan palsu; membuka kembali halamannya dan membaca state secara langsung
+# tidak bisa.
+#
+# Tetap tanpa kemampuan eksekusi berat (terminal sengaja tidak diaktifkan) —
+# monitor boleh melihat, tidak boleh mengubah sistem.
+browser:
+  # 1800 (30 menit), disamakan dengan SESSION_TIMEOUT_MS Camofox.
+  inactivity_timeout: 1800
+  command_timeout: 30
+  snapshot_threshold: 15000
+  # Tidak merekam sesi — monitor hanya membaca, dan rekaman menambah beban disk.
+  record_sessions: false
+  allow_private_urls: false
+  # headed HANYA berlaku untuk browser lokal Hermes (agent-browser), BUKAN
+  # Camofox. GUI di setup ini datang dari plugin vnc Camofox
+  # (Xvfb 1920x1080 -> x11vnc :5900 -> noVNC :6080). Biarkan false.
+  headed: false
+  camofox:
+    # Pakai identitas Camofox yang SAMA dengan worker lain supaya sesi login
+    # yang sudah dibangun tidak perlu diulang.
+    managed_persistence: true
+    adopt_existing_tab: true
+
+terminal:
+  backend: "local"
+  cwd: "."
+  timeout: 180
+  home_mode: "profile"
+
+compression:
+  enabled: true
+
+tool_loop_guardrails:
+  warnings_enabled: true
+  hard_stop_enabled: true

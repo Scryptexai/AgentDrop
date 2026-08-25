@@ -1,0 +1,112 @@
+# ============================================================================
+# WORKER: ORCHESTRATOR — pintu masuk Telegram + pendelegasian ke worker
+# ============================================================================
+# Dipasang ke: ~/.hermes/profiles/worker-orchestrator/config.yaml
+# Profil = HERMES_HOME terpisah penuh. Tidak mewarisi config utama.
+#
+# INI PROFIL YANG MENGHADAP TELEGRAM. Anda mengirim task ke bot, profil ini
+# yang menerima, menganalisis, lalu mendelegasikan ke worker di bawahnya.
+# ============================================================================
+
+model:
+  # Orkestrasi = banyak keputusan routing. Butuh model kuat.
+  default: "anthropic/claude-sonnet-4"
+  provider: "auto"
+  base_url: "https://openrouter.ai/api/v1"
+
+toolsets:
+  - hermes-cli
+  - browser
+  - file
+  - web
+  - memory
+  - todo
+  # Dua toolset inilah yang membuat pendelegasian mungkin.
+  - delegate_task
+  - delegation
+
+# Toolset yang boleh dipakai saat pesan datang dari Telegram.
+# Sengaja TIDAK memberi terminal: pintu masuk publik tidak boleh punya shell.
+platform_toolsets:
+  telegram: [hermes-cli, browser, file, web, memory, todo, delegate_task]
+
+agent:
+  # Orkestrator menunggu banyak child selesai. Butuh ruang.
+  max_turns: 120
+  reasoning_effort: "high"
+
+# ----------------------------------------------------------------------------
+# DELEGATION — inti dari arsitektur berlapis
+# ----------------------------------------------------------------------------
+# Key asli dari DEFAULT_CONFIG (hermes_cli/config_defaults.py).
+delegation:
+  # Wajib true agar tool delegate_task aktif untuk profil ini.
+  orchestrator_enabled: true
+
+  # Berapa child boleh jalan paralel. 3 cukup untuk farming: lebih dari itu
+  # membuat sesi browser bertabrakan dan biaya melonjak.
+  max_concurrent_children: 3
+
+  # KEDALAMAN. 1 = orchestrator boleh spawn leaf, leaf TIDAK boleh spawn lagi.
+  # JANGAN naikkan kecuali Anda paham implikasinya — delegasi递归 tanpa batas
+  # adalah cara tercepat menghabiskan saldo API.
+  max_spawn_depth: 1
+
+  # Child tidak boleh menyetujui aksinya sendiri. Persetujuan tetap milik Anda.
+  subagent_auto_approve: false
+
+  # Batas iterasi per child. Default Hermes 250 terlalu longgar untuk satu
+  # campaign airdrop.
+  max_iterations: 60
+
+  # Ringkasan child yang dikirim balik ke orchestrator.
+  max_summary_chars: 24000
+
+  # Model untuk child. Kosong = ikut model orchestrator. Isi dengan model murah
+  # kalau child-nya tugas repetitif.
+  model: ""
+  reasoning_effort: "medium"
+
+browser:
+  # 1800 (30 menit), disamakan dengan SESSION_TIMEOUT_MS Camofox.
+  inactivity_timeout: 1800
+  command_timeout: 30
+  snapshot_threshold: 20000
+  record_sessions: true
+  allow_private_urls: false
+  # headed HANYA berlaku untuk browser lokal Hermes (agent-browser), BUKAN
+  # Camofox. GUI di setup ini datang dari plugin vnc Camofox
+  # (Xvfb 1920x1080 -> x11vnc :5900 -> noVNC :6080). Biarkan false.
+  headed: false
+  camofox:
+    managed_persistence: true
+    adopt_existing_tab: true
+
+terminal:
+  backend: "local"
+  cwd: "."
+  timeout: 180
+  home_mode: "profile"
+
+# Job cron tidak boleh dapat approval (tidak ada manusia di sana).
+approvals:
+  mode: "smart"
+  cron_mode: "deny"
+  single_query_mode: "deny"
+  denial_breaker_threshold: 3
+
+security:
+  redact_secrets: true
+  allow_private_urls: false
+  protected_instruction_files: true
+
+compression:
+  enabled: true
+
+tool_loop_guardrails:
+  warnings_enabled: true
+  hard_stop_enabled: true
+  warn_after:
+    exact_failure: 2
+    same_tool_failure: 3
+    idempotent_no_progress: 2

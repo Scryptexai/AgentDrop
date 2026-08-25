@@ -1,0 +1,285 @@
+# ============================================================================
+# HERMES AGENT — CONFIG UTAMA (airdrop farming)
+# ============================================================================
+# Dipasang ke: ~/.hermes/config.yaml
+#
+# SETIAP KEY DI FILE INI SUDAH DICEK terhadap sumber asli Hermes Agent
+# (NousResearch/hermes-agent @ 25 Aug 2026):
+#   - cli-config.yaml.example
+#   - hermes_cli/config_defaults.py  -> DEFAULT_CONFIG
+#
+# Yang TIDAK ada di Hermes dan sengaja TIDAK dipakai di sini:
+#   x browser.camofox.url   -> URL Camofox adalah ENV VAR `CAMOFOX_URL` di .env.
+#                              Key camofox asli HANYA: managed_persistence,
+#                              user_id, session_key, adopt_existing_tab,
+#                              rewrite_loopback_urls, loopback_host_alias.
+#   x security.never_store_private_keys / stop_on_captcha / burner_only /
+#     require_approval_for_wallet
+#                           -> keempat key ini TIDAK ADA. Key `security:` sendiri
+#                              ADA, tapi sub-keynya berbeda (lihat blok security
+#                              di bawah). Guardrail yang dimaksud prompt asli
+#                              diimplementasikan lewat key yang benar-benar ada:
+#                              security.redact_secrets, security.website_blocklist,
+#                              approvals.cron_mode, approvals.deny + SOUL.md.
+#   x system_prompt:        -> bukan key config. Identitas agent = SOUL.md.
+#   x cron: {enabled,jobs_dir} -> key cron asli: allow_agent_scheduling,
+#                              preflight, model_drift_guard, model, provider.
+#   x toolsets: [file_ops]  -> id toolset asli adalah `file`, bukan `file_ops`.
+#   x human_delay utk pacing browser -> human_delay hanya untuk pacing respons
+#                              di platform messaging ("off"|"natural"|"custom"),
+#                              bukan jeda aksi browser. Tidak dipakai di sini.
+#
+# Aturan Hermes: secret -> .env, sisanya -> config.yaml.
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# MODEL
+# ----------------------------------------------------------------------------
+model:
+  # Format WAJIB "provider/model". String di bawah diambil verbatim dari help
+  # `hermes chat -m` di hermes_cli/_parser.py. Jalankan `hermes model` untuk
+  # melihat slug yang benar-benar tersedia di akun Anda.
+  default: "anthropic/claude-sonnet-4"
+
+  # "auto" = deteksi dari kredensial yang ada. Pilihan lain yang valid:
+  # openrouter, anthropic, openai-codex, copilot, gemini, nous, nous-api,
+  # custom (vLLM/Ollama/LM Studio), deepinfra, nvidia, huggingface, ...
+  provider: "auto"
+
+  # Default bawaan Hermes. Ganti kalau pakai provider custom.
+  base_url: "https://openrouter.ai/api/v1"
+
+  # context_length = total window (input+output). Biarkan tidak diset agar
+  # Hermes auto-detect dari provider. Diset manual HANYA kalau auto-detect
+  # salah (mis. server lokal dengan num_ctx sendiri).
+  # context_length: 131072
+
+  # max_tokens = cap OUTPUT per respons. Tidak berhubungan dengan panjang
+  # history. Biarkan tidak diset untuk memakai ceiling native model.
+  # max_tokens: 8192
+
+# ----------------------------------------------------------------------------
+# TOOLSETS — id asli dari hermes_cli/tools_config.py
+# ----------------------------------------------------------------------------
+# Valid: browser, terminal, file, web, memory, skills, todo, vision,
+#        computer_use, code_execution, cronjob, delegate_task, session_search,
+#        context_engine, clarify, delegation, image_gen, tts, stt, ...
+# Catatan: `hermes-cli` adalah default bawaan Hermes.
+toolsets:
+  - hermes-cli
+  - browser
+  - terminal
+  - file
+  - web
+  - memory
+  - todo
+
+# ----------------------------------------------------------------------------
+# AGENT
+# ----------------------------------------------------------------------------
+agent:
+  # Default Hermes 500. 90 cukup untuk satu sesi farming dan membatasi biaya.
+  # Rekomendasi resmi di cli-config.yaml.example: 20-30 focused, 50-100 open.
+  max_turns: 90
+
+  # Level valid: none, minimal, low, medium, high, xhigh, max, ultra.
+  # (Prompt aslinya menyebut "xhigh" sebagai maksimum — sebenarnya ada juga
+  #  `max` dan `ultra`.)
+  reasoning_effort: "medium"
+
+# ----------------------------------------------------------------------------
+# BROWSER — Camofox
+# ----------------------------------------------------------------------------
+browser:
+  # "" (default) = Browser Use mode kalau CLI browser-use tersedia, selain itu
+  # built-in browser tools. PENTING dari config_defaults.py:
+  #   "Camofox setups always keep the built-in tools (no CDP surface)."
+  # Jadi dengan Camofox, nilai ini efektif diabaikan. Biarkan kosong.
+  backend: ""
+
+  # Sesi browser ditutup otomatis setelah idle selama ini (detik).
+  # Default Hermes 120 (2 menit) terlalu pendek untuk farming: sesi login
+  # dashboard bisa tertutup di tengah rangkaian aksi. 1800 = 30 menit,
+  # disamakan dengan SESSION_TIMEOUT_MS Camofox.
+  inactivity_timeout: 1800
+  # Timeout per perintah browser (screenshot, navigate, ...).
+  command_timeout: 30
+  # Karakter snapshot maksimum sebelum di-truncate-and-store. Naikkan untuk
+  # halaman dashboard airdrop yang panjang.
+  snapshot_threshold: 15000
+  # Rekam sesi sebagai WebM — bagus untuk audit trail.
+  record_sessions: true
+  # Izinkan navigasi ke IP privat. FALSE: jangan pernah ke localhost dari agent.
+  allow_private_urls: false
+
+  # ----------------------------------------------------------------------
+  # headed: jendela Chromium terlihat. HANYA berlaku untuk mode LOKAL Hermes
+  # (agent-browser), BUKAN untuk Camofox. Dari config_defaults.py:
+  #   "Local mode: launch Chromium with a visible window (also skips per-turn
+  #    cleanup so the window persists between turns; idle reaper still applies)"
+  #
+  # Setup AgentDrop memakai Camofox, dan config_defaults.py menyatakan:
+  #   "Camofox setups always keep the built-in tools (no CDP surface)."
+  # Jadi GUI-nya datang dari plugin vnc Camofox (Xvfb -> x11vnc -> noVNC),
+  # bukan dari flag ini. Biarkan false supaya tidak menyesatkan.
+  # Aktifkan HANYA kalau Anda sengaja meninggalkan Camofox dan memakai
+  # browser lokal Hermes di mesin ber-desktop.
+  headed: false
+
+  # Dialog/modal. `must_respond` = agent wajib menjawab dialog; auto-dismiss
+  # setelah dialog_timeout_s.
+  dialog_policy: "must_respond"
+  dialog_timeout_s: 300
+
+  camofox:
+    # true -> Hermes mengirim userId yang stabil dan scoped per profil, lalu
+    # server memetakannya ke profil Firefox yang persisten. INI yang membuat
+    # login dashboard airdrop bertahan antar sesi (pola "Take Over" Manus).
+    managed_persistence: true
+
+    # Identitas Camofox yang dikelola aplikasi lain. Kosongkan agar Hermes
+    # memakai userId-nya sendiri.
+    user_id: ""
+    session_key: ""
+
+    # Rehydrate tab_id dari Camofox sebelum membuat tab baru — berguna kalau
+    # gateway restart di tengah sesi.
+    adopt_existing_tab: true
+
+    # Camofox Docker membuka URL halaman dari DALAM container. Aktifkan untuk
+    # menulis ulang URL loopback ke alias host, tanpa mengubah CAMOFOX_URL.
+    rewrite_loopback_urls: true
+    loopback_host_alias: "host.docker.internal"
+
+# ----------------------------------------------------------------------------
+# TERMINAL
+# ----------------------------------------------------------------------------
+terminal:
+  backend: "local"
+  cwd: "."
+  timeout: 180
+  # "profile" = paksa HERMES_HOME/home untuk isolasi config CLI per profil.
+  # Relevan karena repo ini memakai 5 profil worker.
+  home_mode: "profile"
+  # SECURITY: off by default. Jangan aktifkan kecuali Anda paham implikasinya.
+  docker_mount_cwd_to_workspace: false
+
+# ----------------------------------------------------------------------------
+# COMPRESSION
+# ----------------------------------------------------------------------------
+compression:
+  enabled: true
+
+# ----------------------------------------------------------------------------
+# CRON — scheduler INTERNAL Hermes (ticker in-process 60 detik)
+# ----------------------------------------------------------------------------
+# JANGAN pakai system crontab untuk ini; Hermes punya scheduler sendiri dan
+# job disimpan di tabel SQLite miliknya. Lihat scripts/install-cron.sh.
+cron:
+  # Validasi config SEBELUM job dijalankan: cek API key resolve, skill siap,
+  # platform delivery terpasang. Job gagal dicatat last_status=blocked_config
+  # dengan SATU alert, dan tidak ada panggilan LLM. Ini yang Anda inginkan
+  # untuk job yang jalan tanpa pengawasan.
+  preflight: true
+
+  # Fail-closed kalau model global berubah dari snapshot saat job dibuat.
+  # Mencegah job harian diam-diam memakai model mahal.
+  model_drift_guard: true
+
+  # Model default untuk semua cron job. Kosong = ikut model.default.
+  model: ""
+  model_provider: ""
+
+  # JANGAN diaktifkan: membiarkan agent cron membuat job baru bisa memicu
+  # scheduling loop tanpa pengawasan.
+  allow_agent_scheduling: false
+
+  # "" = ticker in-process bawaan.
+  provider: ""
+
+# ----------------------------------------------------------------------------
+# TOOL LOOP GUARDRAILS — penting untuk sesi otomatis/tanpa pengawasan
+# ----------------------------------------------------------------------------
+tool_loop_guardrails:
+  warnings_enabled: true
+  # Hard stop = circuit breaker. Untuk job cron yang jalan sendiri, berhenti
+  # lebih baik daripada menghabiskan seluruh budget iterasi.
+  hard_stop_enabled: true
+  warn_after:
+    exact_failure: 2
+    same_tool_failure: 3
+    idempotent_no_progress: 2
+
+# ----------------------------------------------------------------------------
+# SECURITY — key asli dari DEFAULT_CONFIG (hermes_cli/config_defaults.py)
+# ----------------------------------------------------------------------------
+security:
+  # Redaksi secret otomatis di log. Default Hermes sudah true; kita tulis
+  # eksplisit karena ini guardrail paling penting di repo ini.
+  redact_secrets: true
+
+  # Tolak navigasi ke IP privat / loopback dari agent.
+  allow_private_urls: false
+
+  # Lindungi file instruksi (AGENTS.md / SOUL.md) dari penimpaan oleh agent.
+  protected_instruction_files: true
+
+  # Blocklist domain. DINONAKTIFKAN secara default di sini — kalau Anda ingin
+  # agent benar-benar tidak bisa menyentuh UI wallet/exchange, aktifkan dan
+  # isi domainnya. Ini cara yang BENAR untuk "burner only", bukan key karangan.
+  website_blocklist:
+    enabled: false
+    domains: []
+    #   - metamask.io
+    #   - app.uniswap.org
+    shared_files: []
+
+  # Izinkan instalasi dependency saat runtime. Matikan kalau Anda mau
+  # environment yang benar-benar teraudit / air-gapped.
+  allow_lazy_installs: true
+
+# ----------------------------------------------------------------------------
+# APPROVALS — mekanisme "butuh persetujuan manusia" yang SEBENARNYA
+# ----------------------------------------------------------------------------
+# Inilah pengganti yang benar untuk `require_approval_for_wallet`. Hermes tidak
+# punya konsep "wallet"; ia punya konsep "tool butuh approval".
+approvals:
+  # "smart" = kebijakan bawaan Hermes (default).
+  mode: "smart"
+
+  # KRITIS untuk repo ini: saat job cron jalan tanpa pengawasan, tidak ada
+  # manusia yang bisa menyetujui apa pun. `deny` = tool yang butuh approval
+  # langsung DITOLAK, bukan menunggu lalu timeout. Default Hermes 'deny'.
+  cron_mode: "deny"
+
+  # Sama untuk pemanggilan sekali jalan (`hermes chat -q ...`) tanpa TTY.
+  single_query_mode: "deny"
+
+  # Detik menunggu persetujuan manusia sebelum menyerah.
+  timeout: 300
+
+  # Setelah N penolakan berturut-turut, hentikan (circuit breaker).
+  denial_breaker_threshold: 3
+
+  # Tolak tool secara eksplisit. Kosongkan bila tidak perlu. Contoh untuk
+  # memastikan agent tidak pernah mengeksekusi kode arbitrer saat farming:
+  deny: []
+  #   - code_execution
+
+  # Konfirmasi untuk slash command destruktif dan reload MCP.
+  destructive_slash_confirm: true
+  mcp_reload_confirm: true
+
+# ----------------------------------------------------------------------------
+# DATABASE
+# ----------------------------------------------------------------------------
+database:
+  # WAL default. Ganti ke "delete" kalau filesystem tidak WAL-crash-safe
+  # (mis. bind-mount lewat virtiofs/NFS/SMB).
+  journal_mode: "wal"
+
+# ----------------------------------------------------------------------------
+# RUNTIME
+# ----------------------------------------------------------------------------
+runtime:
+  nofile_soft_limit: 4096

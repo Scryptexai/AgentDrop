@@ -1,0 +1,61 @@
+# ============================================================
+# SECRETS — never commit. Hermes itself auto-redacts logs,
+# but these files should never reach git in the first place.
+# ============================================================
+.env
+.env.local
+.env.*.local
+!.env.example
+config/hermes/.env
+config/hermes/profiles/*/.env
+auth.json
+*.pem
+*.key
+
+# ============================================================
+# Runtime state / data
+# ============================================================
+data/campaigns/*/
+!data/campaigns/.gitkeep
+data/logs/*
+!data/logs/.gitkeep
+data/screenshots/*
+!data/screenshots/.gitkeep
+
+# Browser profiles are per-machine, per-identity, and huge.
+# Camofox keeps its own profiles in CAMOFOX_PROFILE_DIR.
+browser-profiles/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# ============================================================
+# SESI BROWSER — berisi cookie/localStorage yang masih hidup.
+# scripts/takeover.sh mengekspor ini sebagai cadangan. Bocor =
+# orang lain bisa masuk ke akun airdrop Anda tanpa password.
+# ============================================================
+storage-state*.json
+storage_state*.json
+**/storage-state*.json
+**/storage_state*.json
+data/campaigns/*.json
+
+# ============================================================
+# Python
+# ============================================================
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ============================================================
+# OS / editor
+# ============================================================
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

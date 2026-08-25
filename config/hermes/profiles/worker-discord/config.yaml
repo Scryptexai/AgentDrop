@@ -1,0 +1,59 @@
+# ============================================================================
+# WORKER: DISCORD — engagement komunitas
+# ============================================================================
+# Dipasang ke: ~/.hermes/profiles/worker-discord/config.yaml
+# Profil = HERMES_HOME terpisah penuh. Tidak mewarisi config utama.
+#
+# Catatan: worker ini memakai BROWSER (Discord web) atas akun Discord milik
+# operator sendiri. Hermes punya toolset `discord`/`discord_admin` native, tapi
+# itu untuk BOT — bukan untuk memakai akun pribadi operator sebagai bot, yang
+# melanggar ToS Discord. Karena itu toolset discord TIDAK diaktifkan di sini.
+# ============================================================================
+
+model:
+  default: "anthropic/claude-sonnet-4"
+  provider: "auto"
+  base_url: "https://openrouter.ai/api/v1"
+
+toolsets:
+  - hermes-cli
+  - browser
+  - file
+  - memory
+
+agent:
+  max_turns: 40
+  reasoning_effort: "medium"
+
+browser:
+  # 1800 (30 menit), disamakan dengan SESSION_TIMEOUT_MS Camofox.
+  # Default Hermes 120 detik terlalu pendek: sesi login dashboard
+  # bisa tertutup di tengah rangkaian aksi.
+  inactivity_timeout: 1800
+  command_timeout: 30
+  # Discord web adalah SPA berat dengan banyak panel.
+  snapshot_threshold: 20000
+  record_sessions: true
+  allow_private_urls: false
+
+  # headed HANYA berlaku untuk browser lokal Hermes (agent-browser), BUKAN
+  # Camofox. GUI di setup ini datang dari plugin vnc Camofox
+  # (Xvfb 1920x1080 -> x11vnc :5900 -> noVNC :6080). Biarkan false.
+  headed: false
+  camofox:
+    # Login Discord operator harus persisten.
+    managed_persistence: true
+    adopt_existing_tab: true
+
+terminal:
+  backend: "local"
+  cwd: "."
+  timeout: 180
+  home_mode: "profile"
+
+compression:
+  enabled: true
+
+tool_loop_guardrails:
+  warnings_enabled: true
+  hard_stop_enabled: true

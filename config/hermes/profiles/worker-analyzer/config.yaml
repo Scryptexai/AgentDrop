@@ -1,0 +1,60 @@
+# ============================================================================
+# WORKER: ANALYZER — filter proyek 4 dimensi (Sniper approach)
+# ============================================================================
+# Dipasang ke: ~/.hermes/profiles/worker-analyzer/config.yaml
+#
+# PENTING: `hermes --profile <name>` menyetel HERMES_HOME ke
+# ~/.hermes/profiles/<name>/ (lihat hermes_cli/main.py:_apply_profile_override).
+# Profil adalah HERMES_HOME TERPISAH PENUH — file ini TIDAK mewarisi
+# ~/.hermes/config.yaml. Key yang tidak diset di sini jatuh ke default
+# bawaan Hermes, bukan ke config utama.
+# ============================================================================
+
+model:
+  # Tugas analisis butuh penalaran kuat. Jalankan `hermes model` untuk slug valid.
+  default: "anthropic/claude-sonnet-4"
+  provider: "auto"
+  base_url: "https://openrouter.ai/api/v1"
+
+toolsets:
+  - hermes-cli
+  - browser
+  - web
+  - file
+  - memory
+
+agent:
+  # Riset mendalam satu proyek: butuh ruang untuk membaca banyak halaman.
+  max_turns: 60
+  # Analisis 4 dimensi adalah pekerjaan penalaran, bukan eksekusi.
+  reasoning_effort: "high"
+
+browser:
+  # 1800 (30 menit), disamakan dengan SESSION_TIMEOUT_MS Camofox.
+  # Default Hermes 120 detik terlalu pendek: sesi login dashboard
+  # bisa tertutup di tengah rangkaian aksi.
+  inactivity_timeout: 1800
+  command_timeout: 30
+  snapshot_threshold: 15000
+  allow_private_urls: false
+
+  # headed HANYA berlaku untuk browser lokal Hermes (agent-browser), BUKAN
+  # Camofox. GUI di setup ini datang dari plugin vnc Camofox
+  # (Xvfb 1920x1080 -> x11vnc :5900 -> noVNC :6080). Biarkan false.
+  headed: false
+  camofox:
+    managed_persistence: true
+    adopt_existing_tab: true
+
+terminal:
+  backend: "local"
+  cwd: "."
+  timeout: 180
+  home_mode: "profile"
+
+compression:
+  enabled: true
+
+tool_loop_guardrails:
+  warnings_enabled: true
+  hard_stop_enabled: false

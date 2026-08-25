@@ -1,0 +1,64 @@
+# ============================================================================
+# WORKER: DAILY — check-in harian semua campaign aktif
+# ============================================================================
+# Dipasang ke: ~/.hermes/profiles/worker-daily/config.yaml
+# Profil = HERMES_HOME terpisah penuh. Tidak mewarisi config utama.
+# ============================================================================
+
+model:
+  # Tugas repetitif dan terstruktur: pakai model murah. Ini worker yang jalan
+  # setiap hari, jadi biayanya yang paling terasa. Ganti via `hermes model`.
+  default: "anthropic/claude-sonnet-4"
+  provider: "auto"
+  base_url: "https://openrouter.ai/api/v1"
+
+toolsets:
+  - hermes-cli
+  - browser
+  - file
+  - todo
+
+agent:
+  # Rutinitas harian pendek dan terprediksi. 30 cukup; kalau mentok, itu tanda
+  # ada yang salah — bukan tanda perlu budget lebih besar.
+  max_turns: 30
+  reasoning_effort: "medium"
+
+browser:
+  # 1800 (30 menit), disamakan dengan SESSION_TIMEOUT_MS Camofox.
+  # Default Hermes 120 detik terlalu pendek: sesi login dashboard
+  # bisa tertutup di tengah rangkaian aksi.
+  inactivity_timeout: 1800
+  command_timeout: 30
+  snapshot_threshold: 15000
+  # Audit trail harian.
+  record_sessions: true
+  allow_private_urls: false
+
+  # headed HANYA berlaku untuk browser lokal Hermes (agent-browser), BUKAN
+  # Camofox. GUI di setup ini datang dari plugin vnc Camofox
+  # (Xvfb 1920x1080 -> x11vnc :5900 -> noVNC :6080). Biarkan false.
+  headed: false
+  camofox:
+    # KRITIS untuk worker ini: login dashboard airdrop harus bertahan antar hari.
+    managed_persistence: true
+    adopt_existing_tab: true
+
+terminal:
+  backend: "local"
+  cwd: "."
+  timeout: 180
+  home_mode: "profile"
+
+compression:
+  enabled: true
+
+# Worker ini jalan tanpa pengawasan via cron. Hard stop = circuit breaker:
+# berhenti lebih baik daripada menghabiskan budget iterasi untuk retry buta.
+tool_loop_guardrails:
+  warnings_enabled: true
+  hard_stop_enabled: true
+  warn_after:
+    exact_failure: 2
+    same_tool_failure: 3
+    idempotent_no_progress: 2
