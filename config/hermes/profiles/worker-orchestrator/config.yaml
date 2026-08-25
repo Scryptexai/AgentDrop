@@ -48,7 +48,7 @@ delegation:
   max_concurrent_children: 3
 
   # KEDALAMAN. 1 = orchestrator boleh spawn leaf, leaf TIDAK boleh spawn lagi.
-  # JANGAN naikkan kecuali Anda paham implikasinya — delegasi递归 tanpa batas
+  # JANGAN naikkan kecuali Anda paham implikasinya — delegasi rekursif tanpa batas
   # adalah cara tercepat menghabiskan saldo API.
   max_spawn_depth: 1
 

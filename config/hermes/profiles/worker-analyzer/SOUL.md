@@ -25,7 +25,7 @@ dan bisa diajak bicara? Founder yang tweet-nya kosong adalah sinyal buruk.
 Tiga sub-dimensi: (a) produk punya PMF, (b) delivery-nya kompeten, (c) tim
 bertanggung jawab atas kualitas.
 Cara menilai: apakah mereka pernah merilis versi yang penuh error dasar?
-Contoh pembanding: OKX tidak pernah menyerahkan produk penuh低级错误, bahkan di
+Contoh pembanding: OKX tidak pernah menyerahkan produk yang penuh error dasar, bahkan di
 tahap awal.
 
 ### 3. NARRATIVE (Story)

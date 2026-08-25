@@ -691,6 +691,46 @@ def check_setup_coverage() -> None:
 
     print(f"  · {len(on_disk_profiles)} profil, {len(on_disk_skills)} skill — semuanya tercakup")
 
+    # ---- Pemetaan skill per profil -----------------------------------------
+    # Tanpa pemetaan, setup.sh menyalin semua skill ke semua profil dan Hermes
+    # tidak membatasi apa yang boleh dipanggil — worker-discord bisa
+    # menjalankan daily-executor.
+    checks += 1
+    m_map = re.search(r"declare -A PROFILE_SKILLS=\((.*?)\n\)", text, re.DOTALL)
+    if not m_map:
+        err("setup.sh: tidak menemukan 'declare -A PROFILE_SKILLS=(...)' — "
+            "skill akan tersalin ke semua profil tanpa pembatasan")
+        return
+    mapping = dict(re.findall(r"\[([\w-]+)\]=\"([^\"]*)\"", m_map.group(1)))
+
+    for p in sorted(on_disk_profiles - set(mapping)):
+        err(f"setup.sh: profil '{p}' tidak punya entri di PROFILE_SKILLS")
+    for p in sorted(set(mapping) - on_disk_profiles):
+        err(f"setup.sh: PROFILE_SKILLS menyebut '{p}' tapi profilnya tidak ada")
+
+    mapped_skills = set()
+    for p, slist in mapping.items():
+        names = slist.split()
+        mapped_skills.update(names)
+        for ghost in sorted(set(names) - on_disk_skills):
+            err(f"setup.sh: PROFILE_SKILLS[{p}] menyebut skill '{ghost}' yang tidak ada")
+        if "browser-operation" not in names:
+            err(f"setup.sh: PROFILE_SKILLS[{p}] tidak menyertakan 'browser-operation' "
+                f"— protokol browser wajib ada di setiap profil")
+    for orphan in sorted(on_disk_skills - mapped_skills):
+        err(f"setup.sh: skill '{orphan}' tidak dipetakan ke profil mana pun "
+            f"— tidak akan pernah terpasang")
+
+    # setup.sh harus benar-benar MEMAKAI pemetaannya, bukan cuma mendeklarasikannya.
+    if "PROFILE_SKILLS[$p]" not in text:
+        err("setup.sh: PROFILE_SKILLS dideklarasikan tapi tidak dipakai di loop pemasangan")
+    if 'rm -rf "$dst/skills"' not in text:
+        err("setup.sh: folder skill tidak dibersihkan sebelum disalin — skill yang "
+            "dikeluarkan dari pemetaan akan tetap tertinggal di profil")
+
+    print(f"  · pemetaan skill: {len(mapping)} profil, "
+          f"{len(mapped_skills)} skill terpetakan")
+
 
 # ============================================================================
 # Cek .env.example punya konfigurasi Telegram lengkap
@@ -731,7 +771,7 @@ def check_signing_policy() -> None:
         n = ran.group(1) if ran else "?"
         print(f"  · {n} test policy engine lolos")
 
-    # 2. Postur bawaan harus ketat di mainnet.
+    # 2. Kebijakan yang termuat harus konsisten dengan yang diklaim file.
     # Import biasa lewat sys.path: spec_from_file_location tanpa mendaftarkan
     # modul ke sys.modules membuat @dataclass gagal (dataclasses mencari
     # cls.__module__ di sys.modules).
@@ -739,20 +779,69 @@ def check_signing_policy() -> None:
     import signing_policy as mod  # noqa: E402
     checks += 1
     p = mod.Policy.from_yaml(cfg)
-    if p.mainnet_auto_approve_allowance:
-        err("signing-policy.yaml: mainnet_auto_approve_allowance harus false")
-    if p.mainnet_max_auto_value_wei != 0:
-        warn(f"signing-policy.yaml: mainnet_max_auto_value_wei = "
-             f"{p.mainnet_max_auto_value_wei} (transaksi bernilai bisa otomatis "
-             f"di mainnet)")
-    # 3. Kebijakan yang termuat harus benar-benar fail-closed saat dipakai.
+
+    # Default dataclass harus tetap ketat. File yaml boleh permisif karena itu
+    # pilihan sadar operator, tapi kode bawaannya tidak boleh.
+    dflt = mod.Policy()
+    if dflt.mainnet_auto_approve_allowance or dflt.auto_approve_unlimited_allowance:
+        err("Policy() default di signing_policy.py harus ketat di mainnet; "
+            "kelonggaran hanya boleh datang dari file yaml")
+
+    # 3. Mekanisme unlimited-allowance harus benar-benar bisa dua arah.
     checks += 1
     unlimited = "0x095ea7b3" + f"{0x2222:064x}" + f"{2**256 - 1:064x}"
-    d = mod.decide({"method": "send_transaction", "chain_id": 1,
-                    "to": "0x" + "33" * 20, "value_wei": 0, "data": unlimited},
-                   policy=p)
-    if d.verdict != mod.ESCALATE:
-        err(f"unlimited allowance di mainnet harus ESCALATE, dapat {d.verdict} ({d.rule})")
+    req = {"method": "send_transaction", "chain_id": 1,
+           "to": "0x" + "33" * 20, "value_wei": 0, "data": unlimited}
+    strict = mod.Policy(auto_approve_unlimited_allowance=False)
+    if mod.decide(req, policy=strict).verdict != mod.ESCALATE:
+        err("auto_approve_unlimited_allowance=false harus menghasilkan ESCALATE")
+    loose = mod.Policy(auto_approve_unlimited_allowance=True)
+    if mod.decide(req, policy=loose).verdict != mod.ALLOW:
+        err("auto_approve_unlimited_allowance=true harus menghasilkan ALLOW "
+            "(mekanismenya tidak berfungsi)")
+
+    # 4. Denylist harus menang atas semua kelonggaran.
+    checks += 1
+    blocked = mod.Policy(auto_approve_unlimited_allowance=True,
+                         mainnet_auto_approve_allowance=True,
+                         spender_denylist=["0x" + "33" * 20])
+    if mod.decide(req, policy=blocked).verdict != mod.DENY:
+        err("spender_denylist harus menang meski semua kelonggaran dinyalakan")
+
+    # 5. Laporkan postur yang aktif supaya terlihat di output validasi.
+    longgar = [n for n, v in (
+        ("mainnet_auto_approve_zero_value_tx", p.mainnet_auto_approve_zero_value_tx),
+        ("mainnet_auto_approve_allowance", p.mainnet_auto_approve_allowance),
+        ("auto_approve_unlimited_allowance", p.auto_approve_unlimited_allowance),
+    ) if v]
+    if longgar:
+        print(f"  · postur aktif: OTONOM — {', '.join(longgar)}")
+
+
+def check_no_stray_cjk() -> None:
+    """Karakter CJK yang terselip di tengah kalimat Indonesia.
+
+    Sudah terjadi empat kali: 'membuat它', 'Anda确认', 'delegasi递归',
+    'produk penuh低级错误'. Semuanya lolos review mata karena kalimatnya
+    tetap terbaca. docs/ dikecualikan karena docs/research.md memang mengutip
+    istilah airdrop Mandarin (反撸, 风口) dengan sengaja.
+    """
+    global checks
+    targets = list((REPO / "config").rglob("*.md")) + \
+              list((REPO / "config").rglob("*.yaml")) + \
+              list((REPO / "skills").rglob("*.md")) + \
+              [REPO / "README.md"]
+    cjk = re.compile(r"[\u4e00-\u9fff\u3040-\u30ff]")
+    hits = []
+    for f in targets:
+        if not f.exists():
+            continue
+        checks += 1
+        for i, line in enumerate(f.read_text(errors="ignore").splitlines(), 1):
+            if cjk.search(line):
+                hits.append(f"{f.relative_to(REPO)}:{i}: {line.strip()[:70]}")
+    for h in hits:
+        err(f"karakter CJK terselip -> {h}")
 
 
 def main() -> int:
@@ -823,6 +912,9 @@ def main() -> int:
     print("\n[14] Policy engine signature wallet")
     check_signing_policy()
     print("  · tools/signing_policy.py + config/hermes/signing-policy.yaml")
+
+    print("\n[15] Karakter CJK terselip di config/skill/README")
+    check_no_stray_cjk()
 
     print("\n" + "=" * 62)
     print(f"  {checks} file diperiksa")

@@ -43,6 +43,22 @@ log "Zona waktu sistem: $(date +%Z) ($(date '+%Y-%m-%d %H:%M'))"
 warn "Jadwal di bawah memakai waktu sistem. Kalau Anda mau 09:00 WIB, pastikan sistem di WIB."
 
 # ----------------------------------------------------------------------------
+# Ke mana laporan dikirim.
+# Default telegram: alur sistem ini berpusat di Telegram, jadi laporan harian
+# dan mingguan harus sampai ke sana, bukan mengendap di data/logs/.
+# Ganti lewat env kalau perlu:  CRON_DELIVER=local bash scripts/install-cron.sh
+# ----------------------------------------------------------------------------
+DELIVER="${CRON_DELIVER:-telegram}"
+
+if [[ "$DELIVER" == "telegram" ]]; then
+  if [[ -z "${TELEGRAM_BOT_TOKEN:-}" ]] && ! grep -qE '^TELEGRAM_BOT_TOKEN=.+' "$REPO_ROOT/.env" 2>/dev/null; then
+    warn "TELEGRAM_BOT_TOKEN belum diisi — laporan tidak akan terkirim."
+    warn "Isi .env dulu, atau pakai:  CRON_DELIVER=local bash $0"
+  fi
+fi
+log "Laporan cron akan dikirim ke: $DELIVER"
+
+# ----------------------------------------------------------------------------
 # Helper: buat job hanya kalau belum ada (idempotent)
 # ----------------------------------------------------------------------------
 create_job() {
@@ -63,7 +79,7 @@ create_job() {
     --skill "$skill" \
     --workdir "$REPO_ROOT" \
     --reasoning-effort "$reasoning" \
-    --deliver local \
+    --deliver "$DELIVER" \
     && ok "$name" \
     || warn "gagal membuat $name"
 }

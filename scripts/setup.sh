@@ -23,6 +23,31 @@ PROFILES=(worker-orchestrator worker-analyzer worker-daily worker-quests worker-
 # browser-operation = protokol dasar yang dirujuk skill browser lainnya.
 SKILLS=(browser-operation browser-burn-in airdrop-intake airdrop-analyzer daily-executor quest-executor discord-engager portfolio-tracker)
 
+# ----------------------------------------------------------------------------
+# PEMETAAN SKILL -> PROFIL.
+#
+# SKILLS=() di atas adalah daftar induk (dipakai guard drift). Yang benar-benar
+# disalin ke tiap profil ditentukan di sini.
+#
+# Alasannya: Hermes tidak membatasi skill apa yang boleh dipanggil sebuah
+# profil — apa pun yang ada di foldernya bisa dipakai. Tanpa pemetaan ini,
+# worker-discord bisa memanggil daily-executor dan mengerjakan campaign yang
+# bukan urusannya. Spesialisasi harus dipaksakan, bukan cuma diimbau di SOUL.md.
+#
+# browser-operation ada di SEMUA profil: itu protokol browser wajib, bukan
+# kemampuan opsional.
+# browser-burn-in ada di semua profil ber-browser karena burn-in.sh bisa
+# diarahkan ke profil mana pun lewat --profile.
+# ----------------------------------------------------------------------------
+declare -A PROFILE_SKILLS=(
+  [worker-orchestrator]="browser-operation browser-burn-in airdrop-intake airdrop-analyzer"
+  [worker-analyzer]="browser-operation browser-burn-in airdrop-analyzer"
+  [worker-daily]="browser-operation browser-burn-in daily-executor"
+  [worker-quests]="browser-operation browser-burn-in quest-executor"
+  [worker-discord]="browser-operation browser-burn-in discord-engager"
+  [worker-monitor]="browser-operation browser-burn-in portfolio-tracker"
+)
+
 log()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 ok()   { printf '\033[1;32m  ✓\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33m  !\033[0m %s\n' "$*"; }
@@ -96,15 +121,26 @@ for p in "${PROFILES[@]}"; do
   # Tiap profil adalah HERMES_HOME terpisah -> butuh .env sendiri.
   install -m 600 "$REPO_ROOT/.env" "$dst/.env"
 
-  # Skill juga harus ada di tiap profil.
-  for s in "${SKILLS[@]}"; do
+  # Skill yang disalin ditentukan oleh pemetaan, bukan daftar induk.
+  # Folder skill dibersihkan lebih dulu: kalau sebuah skill dikeluarkan dari
+  # pemetaan, menjalankan ulang setup.sh harus benar-benar mencabutnya.
+  # Tanpa ini pembatasan hanya berlaku pada pemasangan pertama.
+  rm -rf "$dst/skills"
+  mkdir -p "$dst/skills"
+
+  dipasang=()
+  for s in ${PROFILE_SKILLS[$p]:-}; do
     if [[ -d "$REPO_ROOT/skills/$s" ]]; then
       mkdir -p "$dst/skills/$s"
       cp -r "$REPO_ROOT/skills/$s/." "$dst/skills/$s/"
+      dipasang+=("$s")
+    else
+      warn "skill '$s' dipetakan ke $p tapi tidak ada di repo"
     fi
   done
 
-  ok "profil $p"
+  [[ ${#dipasang[@]} -gt 0 ]] || warn "profil $p tidak mendapat skill apa pun"
+  ok "profil $p — skill: ${dipasang[*]:-<kosong>}"
 done
 
 # ----------------------------------------------------------------------------

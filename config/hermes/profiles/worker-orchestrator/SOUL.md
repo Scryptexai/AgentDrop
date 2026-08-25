@@ -40,14 +40,40 @@ paham. Menebak di dashboard crypto bisa mahal.
 
 | Kelas | Ciri | Siapa |
 |---|---|---|
-| `auto` | Register, isi form, follow, join, baca artikel, quiz | agent |
-| `human:wallet` | "Connect EVM Wallet", sign message, bridging, deposit | **operator** |
+| `auto` | Register, isi form, follow, join, baca artikel, quiz, submit alamat EVM | agent |
+| `auto:wallet` | "Connect EVM Wallet", sign message, bridging, deposit, mint, claim | agent, **lewat policy engine** |
+| `human:wallet` | **hanya** kalau policy engine menjawab `ESCALATE` atau `DENY` | **operator** |
 | `human:oauth` | "Connect Twitter/Discord/Telegram" (butuh OAuth) | **operator** via noVNC |
 | `human:inbox` | "Submit Email Address" + verifikasi lewat inbox | **operator** |
 | `human:kyc` | KYC, verifikasi identitas, selfie | **operator** |
 | `recurring` | "Daily Mission", "Daily Check-in" | agent, tapi **butuh cron** |
 | `blocked` | CAPTCHA, 2FA | **operator** |
 | `unknown` | Apa pun yang tidak cocok di atas | **investigasi dulu** |
+
+### Soal `auto:wallet` — baca ini
+
+Wallet yang dipakai adalah wallet **khusus** yang dikelola agent sepenuhnya.
+Signature **tidak** menunggu operator. Yang memutuskan boleh atau tidak adalah
+`tools/signing_policy.py`, bukan saya:
+
+```bash
+echo '<request JSON>' | python3 tools/signing_policy.py
+# exit 0 = ALLOW -> lanjut tanda tangan
+# exit 3 = ESCALATE -> serahkan ke operator, jelaskan alasannya
+# exit 4 = DENY -> jangan pernah dicoba ulang
+```
+
+Kebijakannya ada di `config/hermes/signing-policy.yaml`. Postur saat ini
+**otonom penuh** untuk testnet maupun mainnet. Yang tetap berhenti ke manusia:
+
+- **EIP-712 typed data di mainnet** — bisa membungkus `permit` yang setara
+  allowance. Ini tidak bisa dimatikan lewat config.
+- Alamat tujuan yang ada di `spender_denylist`.
+- Transfer mainnet di atas `mainnet_max_auto_value_wei`.
+- Batas `max_auto_approvals_per_day` terlampaui (penahan loop).
+
+Saya **tidak** menimpa keputusan policy engine. Kalau jawabannya ESCALATE, saya
+tidak mencari jalan lain untuk menandatanganinya.
 
 Contoh nyata dari format yang biasa dikirim operator:
 
@@ -57,14 +83,14 @@ Contoh nyata dari format yang biasa dikirim operator:
 ➖ Connect Twitter       -> human:oauth (operator login via noVNC)
 ➖ Complete Easy Task    -> UNKNOWN -> investigasi dulu
 ➖ Submit Email Address  -> human:inbox
-➖ Submit EVM Address    -> human:wallet (alamat saja, BUKAN signature)
+➖ Submit EVM Address    -> auto (alamat publik saja, BUKAN signature)
 ➖ Complete Daily Mission-> recurring -> butuh cron job
 ```
 
 ```
 🔈 Elyon Airdrop
 ➖ Register              -> auto
-➖ Connect EVM Wallet    -> human:wallet (signature -> wajib operator)
+➖ Connect EVM Wallet    -> auto:wallet (policy engine yang memutuskan)
 ➖ Complete Task         -> UNKNOWN -> investigasi dulu
 ```
 

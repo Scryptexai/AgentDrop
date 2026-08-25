@@ -24,10 +24,12 @@ flowchart TD
 
     K -->|auto| D1["delegate_task<br/>role: leaf"]
     K -->|recurring| D2["delegate_task<br/>+ butuh cron"]
+    K -->|"auto:wallet"| PW["policy engine<br/>tools/signing_policy.py"]
+    PW -->|ALLOW| D1
+    PW -->|"ESCALATE / DENY"| H1["Operator"]
     K -->|unknown| INV["Investigasi dulu<br/>buka halaman, baca syarat"]
     INV --> K
 
-    K -->|human:wallet| H1["Operator"]
     K -->|human:oauth| H2["Operator via noVNC"]
     K -->|human:inbox| H3["Operator"]
     K -->|human:kyc| H4["Operator"]
@@ -138,16 +140,23 @@ flowchart TD
     DEN(["⛔ DENY — exit 4"])
 ```
 
-Postur bawaan `config/hermes/signing-policy.yaml`:
+Postur `config/hermes/signing-policy.yaml` — **OTONOM PENUH**, sesuai keputusan
+operator (wallet khusus yang dikelola agent sepenuhnya):
 
 | Situasi | Testnet | Mainnet |
 |---|---|---|
-| Message signing (login/SIWE) | otomatis | otomatis |
-| EIP-712 typed data | otomatis | **selalu tanya** |
-| Transaksi tanpa nilai (mint/claim) | otomatis | **tanya** |
-| Allowance terbatas | otomatis | **tanya** |
-| Allowance tak terbatas | **selalu tanya** | **selalu tanya** |
-| Transfer bernilai | otomatis | **tanya** (cap 0 wei) |
+| Message signing (login/SIWE/verify) | otomatis | otomatis |
+| EIP-712 typed data | otomatis | **selalu tanya** — tidak bisa dimatikan |
+| Transaksi tanpa nilai (mint/claim) | otomatis | otomatis |
+| Allowance terbatas | otomatis | otomatis |
+| Allowance tak terbatas | otomatis | otomatis *(dicatat keras ke stderr)* |
+| Transfer bernilai | otomatis | otomatis sampai **10 ETH** |
+| Alamat di `spender_denylist` | **DENY** | **DENY** |
+| Melebihi 1000 approve/hari | tanya | tanya |
+
+Dua rem yang tetap aktif meski semuanya otomatis: `spender_denylist` (menang
+atas semua kelonggaran, diuji di validator) dan `max_auto_approvals_per_day`
+(penahan loop, bukan penahan Anda).
 
 ---
 
@@ -172,8 +181,8 @@ flowchart LR
 
 ## 5. Alur terjadwal (cron)
 
-✅ Terpasang di `scripts/install-cron.sh`. **Catatan: `--deliver local`, bukan
-telegram** — lihat bagian "titik yang mungkin tidak sesuai".
+✅ Terpasang di `scripts/install-cron.sh`. Laporan dikirim ke **Telegram**
+(`CRON_DELIVER=telegram`, default). Ganti ke `local` lewat env kalau perlu.
 
 ```mermaid
 flowchart TD
@@ -185,7 +194,14 @@ flowchart TD
     V13 --> L
     R20 --> L
     W21 --> L
+    C09 -->|"--deliver telegram"| TG(["Telegram Anda"])
+    V13 --> TG
+    R20 --> TG
+    W21 --> TG
 ```
+
+`install-cron.sh` memperingatkan kalau `TELEGRAM_BOT_TOKEN` belum diisi, karena
+tanpa itu laporan tidak akan sampai.
 
 ---
 
@@ -206,51 +222,83 @@ flowchart TD
 
 ---
 
-## ⚠️ Titik yang mungkin TIDAK sesuai dengan yang Anda mau
+## Status temuan
 
-Ini temuan dari membaca repo, bukan asumsi. Mohon dikonfirmasi.
+Enam titik sempat ditandai tidak sesuai. Tiga sudah dibereskan, tiga masih terbuka.
 
-### A. Kontradiksi rute wallet — **paling penting**
+### ✅ A — Kontradiksi wallet: SELESAI
 
-Anda memilih rute otonom (policy engine), tapi
-`config/hermes/profiles/worker-orchestrator/SOUL.md` masih menulis:
+`worker-orchestrator/SOUL.md` tidak lagi menulis "signature -> wajib operator".
+Klasifikasi `human:wallet` dipecah:
 
-> `human:wallet` | "Connect EVM Wallet", sign message, bridging, deposit | **operator**
-> `human:wallet` (signature -> **wajib operator**)
+- `auto:wallet` — signature & transaksi, agent jalan terus, **policy engine yang
+  memutuskan**
+- `human:wallet` — hanya kalau policy engine menjawab `ESCALATE` atau `DENY`
 
-Artinya orchestrator akan **tetap menyerahkan semua signature ke Anda**, dan
-policy engine tidak pernah dipanggil. Dua aturan ini bertentangan. Perlu
-diputuskan: klasifikasi `human:wallet` dipecah jadi `auto:wallet-testnet` /
-`auto:wallet-mainnet-terbatas` / `human:wallet`, atau rute otonom dibatalkan.
+`Submit EVM Address` juga dikoreksi: dulu masuk `human:wallet` padahal cuma
+alamat publik. Sekarang `auto`.
 
-### B. Shim-nya belum ada
+SOUL.md sekarang menyertakan perintah nyata untuk memanggil policy engine dan
+aturan tegas: *"Saya tidak menimpa keputusan policy engine. Kalau jawabannya
+ESCALATE, saya tidak mencari jalan lain untuk menandatanganinya."*
 
-Mesin kebijakan sudah teruji, tapi tidak ada yang memanggilnya. Website tidak
-punya `window.ethereum` untuk diajak bicara. Harus dibangun: WebExtension
-Camoufox + daemon signing lokal. Harus addon, karena `camofox-browser` tidak
-punya `addInitScript`.
+### ✅ C — Skill dibatasi per profil: SELESAI
 
-### C. Semua skill disalin ke semua profil
+`scripts/setup.sh` sekarang punya `declare -A PROFILE_SKILLS`. Slot terpasang
+turun dari **48 (6×8) menjadi 19**. `worker-discord` tidak lagi bisa memanggil
+`daily-executor`.
 
-`scripts/setup.sh` menyalin **8 skill ke 6 profil** tanpa pemetaan. Spesialisasi
-hanya datang dari SOUL.md, bukan dari pembatasan skill. Kalau Anda ingin
-`worker-discord` benar-benar tidak bisa memanggil `daily-executor`, itu belum
-terpasang.
+Folder skill **dihapus lebih dulu** sebelum disalin, jadi mengeluarkan sebuah
+skill dari pemetaan benar-benar mencabutnya saat setup dijalankan ulang. Tanpa
+ini pembatasan hanya berlaku pada pemasangan pertama.
 
-### D. Laporan cron tidak masuk Telegram
+Validator menolak build kalau: `browser-operation` hilang dari profil mana pun,
+ada skill yang tidak dipetakan ke profil mana pun, pemetaan menyebut skill yang
+tidak ada, atau baris `rm -rf` dihapus. Keempatnya sudah diuji negatif.
 
-`install-cron.sh` memakai `--deliver local`. Laporan harian/mingguan tertulis ke
-`data/logs/`, **tidak** dikirim ke Telegram Anda. Padahal alur yang Anda minta
-berpusat di Telegram.
+### ✅ D — Laporan cron ke Telegram: SELESAI
 
-### E. `delegation` tidak ada di `platform_toolsets.telegram`
+`--deliver local` diganti `--deliver "$DELIVER"` dengan `CRON_DELIVER` default
+`telegram`. Ada peringatan kalau `TELEGRAM_BOT_TOKEN` belum diisi.
+
+### ❌ B — Shim EIP-1193 belum dibangun: MASIH TERBUKA
+
+Ini satu-satunya yang membuat rute otonom belum benar-benar jalan. Policy engine
+sudah teruji 47 test, tapi **tidak ada yang memanggilnya** — website tidak punya
+`window.ethereum`. Yang harus dibuat: WebExtension Camoufox + daemon signing
+lokal. Harus addon, karena `camofox-browser` tidak punya `addInitScript`.
+
+### ⚠️ E — `delegation` tidak ada di `platform_toolsets.telegram`: PERLU UJI HIDUP
 
 Orchestrator punya `delegation` di toolset utamanya, tapi daftar untuk platform
-telegram hanya mencantumkan `delegate_task`. Perlu diuji apakah delegasi tetap
-jalan saat pesan datang dari Telegram — ini persis jalur yang Anda pakai.
+telegram hanya `delegate_task`. Perlu dijalankan sungguhan untuk memastikan
+delegasi tetap jalan saat pesan datang dari Telegram — persis jalur yang Anda
+pakai.
 
-### F. Belum pernah dijalankan hidup
+### ⚠️ F — Belum pernah dijalankan hidup
 
 Tidak ada `docker` maupun `hermes` di lingkungan pengembangan. Semua verifikasi
-bersifat statis: 54 pemeriksaan + 47 test unit + uji CLI + uji `burn-in.sh`
-dengan stub.
+statis: 56 pemeriksaan + 47 test unit + uji CLI + uji `burn-in.sh` dengan stub.
+
+---
+
+## Soal klaim "70-80% quest itu signature mainnet"
+
+Diminta diverifikasi lewat pencarian. **Angka 70-80% itu tidak saya temukan di
+sumber mana pun.** Yang saya temukan justru sebaliknya untuk fase farming 2026:
+Monad, Arc (testnet-only), Orbinum, DAC, Kite AI, Variational, dan Retium
+semuanya berbasis testnet.
+
+Tapi ada pembedaan teknis yang lebih penting daripada angkanya:
+
+| Yang diminta situs | Jenis | Butuh saldo mainnet? | Status di policy engine |
+|---|---|---|---|
+| "Connect EVM Wallet" / verify ownership | `personal_sign` — off-chain | **tidak** | **sudah otomatis** sejak awal |
+| "Sign message to verify" | `personal_sign` — off-chain | **tidak** | **sudah otomatis** sejak awal |
+| Mint / claim / check-in | transaksi tanpa nilai | gas saja | otomatis (baru) |
+| Swap / bridge / approve | transaksi + allowance | **ya** | otomatis (baru) |
+| EIP-712 typed data | bisa berisi `permit` | tidak | **tetap tanya** di mainnet |
+
+Jadi mayoritas task "wallet" di platform quest sebenarnya **signature off-chain**
+yang tidak butuh saldo — dan itu sudah otomatis bahkan sebelum perubahan ini.
+Yang baru diotomatiskan adalah transaksi dan allowance mainnet sungguhan.

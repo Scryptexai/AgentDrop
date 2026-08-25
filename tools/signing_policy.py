@@ -152,6 +152,11 @@ class Policy:
     mainnet_auto_approve_messages: bool = True    # login/SIWE tidak memindahkan nilai
     mainnet_auto_approve_zero_value_tx: bool = False
     mainnet_auto_approve_allowance: bool = False
+    # Allowance tak terbatas (MAX_UINT256 / setApprovalForAll / di atas soft cap).
+    # Default MATI. Menyalakannya berarti sebuah kontrak boleh menguras seluruh
+    # saldo token itu SELAMANYA, termasuk setelah airdropnya selesai.
+    # Ini vektor pengurasan nomor satu pada wallet farming.
+    auto_approve_unlimited_allowance: bool = False
     # Batas allowance yang masih dianggap wajar (dalam unit token, bukan wei)
     allowance_soft_cap: int = 10_000
     # Batas nilai transaksi mainnet yang masih boleh otomatis (dalam wei)
@@ -373,13 +378,23 @@ def decide(req: dict[str, Any], policy: Policy | None = None,
             or amount >= MAX_UINT256
             or amount > p.allowance_soft_cap * 10**18
         )
-        if unlimited:
+        if unlimited and not p.auto_approve_unlimited_allowance:
             # Allowance tak terbatas TETAP hidup setelah airdrop selesai.
             # Ini penyebab utama wallet farming terkuras.
             return Decision(ESCALATE,
                             f"allowance tak terbatas / di atas soft cap "
                             f"(selector {sel}) di {chain_name} — sisa berlaku selamanya",
                             "unlimited-allowance")
+        if unlimited and klass == "mainnet":
+            # Diizinkan otomatis hanya kalau operator menyalakannya dengan sadar.
+            # Dicatat keras di log supaya bisa diaudit belakangan.
+            print(f"[policy] PERHATIAN: unlimited allowance {sel} ke {to} di "
+                  f"{chain_name} DIOTOMATISKAN (auto_approve_unlimited_allowance=true)",
+                  file=sys.stderr)
+            return Decision(ALLOW,
+                            f"allowance tak terbatas di {chain_name} — DIOTOMATISKAN "
+                            f"oleh kebijakan (berlaku selamanya)",
+                            "unlimited-allowance-auto")
         if klass == "testnet" and p.testnet_auto_approve_allowance:
             return Decision(ALLOW,
                             f"allowance terbatas di testnet ({chain_name})",
