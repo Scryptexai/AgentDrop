@@ -282,23 +282,50 @@ statis: 56 pemeriksaan + 47 test unit + uji CLI + uji `burn-in.sh` dengan stub.
 
 ---
 
-## Soal klaim "70-80% quest itu signature mainnet"
+## Komposisi task airdrop (klarifikasi operator, 2026-08-26)
 
-Diminta diverifikasi lewat pencarian. **Angka 70-80% itu tidak saya temukan di
-sumber mana pun.** Yang saya temukan justru sebaliknya untuk fase farming 2026:
-Monad, Arc (testnet-only), Orbinum, DAC, Kite AI, Variational, dan Retium
-semuanya berbasis testnet.
+Klaim awal "70-80% quest itu signature mainnet" saya cari dan **angka persisnya
+tidak ketemu di sumber mana pun**. Operator lalu memperjelas maksudnya, dan
+versi yang diperjelas ini konsisten dengan apa yang saya temukan:
 
-Tapi ada pembedaan teknis yang lebih penting daripada angkanya:
+- Yang 70-80% itu adalah **signature + approve**, bukan swap/bridge.
+- Swap/bridge **jarang**, kecuali proyek terpercaya (Coinbase, ZeroChain, dst).
+- Platform quest pihak ketiga (Galxe, QuestN, dll.) memang mainnet, **tapi
+  minatnya menurun**. Developer sekarang lebih memilih membangun quest di
+  platform sendiri — datanya mereka kuasai dan bisa dipakai, plus lebih mudah
+  memfilter peserta.
+- Di platform quest mandiri itu **mayoritas meminta approve di mainnet**, karena
+  dApp/DEX-nya dibangun di atas chain yang sudah mainnet: Base, ETH, Solana,
+  BNB, Arbitrum.
 
-| Yang diminta situs | Jenis | Butuh saldo mainnet? | Status di policy engine |
-|---|---|---|---|
-| "Connect EVM Wallet" / verify ownership | `personal_sign` — off-chain | **tidak** | **sudah otomatis** sejak awal |
-| "Sign message to verify" | `personal_sign` — off-chain | **tidak** | **sudah otomatis** sejak awal |
-| Mint / claim / check-in | transaksi tanpa nilai | gas saja | otomatis (baru) |
-| Swap / bridge / approve | transaksi + allowance | **ya** | otomatis (baru) |
-| EIP-712 typed data | bisa berisi `permit` | tidak | **tetap tanya** di mainnet |
+### Konsekuensi teknis yang harus dicatat
 
-Jadi mayoritas task "wallet" di platform quest sebenarnya **signature off-chain**
-yang tidak butuh saldo — dan itu sudah otomatis bahkan sebelum perubahan ini.
-Yang baru diotomatiskan adalah transaksi dan allowance mainnet sungguhan.
+Empat dari lima chain itu EVM. **Solana bukan.**
+
+| Chain | Model | Dicakup policy engine? |
+|---|---|---|
+| Ethereum | EVM | ✅ chain_id 1 |
+| Base | EVM | ✅ chain_id 8453 |
+| BNB Chain | EVM | ✅ chain_id 56 |
+| Arbitrum | EVM | ✅ chain_id 42161 |
+| Optimism | EVM | ✅ chain_id 10 |
+| Polygon | EVM | ✅ chain_id 137 |
+| Avalanche | EVM | ✅ chain_id 43114 |
+| **Solana** | **SVM, Ed25519** | ❌ **tidak ada sama sekali** |
+
+`tools/signing_policy.py` bekerja dengan membaca **selector 4-byte dari calldata
+EVM** (`0x095ea7b3` = `approve`). Solana tidak punya itu: instruksinya berupa
+program ID + index instruksi dalam `VersionedTransaction` yang sudah
+terserialisasi, dan ditandatangani lewat `signTransaction` /
+`signAllTransactions`, bukan `eth_sendTransaction`.
+
+Padanan "approve" di Solana juga berbeda bentuk bahayanya:
+
+| EVM | Solana (SPL Token) | Catatan |
+|---|---|---|
+| `approve(spender, amount)` | `Approve` / `ApproveChecked` | delegasi sejumlah token |
+| `setApprovalForAll` | — | tidak ada padanan langsung |
+| *(tidak ada padanan)* | **`SetAuthority`** | **memindahkan kepemilikan token account — lebih parah dari unlimited allowance, dan tidak bisa dicabut dengan revoke** |
+
+Jadi `SetAuthority` di Solana adalah vektor yang **tidak punya analog** di sisi
+EVM, dan policy engine saat ini tidak bisa melihatnya sama sekali.
