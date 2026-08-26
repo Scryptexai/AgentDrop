@@ -627,3 +627,109 @@ Yang **paling perlu Anda uji sendiri**: sesi GUI nyata — login via noVNC di
 `:6080`, lalu pastikan agent benar-benar memakai sesi itu. Seluruh rantai
 identity (userId deterministik → profil Firefox persisten → reuse oleh agent)
 sudah diverifikasi di tingkat kode, tapi belum pernah dijalankan hidup.
+
+---
+
+## 9. Rute browser: Camofox vs Chrome CDP, dan status kredensial Hermes
+
+Ditambahkan 2026-08-26 setelah operator menanyakan dua hal: apakah browser
+harus Firefox, dan apakah Hermes benar-benar membaca `.env`.
+
+### 9.1 Hermes membaca `.env` — terverifikasi
+
+`hermes_cli/env_loader.py:470-504`:
+
+```python
+home_path = Path(hermes_home or os.getenv("HERMES_HOME", Path.home()/".hermes"))
+user_env  = home_path / ".env"
+...
+_load_dotenv_with_fallback(user_env, override=True)
+```
+
+`.env` dimuat dengan `override=True`, jadi ia MENIMPA variabel shell yang basi.
+`.env` di direktori proyek hanya fallback dev dan cuma mengisi yang kosong.
+
+Karena `--profile` menyetel `HERMES_HOME` sebelum import
+(`hermes_cli/main.py:520`), yang terbaca untuk sebuah worker adalah
+`~/.hermes/profiles/<nama>/.env`. Karena itu `scripts/setup.sh` memasang `.env`
+ke `~/.hermes/.env` DAN ke setiap direktori profil. Itu bukan redundansi.
+
+`config.yaml` tetap tempat kredensial DIRUJUK, lewat `${VAR}` atau
+`${env:VAR}` (`hermes_cli/config.py:2693-2701`). Tapi kredensial provider
+sendiri dibaca dari env — `cli-config.yaml.example:41-52` menulisnya sebagai
+nama env var:
+
+```
+"openrouter" - OpenRouter (requires: OPENROUTER_API_KEY or OPENAI_API_KEY)
+"anthropic"  - Direct Anthropic API (requires: ANTHROPIC_API_KEY)
+"gemini"     - Google AI Studio (requires: GOOGLE_API_KEY or GEMINI_API_KEY)
+```
+
+### 9.2 Camofox dan CDP saling eksklusif
+
+`tools/browser_cdp_tool.py:466`:
+
+> "The Camofox backend is REST-only and does not expose CDP."
+
+Hermes bisa attach ke browser Chromium yang sudah jalan lewat
+`browser.cdp_url` (`hermes_cli/config_defaults.py:577`) atau env
+`BROWSER_CDP_URL`, dengan preseden:
+
+1. `BROWSER_CDP_URL` (override live dari `/browser connect`)
+2. `browser.cdp_url` di `config.yaml`
+
+Jadi memilih Camofox berarti melepaskan seluruh permukaan tool `browser_cdp`.
+
+### 9.3 Chrome 137 menghapus `--load-extension` — tapi hanya di build branded
+
+Ini penyebab paling mungkin dari kegagalan "Chromium tidak bisa pasang
+extension" yang dialami operator. Bukan `--no-sandbox`.
+
+Pengumuman resmi tim Chrome (Richard Chen, 2025-04-04):
+
+> "Starting in Chrome 137, we will remove the ability to load extensions via
+> the `--load-extension` command-line flag in official Chrome branded builds...
+> This change only applies to Chrome branded builds. `--load-extension` will
+> continue to function as before in non Chrome brands, such as Chromium and
+> Chrome For Testing."
+
+Gejala di log: `--load-extension is not allowed in Google Chrome, ignoring.`
+
+Chrome 139 menyusul menghapus `--extensions-on-chrome-urls` dan
+`--disable-extensions-except` di build branded.
+
+Yang tetap bisa memuat extension lewat command line:
+- **Chromium** (unbranded)
+- **Chrome for Testing**
+
+Alternatif resmi untuk build branded: CDP `Extensions.loadUnpacked`, atau
+WebDriver BiDi `webExtension.install`. Workaround tidak resmi yang dilaporkan
+berhasil: `--disable-features=DisableLoadExtensionCommandLineSwitch`.
+
+### 9.4 Kenapa sedikitnya wallet di addons.mozilla.org tidak menghalangi kita
+
+Kekhawatiran yang wajar: Rabby dan banyak wallet lain hanya ada di Chrome Web
+Store, dan Firefox addon lebih jarang dirawat.
+
+Tapi AgentDrop **tidak memasang wallet dari store**. Extension
+`extensions/agentdrop-wallet/` IS the provider: ia menyuntik `window.ethereum`
+sendiri dan meneruskan permintaan ke daemon signing, yang bertanya ke
+`tools/signing_policy.py`. Tidak ada MetaMask yang perlu terpasang.
+
+Konsekuensi yang menguntungkan untuk Solana: dApp Solana mencari
+`window.solana` (Phantom). Karena provider-nya milik kita, satu extension bisa
+menyuntik `window.ethereum` DAN `window.solana` sekaligus — hal yang tidak bisa
+dilakukan dengan memasang wallet pihak ketiga.
+
+### 9.5 Perbandingan rute
+
+| Rute | Wallet | Anti-deteksi | Extension | GUI |
+|---|---|---|---|---|
+| Camofox + addon Firefox (terpasang) | kita sendiri | spoofing C++ | ter-wire, 9 test | noVNC (plugin vnc) |
+| Chromium/CfT + CDP | ekosistem Chrome | hilang | harus MV3 | harus bangun sendiri |
+| Camofox + WalletConnect | tanpa extension | spoofing C++ | tidak perlu | noVNC |
+
+Yang terpasang saat ini adalah rute pertama. Pindah ke Chromium berarti
+kehilangan anti-deteksi Camoufox, yang justru alasan Camoufox dipilih untuk
+farming; dan extension yang ada harus ditulis ulang ke Manifest V3 karena
+Chrome sudah menghapus MV2.
