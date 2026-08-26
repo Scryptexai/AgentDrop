@@ -1210,6 +1210,32 @@ def check_audit_log() -> None:
         err(f"tools/audit.py health GAGAL (exit {proc.returncode}):\n"
             f"{(proc.stdout + proc.stderr).strip()[-800:]}")
 
+    # Hasil uji harus bisa sampai ke repo. Log hidup di ~/.agentdrop/logs,
+    # DI LUAR repo, jadi git push biasa tidak menyertakannya sama sekali.
+    checks += 1
+    collect = REPO / "scripts" / "collect-logs.sh"
+    if not collect.exists():
+        err("scripts/collect-logs.sh tidak ada — hasil uji tidak akan pernah "
+            "sampai ke repo untuk dianalisis")
+    else:
+        ct = collect.read_text()
+        # Gerbang secret wajib ada: hasil skrip ini dimaksudkan untuk di-commit.
+        if "DIBATALKAN" not in ct or "forbidden_names" not in ct:
+            err("collect-logs.sh kehilangan gerbang secret — hasilnya di-commit, "
+                "jadi kebocoran di sini masuk ke git")
+        if "data/audit" not in ct:
+            err("collect-logs.sh tidak menulis ke data/audit/")
+        # data/audit harus benar-benar bisa di-commit
+        gi = (REPO / ".gitignore").read_text()
+        if "!data/audit" not in gi:
+            err(".gitignore tidak mengecualikan data/audit/ — hasil uji akan "
+                "diabaikan git dan tidak ikut ter-push")
+
+    checks += 1
+    if not (REPO / "scripts" / "preflight.sh").exists():
+        err("scripts/preflight.sh tidak ada — kegagalan lingkungan baru "
+            "ketahuan di akhir run uji")
+
 
 def main() -> int:
     print("=" * 62)

@@ -1,0 +1,128 @@
+# Prosedur uji di mesin Anda
+
+Dokumen ini ada karena satu alasan: supaya hasil uji bisa **dianalisis**.
+Log audit tersimpan di `~/.agentdrop/logs/` — **di luar repo** — jadi `git push`
+biasa tidak akan menyertakannya. Langkah 5 menutup itu.
+
+---
+
+## 0. Pasang
+
+```bash
+git clone https://github.com/Scryptexai/AgentDrop.git
+cd AgentDrop
+git checkout arena/01a037ea-agentdrop
+cp .env.example .env      # lalu isi
+./install.sh
+```
+
+## 1. Preflight — lakukan ini dulu
+
+```bash
+./scripts/preflight.sh
+```
+
+Skrip ini memeriksa biner, kredensial, profil, hook audit, browser, ekstensi,
+dan daemon dalam beberapa detik. **Kalau ada yang ✗, jangan mulai uji** — Anda
+akan menghabis waktu dan lognya tidak berarti.
+
+Yang paling sering menggagalkan:
+
+| Gejala | Sebab | Perbaikan |
+|---|---|---|
+| `hooks_auto_accept bukan true` | hook diabaikan diam-diam pada cron/gateway | jalankan ulang `scripts/setup.sh` |
+| `Google Chrome BRANDED` | Chrome 137+ mengabaikan `--load-extension` | pakai Chrome for Testing |
+| `extensions/installed kosong` | wallet belum dipasang | `./scripts/install-extensions.sh` |
+| `disabled_toolsets hilang` | agent bisa membuka browser sendiri lewat shell | jalankan ulang `scripts/setup.sh` |
+
+## 2. Nyalakan browser
+
+```bash
+./scripts/install-extensions.sh        # sekali saja
+./scripts/start-browser-cdp.sh
+```
+
+**Verifikasi wajib sebelum lanjut** — jangan lewati ini:
+
+1. Buka noVNC (`http://localhost:6080/vnc.html`), buka `https://example.com`
+2. Buka console, ketik:
+   ```js
+   window.ethereum     // harus ada
+   window.solana       // harus ada kalau Phantom terpasang
+   ```
+3. Kalau keduanya `undefined`, **ekstensi tidak termuat**. Berhenti di sini dan
+   perbaiki dulu — semua task airdrop akan gagal dengan cara yang membingungkan.
+
+Lalu **login manual sekali per platform** lewat noVNC: Google, Discord, X.
+Agent tidak bisa dan tidak boleh melakukan itu sendiri.
+
+## 3. Nyalakan daemon signing
+
+```bash
+python3 tools/signing_daemon.py &
+```
+
+## 4. Jalankan uji
+
+Kirim satu task lewat Telegram ke bot. **Mulai dari yang kecil** — satu proyek,
+satu task — supaya kalau gagal, runtutannya pendek dan mudah dibaca.
+
+```bash
+# pantau selama berjalan, di terminal lain
+python3 tools/audit.py tail -n 20
+```
+
+## 5. Kumpulkan dan push — INI LANGKAH YANG MEMBUAT HASILNYA BISA DIANALISIS
+
+```bash
+./scripts/collect-logs.sh --label uji-1
+git add data/audit/
+git commit -m "audit: hasil uji 1"
+git push origin arena/01a037ea-agentdrop
+```
+
+Skrip itu menyalin log + konteks ke `data/audit/<stempel>/`:
+
+| Berkas | Isi |
+|---|---|
+| `01-health.txt` | ringkasan per komponen |
+| `02-doctor.txt` | **diagnosis + berkas yang harus dibuka** |
+| `03-errors.txt` | error terperinci |
+| `04-stuck.txt` | tool yang menggantung |
+| `05-lingkungan.txt` | OS, versi binari, status browser |
+| `06-hook.txt` | apakah hook benar-benar terpasang |
+| `07-validator.txt` | keadaan repo saat uji |
+| `logs/` | JSONL mentah (sudah diredaksi) |
+
+**Gerbang keamanan:** skrip ini memindai hasilnya untuk pola secret (private
+key, seed phrase, bot token, api key) dan **menolak menulis apa pun** kalau
+menemukan satu. Sudah diuji: log yang sengaja berisi private key membuat skrip
+berhenti dengan exit 1 dan tidak menulis ke repo.
+
+## 6. Kalau ada yang salah sebelum push
+
+```bash
+python3 tools/audit.py doctor              # gejala -> komponen -> berkas
+python3 tools/audit.py trace <session_id>  # runtutan satu task
+python3 tools/audit.py stuck               # tool menggantung = browser mati
+```
+
+`session_id` bisa diambil dari `01-health.txt` atau dari `tail`.
+
+---
+
+## Yang belum pernah diuji oleh pembuat repo
+
+Semua ini dibangun dan diuji unit di lingkungan tanpa `docker`, tanpa Hermes
+terpasang, dan tanpa Chrome. Yang **sudah** diuji nyata:
+
+- penulis log, redaksi, rotasi, dan `flock` (konkuren)
+- shell hook dengan bentuk payload persis dari dokumen Hermes, termasuk stdin
+  rusak dan kosong
+- daemon signing lewat HTTP sungguhan — tanda tangan terbukti tidak masuk log
+- ekstraksi CRX3 dengan CRX sintetis
+- seluruh validator (154 pemeriksaan) dan ketiga suite test
+
+Yang **belum**: hook yang benar-benar menyala di dalam run Hermes hidup, dan
+browser yang benar-benar memuat ekstensi. Keduanya hanya bisa diuji di mesin
+Anda — dan itulah gunanya langkah 5.

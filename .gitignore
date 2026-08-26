@@ -73,3 +73,9 @@ signer.key
 # Jangan di-commit: ini kode biner pihak ketiga, dan manifest-nya
 # (config/extensions.yaml) yang menjadi sumber kebenaran.
 extensions/installed/
+
+# Hasil pengujian yang dikumpulkan scripts/collect-logs.sh.
+# SENGAJA di-commit: inilah bahan analisis hasil uji nyata.
+# collect-logs.sh memeriksa secret sebelum menulis apa pun.
+!data/audit/
+!data/audit/**
