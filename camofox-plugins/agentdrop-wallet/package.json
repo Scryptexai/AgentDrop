@@ -1,0 +1,7 @@
+{
+  "name": "agentdrop-wallet-plugin",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "_comment": "type:module dibutuhkan karena index.js memakai sintaks ESM (import/export). Node mencari package.json terdekat, jadi di dalam container camofox-browser (yang juga type:module) file ini tetap dimuat dengan benar."
+}

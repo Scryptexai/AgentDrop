@@ -27,6 +27,7 @@ from __future__ import annotations
 import ast
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -907,6 +908,56 @@ def check_no_stray_cjk() -> None:
         err(f"karakter CJK terselip -> {h}")
 
 
+def check_wallet_extension() -> None:
+    """Extension wallet + plugin Camoufox yang memuatnya."""
+    global checks
+    ext = REPO / "extensions" / "agentdrop-wallet"
+    plug = REPO / "camofox-plugins" / "agentdrop-wallet"
+    for f in (ext / "manifest.json", ext / "inject.js", ext / "content.js",
+              ext / "background.js", ext / "config.local.js",
+              plug / "index.js", plug / "plugin.json"):
+        checks += 1
+        if not f.exists():
+            err(f"{f.relative_to(REPO)} tidak ada")
+
+    # Token daemon tidak boleh ikut ter-commit.
+    checks += 1
+    cfg_local = ext / "config.local.js"
+    if cfg_local.exists() and re.search(r"token:\s*['\"][^'\"]+['\"]", cfg_local.read_text()):
+        err("extensions/agentdrop-wallet/config.local.js berisi token — file ini "
+            "di-commit. Token diisi oleh setup.sh di mesin pengguna.")
+
+    # Plugin harus di-mount, kalau tidak camofox-browser tidak akan menemukannya.
+    checks += 1
+    compose = (REPO / "docker-compose.yml").read_text()
+    for needle, label in (
+        ("camofox-plugins/agentdrop-wallet:/app/plugins/agentdrop-wallet",
+         "mount plugin ke /app/plugins"),
+        ("extensions/agentdrop-wallet:/app/extensions/agentdrop-wallet",
+         "mount extension ke /app/extensions"),
+    ):
+        if needle not in compose:
+            err(f"docker-compose.yml kehilangan {label}")
+
+    # Jalankan test plugin kalau node ada.
+    checks += 1
+    node = shutil.which("node")
+    ptest = plug / "plugin.test.mjs"
+    if node is None:
+        warn("node tidak ada — test plugin Camoufox dilewati")
+    elif not ptest.exists():
+        err("camofox-plugins/agentdrop-wallet/plugin.test.mjs tidak ada")
+    else:
+        proc = subprocess.run([node, str(ptest)], capture_output=True, text=True,
+                              cwd=str(REPO))
+        if proc.returncode != 0:
+            err(f"plugin.test.mjs GAGAL (exit {proc.returncode}):\n"
+                f"{(proc.stdout + proc.stderr).strip()[-1200:]}")
+        else:
+            m = re.search(r"(\d+) test lolos", proc.stdout)
+            print(f"  · {m.group(1) if m else '?'} test plugin Camoufox lolos")
+
+
 def main() -> int:
     print("=" * 62)
     print("  AgentDrop — validator statis")
@@ -978,6 +1029,9 @@ def main() -> int:
 
     print("\n[15] Karakter CJK terselip di config/skill/README")
     check_no_stray_cjk()
+
+    print("\n[16] Extension wallet + plugin Camoufox")
+    check_wallet_extension()
 
     print("\n" + "=" * 62)
     print(f"  {checks} file diperiksa")

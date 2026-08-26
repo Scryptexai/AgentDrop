@@ -86,6 +86,8 @@ services:
       # Dependency (x11vnc, novnc, python3-websockify, net-tools, procps) sudah
       # terpasang di image oleh scripts/install-plugin-deps.sh saat build
       # (lihat plugins/vnc/apt.txt) — tidak perlu instal manual.
+      # Nyalakan plugin agentdrop-wallet (lihat camofox-plugins/).
+      ENABLE_AGENTDROP_WALLET: ${ENABLE_AGENTDROP_WALLET:-1}
       ENABLE_VNC: ${ENABLE_VNC:-1}
       NOVNC_PORT: ${NOVNC_PORT:-6080}
       # Sangat disarankan kalau port 6080 terekspos keluar mesin.
@@ -97,6 +99,12 @@ services:
       # 'camofox.config.json') dan Dockerfile (WORKDIR /app, COPY
       # camofox.config.json ./).
       - ./config/camofox/camofox.config.json:/app/camofox.config.json:ro
+      # Plugin yang memuat extension wallet. camofox-browser memindai
+      # /app/plugins (lib/plugins.js:67 PLUGINS_DIR = ROOT_DIR + 'plugins').
+      - ./camofox-plugins/agentdrop-wallet:/app/plugins/agentdrop-wallet:ro
+      # Extension-nya sendiri. Harus direktori berisi manifest.json, bukan
+      # .xpi — itu syarat confirm_paths() di Camoufox.
+      - ./extensions/agentdrop-wallet:/app/extensions/agentdrop-wallet:ro
       - camofox-profiles:/data/profiles
       - camofox-cookies:/data/cookies
       - camofox-traces:/data/traces
