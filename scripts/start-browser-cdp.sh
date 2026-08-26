@@ -43,7 +43,10 @@ CDP_PORT="${CDP_PORT:-9222}"
 NOVNC_PORT="${NOVNC_PORT:-6080}"
 VNC_PORT="${VNC_PORT:-5900}"
 PROFILE_DIR="${CDP_PROFILE_DIR:-$HOME/.agentdrop/chrome-profile}"
-EXT_DIR="${CDP_EXT_DIR:-$REPO_ROOT/extensions/wallet}"
+# Direktori INDUK. Setiap subdirektori yang berisi manifest.json dimuat sebagai
+# satu ekstensi. Chrome menerima banyak ekstensi sekaligus lewat satu flag,
+# dipisah koma.
+EXT_ROOT="${CDP_EXT_ROOT:-$REPO_ROOT/extensions/installed}"
 STATE_DIR="$HOME/.agentdrop"
 PID_DIR="$STATE_DIR/run"
 
@@ -129,7 +132,7 @@ cmd_status() {
     fi
   done
   echo "   profil    : $PROFILE_DIR"
-  echo "   ekstensi  : $EXT_DIR"
+  echo "   ekstensi  : $EXT_ROOT"
   echo
   echo "Set di config.yaml:  browser.cdp_url: \"http://127.0.0.1:${CDP_PORT}\""
 }
@@ -158,12 +161,31 @@ cmd_start() {
   "$CHROME" --version 2>/dev/null | sed 's/^/   /' || true
 
   # ------------------------------------------------------------- ekstensi
-  if [[ -d "$EXT_DIR" && -f "$EXT_DIR/manifest.json" ]]; then
-    ok "ekstensi wallet: $EXT_DIR"
+  # BANYAK ekstensi sekaligus, dipisah koma dalam SATU --load-extension.
+  # Ini kebutuhan nyata, bukan kemewahan:
+  #   - MetaMask + OKX + Phantom: sebagian chain membawa wallet sendiri, tapi
+  #     hampir selalu tetap memberi opsi MetaMask/OKX.
+  #   - Deteksi sybil membaca SIDIK JARI GAS, dan tiap klien wallet menghitung
+  #     gas secara berbeda secara default. Satu wallet untuk semua aktivitas
+  #     justru membuat pola yang seragam dan mudah dikelompokkan.
+  #   - Ekstensi non-wallet (mis. penambang Lightning / DePIN) juga dipasang di
+  #     sini, jadi EXT_ROOT bukan hanya soal wallet.
+  local EXT_LIST="" EXT_COUNT=0 d
+  if [[ -d "$EXT_ROOT" ]]; then
+    for d in "$EXT_ROOT"/*/; do
+      [[ -d "$d" && -f "${d}manifest.json" ]] || continue
+      d="${d%/}"
+      if [[ -n "$EXT_LIST" ]]; then EXT_LIST="${EXT_LIST},${d}"; else EXT_LIST="$d"; fi
+      EXT_COUNT=$((EXT_COUNT + 1))
+      printf '  \033[1;32m✓\033[0m %s\n' "$(basename "$d")"
+    done
+  fi
+  if [[ "$EXT_COUNT" -gt 0 ]]; then
+    ok "${EXT_COUNT} ekstensi akan dimuat dari ${EXT_ROOT}"
   else
-    warn "ekstensi wallet tidak ditemukan di $EXT_DIR"
-    warn "Chrome tetap jalan, TAPI tanpa wallet. Pasang ekstensi lalu ulangi."
-    warn "Set CDP_EXT_DIR=/path/ke/ekstensi-ter-ekstrak (harus berisi manifest.json)."
+    warn "tidak ada ekstensi di ${EXT_ROOT}/*/ yang berisi manifest.json"
+    warn "Chrome tetap jalan, TAPI tanpa wallet. Pasang lewat:"
+    warn "    ./scripts/install-extensions.sh"
   fi
 
   # ---------------------------------------------------------------- Xvfb
@@ -217,10 +239,10 @@ cmd_start() {
     --no-first-run
     --no-default-browser-check
   )
-  # --load-extension HANYA kalau ekstensinya ada. Chrome menolak start kalau
-  # path-nya tidak valid, dan pesannya tidak jelas.
-  if [[ -f "$EXT_DIR/manifest.json" ]]; then
-    args+=(--load-extension="${EXT_DIR}")
+  # --load-extension HANYA kalau ada ekstensi yang valid. Chrome gagal start
+  # kalau path-nya tidak ada, dan pesannya tidak menjelaskan apa-apa.
+  if [[ -n "$EXT_LIST" ]]; then
+    args+=(--load-extension="${EXT_LIST}")
   fi
 
   DISPLAY=":${DISPLAY_NUM}" "$CHROME" "${args[@]}" >/dev/null 2>&1 &
@@ -238,7 +260,7 @@ cmd_start() {
 
   # Buktikan ekstensi benar-benar termuat. Ini yang paling sering gagal
   # diam-diam: Chrome jalan normal, CDP jalan normal, tapi ekstensinya nol.
-  if [[ -f "$EXT_DIR/manifest.json" ]]; then
+  if [[ "$EXT_COUNT" -gt 0 ]]; then
     local n
     n="$(curl -fsS "http://127.0.0.1:${CDP_PORT}/json" 2>/dev/null | grep -c 'chrome-extension://' || echo 0)"
     if [[ "$n" -gt 0 ]]; then
@@ -247,7 +269,8 @@ cmd_start() {
       warn "target chrome-extension:// tidak terlihat di /json."
       warn "Itu bisa normal (service worker tidak selalu terdaftar di /json),"
       warn "jadi verifikasi pasti lewat halaman: buka https://example.com lalu"
-      warn "cek window.ethereum dari console. Jangan lanjut farming sebelum ini hijau."
+      warn "cek window.ethereum dan window.solana dari console."
+      warn "Jangan lanjut farming sebelum itu hijau."
     fi
   fi
 

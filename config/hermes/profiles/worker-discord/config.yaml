@@ -42,10 +42,30 @@ browser:
   # Camofox. GUI di setup ini datang dari plugin vnc Camofox
   # (Xvfb 1920x1080 -> x11vnc :5900 -> noVNC :6080). Biarkan false.
   headed: false
-  camofox:
-    # Login Discord operator harus persisten.
-    managed_persistence: true
-    adopt_existing_tab: true
+  # ------------------------------------------------------------------------
+  # CDP: attach ke Chrome for Testing, BUKAN meluncurkan browser sendiri.
+  #
+  #   tools/browser_tool.py:2431-2435
+  #       if cdp_override and not force_local:
+  #           session_info = _create_cdp_session(task_id, cdp_override)
+  #   tools/browser_tool.py:2909
+  #       backend_args = ["--cdp", session_info["cdp_url"]]
+  #   komentarnya: "The rest of the command (--json, command, args) is identical."
+  #
+  # Jadi browser_navigate / browser_snapshot / browser_click dan seluruh
+  # protokol ref accessibility-tree tetap berfungsi persis sama.
+  #
+  # Browser-nya dijalankan scripts/start-browser-cdp.sh: Chrome for Testing +
+  # ekstensi wallet + noVNC. HARUS Chrome for Testing — build Chrome branded
+  # mengabaikan --load-extension sejak versi 137.
+  #
+  # JANGAN set BROWSER_CDP_URL ke websocket mentah kalau --session juga aktif:
+  # agent-browser >=0.13 membuat browser lokal sendiri dan mengabaikan --cdp
+  # tanpa error apa pun.
+  #
+  # `headed` di atas tidak berlaku di mode CDP — hanya dipakai mode lokal.
+  # ------------------------------------------------------------------------
+  cdp_url: "http://127.0.0.1:9222"
 
 
 compression:

@@ -1,0 +1,95 @@
+# ============================================================================
+# Manifest ekstensi browser
+# ============================================================================
+# Dibaca oleh scripts/install-extensions.sh. Setiap entri diunduh dari Chrome
+# Web Store, diekstrak ke extensions/installed/<folder>/, lalu dimuat Chrome
+# for Testing lewat --load-extension.
+#
+# KENAPA BANYAK WALLET, BUKAN SATU
+# --------------------------------
+# 1. Sebagian chain membawa wallet sendiri (sekitar 5-10% proyek), tapi hampir
+#    selalu tetap menyediakan opsi MetaMask atau OKX. Tanpa keduanya agent
+#    mentok di tombol "Connect Wallet".
+#
+# 2. Alasan yang lebih penting, dan terdokumentasi di riset anti-sybil:
+#    detektor membaca SIDIK JARI GAS. Cluster yang seluruh wallet-nya memakai
+#    priority fee identik sudah pernah dilaporkan sebagai satu kelompok.
+#    MetaMask, Rabby, OKX, dan Phantom masing-masing menghitung gas secara
+#    berbeda secara default — jadi memakai lebih dari satu klien adalah
+#    pertahanan, bukan redundansi.
+#
+# 3. Kategori non-wallet juga ada di sini (DePIN / Lightning). Airdrop DePIN
+#    menuntut sumber daya nyata — bandwidth, uptime — dan itu dipasang sebagai
+#    ekstensi, bukan sebagai tugas browser.
+#
+# KEPUTUSAN KEAMANAN YANG DISENGAJA
+# ---------------------------------
+# Skrip ini TIDAK mengunduh apa pun kecuali Anda memintanya, dan TIDAK ADA
+# hash yang saya karang. `required: true` di bawah berarti "setup tidak
+# berguna tanpanya", bukan "sudah diverifikasi aman".
+#
+# Sebelum menjalankan: cocokkan `id` dengan halaman Chrome Web Store resmi
+# proyeknya. ID ekstensi adalah satu-satunya jaminan bahwa yang terunduh adalah
+# penerbit yang benar — dan browser yang memegang private key Anda bukan tempat
+# untuk menebak.
+# ============================================================================
+
+extensions:
+
+  # --- EVM ---------------------------------------------------------------
+  - name: metamask
+    label: "MetaMask"
+    id: "nkbihfbeogaeaoehlefnkodbefgpgknn"
+    folder: "metamask"
+    category: wallet-evm
+    required: true
+    why: "Standar de facto. Mayoritas dApp mendesain UI-nya untuk MetaMask lebih dulu."
+
+  - name: okx
+    label: "OKX Wallet"
+    id: "mcohilncbfahbmgdjkbpemcciiolgcge"
+    folder: "okx-wallet"
+    category: wallet-evm
+    required: true
+    why: "Banyak chain baru menyediakan opsi OKX; juga multi-chain termasuk Solana."
+
+  - name: rabby
+    label: "Rabby Wallet"
+    id: "acmacodkjbdgmoleebolmdjonilkdbch"
+    folder: "rabby"
+    category: wallet-evm
+    required: false
+    why: "Klien gas ketiga. Berguna justru karena menghitung gas berbeda dari MetaMask."
+
+  # --- Solana / non-EVM --------------------------------------------------
+  - name: phantom
+    label: "Phantom"
+    id: "bfnaelmomeimhlpmgjnjophhpkkoljpa"
+    folder: "phantom"
+    category: wallet-solana
+    required: true
+    why: "Menyediakan window.solana. Tanpa ini seluruh kategori Solana tertutup."
+
+  # --- Kategori lain ------------------------------------------------------
+  - name: coinbase
+    label: "Coinbase Wallet"
+    id: "hnfanknocfeofbddgcijnmhnfnkdnaad"
+    folder: "coinbase-wallet"
+    category: wallet-evm
+    required: false
+    why: "Dipakai sebagian proyek sebagai jalur connect alternatif."
+
+# Ekstensi non-wallet. Kosong secara default — isi sendiri.
+#
+# Penambang DePIN / Lightning biasanya punya format sendiri dan sering
+# memerlukan endpoint node, jadi saya tidak menebak URL-nya. Tambahkan di sini
+# dengan `source: <url zip atau crx>` kalau Anda sudah punya sumber resminya:
+#
+#   - name: lightning-miner
+#     label: "Contoh penambang Lightning"
+#     source: "https://contoh.invalid/miner.zip"
+#     folder: "lightning-miner"
+#     category: depin
+#     required: false
+#     why: "Airdrop DePIN memberi imbalan untuk uptime dan bandwidth nyata."
+extra: []

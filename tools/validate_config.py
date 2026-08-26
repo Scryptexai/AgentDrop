@@ -427,22 +427,34 @@ def check_browser_access(configs: list[Path]) -> None:
             err(f"{rel}: worker '{name}' tidak punya blok browser sama sekali")
             continue
 
-        cam = br.get("camofox")
-        if not isinstance(cam, dict):
-            err(f"{rel}: worker '{name}' tidak punya browser.camofox — "
-                f"browser tidak akan tersambung ke Camofox")
+        cdp = br.get("cdp_url")
+        if not isinstance(cdp, str) or not cdp.strip():
+            err(f"{rel}: worker '{name}' tidak punya browser.cdp_url — Hermes akan "
+                f"meluncurkan Chromium headless milik agent-browser sendiri, "
+                f"tanpa ekstensi wallet")
         else:
-            if cam.get("managed_persistence") is not True:
-                err(f"{rel}: worker '{name}' browser.camofox.managed_persistence "
-                    f"bukan true — login tidak akan bertahan antar sesi")
-            if cam.get("adopt_existing_tab") is not True:
-                warn(f"{rel}: worker '{name}' adopt_existing_tab bukan true — "
-                     f"tab bisa dibuat ganda setelah gateway restart")
+            # CDP adalah remote control penuh atas browser. Kalau ia terikat ke
+            # antarmuka publik, siapa pun di jaringan itu bisa mengemudikan
+            # browser yang memegang wallet.
+            host = cdp.split("//", 1)[-1].split("/", 1)[0].split(":")[0]
+            if host not in ("127.0.0.1", "localhost"):
+                err(f"{rel}: worker '{name}' browser.cdp_url menunjuk host "
+                    f"'{host}' — harus loopback. CDP yang terbuka ke jaringan "
+                    f"berarti browser ber-wallet bisa dikendalikan siapa pun.")
 
-        # headed harus false: GUI datang dari Camofox VNC, bukan browser lokal
+        # Camofox dan CDP saling eksklusif: backend Camofox REST-only dan tidak
+        # mengekspos CDP (hermes-agent/tools/browser_cdp_tool.py:466).
+        # Meninggalkan keduanya terpasang membuat niat konfigurasi ambigu.
+        if isinstance(br.get("camofox"), dict):
+            err(f"{rel}: worker '{name}' masih punya browser.camofox padahal sudah "
+                f"berpindah ke cdp_url — Camofox dan CDP saling eksklusif, hapus "
+                f"salah satunya")
+
+        # headed tidak berlaku di mode CDP (hanya dipakai mode lokal), tapi
+        # true di sini menyiratkan salah paham soal dari mana GUI datang.
         if br.get("headed") is True:
-            warn(f"{rel}: browser.headed=true hanya berpengaruh pada browser "
-                 f"lokal Hermes, BUKAN Camofox. GUI setup ini lewat noVNC.")
+            warn(f"{rel}: browser.headed=true tidak berpengaruh di mode CDP. "
+                 f"GUI setup ini datang dari noVNC (scripts/start-browser-cdp.sh).")
 
         # inactivity_timeout terlalu pendek memutus sesi login di tengah aksi
         it = br.get("inactivity_timeout")

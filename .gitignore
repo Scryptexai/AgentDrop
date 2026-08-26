@@ -68,3 +68,8 @@ Thumbs.db
 agentdrop-signer.key
 *.signer.key
 signer.key
+
+# Ekstensi pihak ketiga yang diunduh scripts/install-extensions.sh.
+# Jangan di-commit: ini kode biner pihak ketiga, dan manifest-nya
+# (config/extensions.yaml) yang menjadi sumber kebenaran.
+extensions/installed/
