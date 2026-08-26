@@ -82,10 +82,39 @@ KELUAR dari `install.sh` (masuk CLI `agentdrop`):
 - burn-in
 - membaca log audit
 
-Catatan yang harus diputuskan, bukan diasumsikan: **docker tidak lagi wajib**
-sejak Camofox dihapus (K1). Operator menyebutkannya sebagai dependensi, jadi
-tanyakan sebelum memasangnya — memasang Docker yang tidak dipakai adalah
-sampah, persis yang sedang dibersihkan.
+### Acuan: pola installer Hermes
+
+Dibaca langsung dari `https://hermes-agent.nousresearch.com/install.sh`.
+AgentDrop mengikuti pola ini, bukan mengarang sendiri:
+
+- **Guard di awal.** `unset PYTHONPATH` dan `PYTHONHOME` — PYTHONPATH yang
+  diwarisi bisa membuat pip memasang dari checkout yang salah, sehingga
+  instalasi baru terlihat rusak atau basi. `export UV_NO_CONFIG=1`.
+- **Deteksi non-interaktif.** `if [ -t 0 ]` — kalau stdin bukan terminal
+  (`curl | bash`), `read -p` gagal dengan EOF dan `set -e` mematikan seluruh
+  skrip **tanpa pesan**.
+- **Layout FHS untuk root.** Kode di `/usr/local/lib/<nama>`, perintah di
+  `/usr/local/bin/<nama>`, data tetap di `$HOME/.<nama>`. Hermes menyebutnya
+  "matches Claude Code / Codex CLI". Non-root: kode di `~/.<nama>/<repo>`.
+- **Opsi yang layak ditiru.** `--skip-setup`, `--skip-browser`, `--no-skills`,
+  `--dir PATH`, `--hermes-home PATH`, `--non-interactive`,
+  `--ensure DEPS` (hanya pasang dependensi, jangan clone/venv).
+
+### Layout AgentDrop
+
+| Isi | Lokasi (root) | Lokasi (non-root) |
+|---|---|---|
+| Kode | `/usr/local/lib/agentdrop` | `~/.agentdrop/app` |
+| Perintah | `/usr/local/bin/agentdrop` | `~/.local/bin/agentdrop` |
+| State (log, profil browser, key) | `~/.agentdrop/` | sama |
+| Config Hermes | `~/.hermes/` | sama |
+
+### Masih harus diputuskan, bukan diasumsikan
+
+**Docker tidak lagi wajib** sejak Camofox dihapus (K1) — Camofox satu-satunya
+pemakainya, dan `docker-compose.yml` sudah dihapus. Operator menyebutkannya
+sebagai dependensi, jadi tanyakan sebelum memasangnya: memasang Docker yang
+tidak dipakai adalah sampah, persis yang sedang dibersihkan.
 
 ---
 
