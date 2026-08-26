@@ -1,0 +1,118 @@
+#!/usr/bin/env bash
+# ============================================================================
+# agentdrop — satu-satunya perintah runtime
+# ============================================================================
+# Installer memasang; perintah ini menjalankan. Semua yang dulu tersebar di
+# belasan skrip ada di sini sebagai subperintah.
+#
+#   agentdrop start        nyalakan gateway Telegram (agent berjalan di atasnya)
+#   agentdrop stop         hentikan gateway
+#   agentdrop browser      nyalakan Chrome for Testing + noVNC
+#   agentdrop browser-stop hentikan browser
+#   agentdrop status       periksa kesiapan sistem
+#   agentdrop extensions   pasang/perbarui wallet  [--all | --only a,b]
+#   agentdrop audit <cmd>  baca log: health | errors | doctor | trace | stuck | tail
+#   agentdrop logs         kumpulkan log ke data/audit/ untuk dianalisis
+#   agentdrop cron         pasang jadwal otomatis
+#   agentdrop burn-in      uji stabilisasi sebelum agent dipercaya
+#
+# CATATAN (K9): gateway dan agent BUKAN dua hal. Agent berjalan di atas
+# gateway, jadi `start` menyalakan keduanya sekaligus. Memisahkannya hanya
+# membuat orang bingung mana yang harus dijalankan.
+# ============================================================================
+set -uo pipefail
+
+# Kode bisa berada di repo (saat pengembangan) atau di lokasi instal. Dicari berurutan.
+for cand in \
+    "$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" \
+    "/usr/local/lib/agentdrop" \
+    "$HOME/.agentdrop/app"; do
+  if [[ -f "$cand/lib/00-common.sh" ]]; then ROOT="$cand"; break; fi
+done
+[[ -n "${ROOT:-}" ]] || { echo "lib/ tidak ditemukan — jalankan ./install.sh" >&2; exit 1; }
+
+# shellcheck source=/dev/null
+for m in "$ROOT"/lib/*.sh; do source "$m"; done
+REPO_ROOT="$ROOT"
+HERMES_HOME_DIR="${HERMES_HOME:-$HOME/.hermes}"
+STATE_DIR="$HOME/.agentdrop"
+PID_DIR="$STATE_DIR/run"
+mkdir -p "$PID_DIR"
+
+usage() { sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+
+# ---------------------------------------------------------------------------
+# start / stop — gateway. Agent berjalan di atasnya, jadi satu perintah.
+# ---------------------------------------------------------------------------
+cmd_start() {
+  command -v hermes >/dev/null 2>&1 || _die "hermes tidak ada — jalankan ./install.sh"
+  if [[ -f "$PID_DIR/gateway.pid" ]] && kill -0 "$(cat "$PID_DIR/gateway.pid")" 2>/dev/null; then
+    _warn "gateway sudah jalan (pid $(cat "$PID_DIR/gateway.pid"))"
+    return 0
+  fi
+  _log "Menyalakan gateway Hermes"
+  echo "  Agent berjalan DI ATAS gateway, jadi ini menyalakan keduanya."
+  echo "  Kirim task ke bot Telegram Anda untuk memulai."
+  echo
+  local prof="${1:-worker-orchestrator}"
+  # Log gateway juga masuk ke log audit, supaya kegagalan startup terlihat.
+  local glog="$LOG_DIR/gateway.log"
+  HERMES_HOME="$HERMES_HOME_DIR" \
+    nohup hermes gateway start > "$glog" 2>&1 &
+  echo $! > "$PID_DIR/gateway.pid"
+  sleep 3
+  if kill -0 "$(cat "$PID_DIR/gateway.pid")" 2>/dev/null; then
+    _ok "gateway jalan (pid $(cat "$PID_DIR/gateway.pid"))"
+    _ok "log: $glog"
+    echo
+    echo "  pantau    : tail -f $glog"
+    echo "  aktivitas : agentdrop audit tail"
+    echo "  hentikan  : agentdrop stop"
+  else
+    _err "gateway mati segera setelah dinyalakan. Akhir log:"
+    tail -20 "$glog" | sed 's/^/    /'
+    rm -f "$PID_DIR/gateway.pid"
+    return 1
+  fi
+}
+
+cmd_stop() {
+  [[ -f "$PID_DIR/gateway.pid" ]] || { _warn "gateway tidak jalan"; return 0; }
+  local pid; pid="$(cat "$PID_DIR/gateway.pid")"
+  if kill -0 "$pid" 2>/dev/null; then
+    kill "$pid" 2>/dev/null; sleep 2
+    kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null
+    _ok "gateway dihentikan (pid $pid)"
+  else
+    _warn "pid $pid sudah tidak ada"
+  fi
+  rm -f "$PID_DIR/gateway.pid"
+}
+
+# ---------------------------------------------------------------------------
+cmd_status()   { verify_run "${1:-}"; }
+cmd_audit()    { "$(_pyu)" "$ROOT/tools/audit.py" "$@"; }
+cmd_cron()     { bash "$ROOT/scripts/install-cron.sh" "$@"; }
+cmd_burnin()   { bash "$ROOT/scripts/burn-in.sh" "$@"; }
+cmd_logs()     { bash "$ROOT/scripts/collect-logs.sh" "$@"; }
+
+main() {
+  local sub="${1:-}"; [[ $# -gt 0 ]] && shift
+  case "$sub" in
+    start)        cmd_start "$@" ;;
+    stop)         cmd_stop ;;
+    browser)      browser_start ;;
+    browser-stop) browser_stop ;;
+    browser-status) browser_status ;;
+    status)       cmd_status "$@" ;;
+    extensions)   browser_install_extensions "$@" ;;
+    audit)        cmd_audit "$@" ;;
+    logs)         cmd_logs "$@" ;;
+    cron)         cmd_cron "$@" ;;
+    burn-in)      cmd_burnin "$@" ;;
+    -h|--help|"") usage ;;
+    *) _err "perintah tidak dikenal: $sub"; echo; usage; exit 1 ;;
+  esac
+}
+
+main "$@"

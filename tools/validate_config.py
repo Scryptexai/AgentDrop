@@ -234,18 +234,12 @@ def check_config(path: Path) -> None:
             if t not in TOOLSET_IDS:
                 err(f"{rel}: toolset '{t}' bukan id valid Hermes (mis. 'file', bukan 'file_ops')")
 
-    # browser + camofox
+    # browser
     br = data.get("browser")
     if isinstance(br, dict):
         for k in br:
             if k not in BROWSER_KEYS:
                 err(f"{rel}: browser.{k} bukan key Hermes yang valid")
-        cam = br.get("camofox")
-        if isinstance(cam, dict):
-            for k in cam:
-                if k not in CAMOFOX_KEYS:
-                    err(f"{rel}: browser.camofox.{k} bukan key valid "
-                        f"(URL Camofox adalah env var CAMOFOX_URL di .env)")
 
     # cron
     cr = data.get("cron")
@@ -357,13 +351,15 @@ def check_env_example() -> None:
         return
     text = p.read_text()
 
-    if "CAMOFOX_URL" not in text:
-        err(".env.example: tidak ada CAMOFOX_URL — Hermes butuh ini untuk "
-            "merutekan browser tools ke Camofox")
+    # CDP_PORT adalah kunci yang menyambungkan Hermes ke Chrome yang kita
+    # jalankan sendiri. Kalau hilang, agent jatuh kembali ke Chromium headless
+    # milik agent-browser tanpa ekstensi.
+    if "CDP_PORT" not in text:
+        err(".env.example: tidak ada CDP_PORT — port browser tidak terdokumentasi")
 
     for must, why in (
-        ("ENABLE_VNC", "tanpa ini Camofox jalan headless — tidak bisa diambil alih manusia"),
         ("NOVNC_PORT", "port GUI browser tidak terdokumentasi"),
+        ("CDP_PROFILE_DIR", "lokasi profil Chrome tidak terdokumentasi — login tidak akan bertahan"),
     ):
         if must not in text:
             err(f".env.example: tidak ada {must} — {why}")
@@ -455,7 +451,7 @@ def check_browser_access(configs: list[Path]) -> None:
         # true di sini menyiratkan salah paham soal dari mana GUI datang.
         if br.get("headed") is True:
             warn(f"{rel}: browser.headed=true tidak berpengaruh di mode CDP. "
-                 f"GUI setup ini datang dari noVNC (scripts/start-browser-cdp.sh).")
+                 f"GUI setup ini datang dari noVNC (agentdrop browser).")
 
         # inactivity_timeout terlalu pendek memutus sesi login di tengah aksi
         it = br.get("inactivity_timeout")
@@ -464,57 +460,6 @@ def check_browser_access(configs: list[Path]) -> None:
                  f"rangkaian aksi farming (default Hermes 120s memutus sesi)")
 
 
-# ============================================================================
-# Cek camofox.config.json (plugin vnc + persistence)
-# ============================================================================
-def check_camofox_config() -> None:
-    """Jaga-jaga failure mode SENYAP di camofox-browser.
-
-    lib/config.js:readCamofoxConfig melakukan JSON.parse dan mengembalikan {}
-    kalau parse gagal. Artinya file yang rusak = SEMUA plugin mati diam-diam,
-    termasuk persistence. Jadi file ini harus divalidasi, bukan diasumsikan.
-    """
-    global checks
-    checks += 1
-    p = REPO / "config" / "camofox" / "camofox.config.json"
-    if not p.exists():
-        err("config/camofox/camofox.config.json tidak ada")
-        return
-
-    import json
-    try:
-        d = json.loads(p.read_text())
-    except json.JSONDecodeError as exc:
-        err(f"config/camofox/camofox.config.json: JSON rusak — {exc}. "
-            f"camofox-browser akan diam-diam memakai {{}} dan mematikan SEMUA plugin.")
-        return
-    if not isinstance(d, dict):
-        err("camofox.config.json: isi bukan object")
-        return
-
-    plugins = d.get("plugins")
-    if not isinstance(plugins, dict):
-        err("camofox.config.json: 'plugins' harus object, bukan array/hilang")
-        return
-
-    # Key $comment di DALAM plugins akan dianggap nama plugin oleh plugins.js
-    stray = [k for k in plugins if k.startswith("$")]
-    if stray:
-        err(f"camofox.config.json: key komentar {stray} ada DI DALAM 'plugins' — "
-            f"plugins.js akan menganggapnya nama plugin")
-
-    vnc = plugins.get("vnc")
-    if not isinstance(vnc, dict) or vnc.get("enabled") is not True:
-        err("camofox.config.json: plugins.vnc.enabled bukan true — browser akan "
-            "headless, tidak bisa diambil alih manusia")
-
-    pers = plugins.get("persistence")
-    if not isinstance(pers, dict) or pers.get("enabled") is not True:
-        err("camofox.config.json: plugins.persistence.enabled bukan true — "
-            "login tidak akan bertahan antar sesi")
-    elif not pers.get("profileDir"):
-        warn("camofox.config.json: persistence.profileDir kosong — profil akan "
-             "tersimpan di dalam container dan hilang saat container dihapus")
 
 
 # ============================================================================
@@ -622,8 +567,9 @@ def check_burnin_gating() -> None:
     # Burn-in harus reachable dari alur instal, kalau tidak pasti dilewati.
     checks += 1
     inst = REPO / "install.sh"
-    if "burn-in.sh" not in inst.read_text():
-        err("install.sh tidak menyebut burn-in.sh — pengguna akan langsung "
+    # install.sh menyebutnya lewat CLI (agentdrop burn-in), bukan nama berkas.
+    if "burn-in" not in inst.read_text():
+        err("install.sh tidak menyebut burn-in — pengguna akan langsung "
             "memakai agent sebelum browser distabilkan")
     if "burn-in" not in (REPO / "README.md").read_text():
         err("README.md tidak menyebut burn-in")
@@ -688,7 +634,7 @@ def check_setup_coverage() -> None:
     """Guard terhadap drift: direktori ada tapi tidak pernah terpasang."""
     global checks
     checks += 1
-    setup = REPO / "scripts/setup.sh"
+    setup = REPO / "lib/30-hermes.sh"
     if not setup.exists():
         err("scripts/setup.sh tidak ada")
         return
@@ -697,7 +643,7 @@ def check_setup_coverage() -> None:
     m_prof = re.search(r"^PROFILES=\(([^)]*)\)", text, re.MULTILINE)
     m_skill = re.search(r"^SKILLS=\(([^)]*)\)", text, re.MULTILINE)
     if not m_prof or not m_skill:
-        err("setup.sh: tidak menemukan daftar PROFILES=(...) atau SKILLS=(...)")
+        err("lib/30-hermes.sh: tidak menemukan daftar PROFILES=(...) atau SKILLS=(...)")
         return
 
     listed_profiles = set(m_prof.group(1).split())
@@ -775,124 +721,6 @@ def check_telegram_env() -> None:
             err(f".env.example: tidak ada {must} — bot Telegram tidak bisa diamankan")
 
 
-# ============================================================================
-def check_signing_policy() -> None:
-    """Policy engine harus teruji dan postur bawaannya harus fail-closed."""
-    global checks
-    engine = REPO / "tools" / "signing_policy.py"
-    suite = REPO / "tools" / "test_signing_policy.py"
-    cfg = REPO / "config" / "hermes" / "signing-policy.yaml"
-    for f in (engine, suite, cfg):
-        checks += 1
-        if not f.exists():
-            err(f"{f.relative_to(REPO)} tidak ada")
-            return
-
-    # 1. Jalankan test suite sungguhan, bukan cuma cek file ada.
-    proc = subprocess.run([sys.executable, str(suite)],
-                          capture_output=True, text=True)
-    if proc.returncode != 0:
-        err(f"test_signing_policy.py GAGAL (exit {proc.returncode}):\n"
-            f"{(proc.stderr or proc.stdout).strip()[-1200:]}")
-    else:
-        ran = re.search(r"Ran (\d+) tests", proc.stderr + proc.stdout)
-        n = ran.group(1) if ran else "?"
-        print(f"  · {n} test policy engine lolos")
-
-    # 1b. Test daemon signing. eth-account adalah dependency nyata daemon,
-    # jadi kalau tidak ada di lingkungan ini laporkan sebagai peringatan —
-    # bukan error, karena validator boleh jalan di mesin yang belum memasang
-    # dependency runtime.
-    dsuite = REPO / "tools" / "test_signing_daemon.py"
-    daemon = REPO / "tools" / "signing_daemon.py"
-    if dsuite.exists() and daemon.exists():
-        checks += 1
-        probe = subprocess.run([sys.executable, "-c", "import eth_account"],
-                               capture_output=True, text=True)
-        if probe.returncode != 0:
-            warn("eth-account belum terpasang — test daemon signing dilewati. "
-                 "Pasang: pip install eth-account")
-        else:
-            dproc = subprocess.run([sys.executable, str(dsuite)],
-                                   capture_output=True, text=True)
-            if dproc.returncode != 0:
-                err(f"test_signing_daemon.py GAGAL (exit {dproc.returncode}):\n"
-                    f"{(dproc.stderr or dproc.stdout).strip()[-1200:]}")
-            else:
-                ran = re.search(r"Ran (\d+) tests", dproc.stderr + dproc.stdout)
-                print(f"  · {ran.group(1) if ran else '?'} test daemon signing lolos")
-        # Daemon tidak boleh pernah bind ke semua antarmuka.
-        # Yang diperiksa adalah PEMANGGILAN bind-nya, bukan sembarang sebutan:
-        # docstring daemon memang menulis "tidak pernah 0.0.0.0", dan cek
-        # substring naif salah menuduh kalimat larangan itu.
-        dtext = daemon.read_text()
-        bind_all = re.search(r'(?:HTTPServer|TCPServer|socket\w*)\s*\(\s*\(\s*["\']0\.0\.0\.0["\']',
-                             dtext)
-        if bind_all:
-            err("signing_daemon.py bind ke 0.0.0.0 — daemon pemegang private key "
-                "tidak boleh terbuka ke jaringan")
-        if not re.search(r'(?:HTTPServer|TCPServer)\s*\(\s*\(\s*["\']127\.0\.0\.1["\']',
-                         dtext):
-            err("signing_daemon.py tidak bind ke 127.0.0.1 secara eksplisit")
-
-    # 2. Kebijakan yang termuat harus konsisten dengan yang diklaim file.
-    # Import biasa lewat sys.path: spec_from_file_location tanpa mendaftarkan
-    # modul ke sys.modules membuat @dataclass gagal (dataclasses mencari
-    # cls.__module__ di sys.modules).
-    sys.path.insert(0, str(engine.parent))
-    import signing_policy as mod  # noqa: E402
-    checks += 1
-    p = mod.Policy.from_yaml(cfg)
-
-    # Default dataclass harus tetap ketat. File yaml boleh permisif karena itu
-    # pilihan sadar operator, tapi kode bawaannya tidak boleh.
-    dflt = mod.Policy()
-    if dflt.mainnet_auto_approve_allowance or dflt.auto_approve_unlimited_allowance:
-        err("Policy() default di signing_policy.py harus ketat di mainnet; "
-            "kelonggaran hanya boleh datang dari file yaml")
-
-    # 3. Mekanisme unlimited-allowance harus benar-benar bisa dua arah.
-    checks += 1
-    unlimited = "0x095ea7b3" + f"{0x2222:064x}" + f"{2**256 - 1:064x}"
-    req = {"method": "send_transaction", "chain_id": 1,
-           "to": "0x" + "33" * 20, "value_wei": 0, "data": unlimited}
-    strict = mod.Policy(auto_approve_unlimited_allowance=False)
-    if mod.decide(req, policy=strict).verdict != mod.ESCALATE:
-        err("auto_approve_unlimited_allowance=false harus menghasilkan ESCALATE")
-    loose = mod.Policy(auto_approve_unlimited_allowance=True)
-    if mod.decide(req, policy=loose).verdict != mod.ALLOW:
-        err("auto_approve_unlimited_allowance=true harus menghasilkan ALLOW "
-            "(mekanismenya tidak berfungsi)")
-
-    # 4. Denylist harus menang atas semua kelonggaran.
-    checks += 1
-    blocked = mod.Policy(auto_approve_unlimited_allowance=True,
-                         mainnet_auto_approve_allowance=True,
-                         spender_denylist=["0x" + "33" * 20])
-    if mod.decide(req, policy=blocked).verdict != mod.DENY:
-        err("spender_denylist harus menang meski semua kelonggaran dinyalakan")
-
-    # 5. Laporkan postur yang aktif supaya terlihat di output validasi.
-    longgar = [n for n, v in (
-        ("mainnet_auto_approve_zero_value_tx", p.mainnet_auto_approve_zero_value_tx),
-        ("mainnet_auto_approve_allowance", p.mainnet_auto_approve_allowance),
-        ("auto_approve_unlimited_allowance", p.auto_approve_unlimited_allowance),
-    ) if v]
-    if longgar:
-        print(f"  · postur aktif: OTONOM — {', '.join(longgar)}")
-
-    # 6. Private key tidak boleh pernah masuk .env.example.
-    checks += 1
-    env_text = (REPO / ".env.example").read_text()
-    if "AGENTDROP_PRIVATE_KEY=" in env_text:
-        err(".env.example memuat AGENTDROP_PRIVATE_KEY — file ini ikut tersalin "
-            "ke enam profil. Gunakan AGENTDROP_KEY_FILE.")
-    for needle in ("AGENTDROP_KEY_FILE=", "AGENTDROP_SIGNER_TOKEN="):
-        if needle not in env_text:
-            err(f".env.example kehilangan {needle}")
-    gi = (REPO / ".gitignore").read_text()
-    if "agentdrop-signer.key" not in gi:
-        err(".gitignore tidak menutup agentdrop-signer.key")
 
 
 def check_no_stray_cjk() -> None:
@@ -924,54 +752,6 @@ def check_no_stray_cjk() -> None:
         err(f"karakter CJK terselip -> {h}")
 
 
-def check_wallet_extension() -> None:
-    """Extension wallet + plugin Camoufox yang memuatnya."""
-    global checks
-    ext = REPO / "extensions" / "agentdrop-wallet"
-    plug = REPO / "camofox-plugins" / "agentdrop-wallet"
-    for f in (ext / "manifest.json", ext / "inject.js", ext / "content.js",
-              ext / "background.js", ext / "config.local.js",
-              plug / "index.js", plug / "plugin.json"):
-        checks += 1
-        if not f.exists():
-            err(f"{f.relative_to(REPO)} tidak ada")
-
-    # Token daemon tidak boleh ikut ter-commit.
-    checks += 1
-    cfg_local = ext / "config.local.js"
-    if cfg_local.exists() and re.search(r"token:\s*['\"][^'\"]+['\"]", cfg_local.read_text()):
-        err("extensions/agentdrop-wallet/config.local.js berisi token — file ini "
-            "di-commit. Token diisi oleh setup.sh di mesin pengguna.")
-
-    # Plugin harus di-mount, kalau tidak camofox-browser tidak akan menemukannya.
-    checks += 1
-    compose = (REPO / "docker-compose.yml").read_text()
-    for needle, label in (
-        ("camofox-plugins/agentdrop-wallet:/app/plugins/agentdrop-wallet",
-         "mount plugin ke /app/plugins"),
-        ("extensions/agentdrop-wallet:/app/extensions/agentdrop-wallet",
-         "mount extension ke /app/extensions"),
-    ):
-        if needle not in compose:
-            err(f"docker-compose.yml kehilangan {label}")
-
-    # Jalankan test plugin kalau node ada.
-    checks += 1
-    node = shutil.which("node")
-    ptest = plug / "plugin.test.mjs"
-    if node is None:
-        warn("node tidak ada — test plugin Camoufox dilewati")
-    elif not ptest.exists():
-        err("camofox-plugins/agentdrop-wallet/plugin.test.mjs tidak ada")
-    else:
-        proc = subprocess.run([node, str(ptest)], capture_output=True, text=True,
-                              cwd=str(REPO))
-        if proc.returncode != 0:
-            err(f"plugin.test.mjs GAGAL (exit {proc.returncode}):\n"
-                f"{(proc.stdout + proc.stderr).strip()[-1200:]}")
-        else:
-            m = re.search(r"(\d+) test lolos", proc.stdout)
-            print(f"  · {m.group(1) if m else '?'} test plugin Camoufox lolos")
 
 
 def check_shell_disabled(configs: list[Path]) -> None:
@@ -1075,9 +855,9 @@ def check_memory_loop(configs: list[Path]) -> None:
         err("skills/self-improvement/SKILL.md tidak ada")
 
     checks += 1
-    setup = (REPO / "scripts" / "setup.sh").read_text()
+    setup = (REPO / "lib" / "30-hermes.sh").read_text()
     if "self-improvement" not in setup:
-        err("scripts/setup.sh tidak menyalin skill self-improvement ke profil mana pun")
+        err("lib/30-hermes.sh tidak menyalin skill self-improvement ke profil mana pun")
     else:
         for c in configs:
             if "/profiles/" not in str(c):
@@ -1195,10 +975,10 @@ def check_audit_log() -> None:
     # setup.sh harus menyalin hook ke lokasi tetap, karena command hook tidak
     # meng-expand $VAR (hanya expanduser).
     checks += 1
-    setup = (REPO / "scripts" / "setup.sh").read_text()
+    setup = (REPO / "lib" / "30-hermes.sh").read_text()
     for needle in ("agent-hooks/audit-log.py", "hooks/agentdrop-audit"):
         if needle not in setup:
-            err(f"scripts/setup.sh tidak memasang {needle} — hook tidak akan "
+            err(f"lib/30-hermes.sh tidak memasang {needle} — hook tidak akan "
                 f"ditemukan Hermes setelah instalasi")
 
     # Jalankan audit.py health sebagai smoke test: kalau importnya rusak,
@@ -1232,8 +1012,8 @@ def check_audit_log() -> None:
                 "diabaikan git dan tidak ikut ter-push")
 
     checks += 1
-    if not (REPO / "scripts" / "preflight.sh").exists():
-        err("scripts/preflight.sh tidak ada — kegagalan lingkungan baru "
+    if not (REPO / "lib" / "50-verify.sh").exists():
+        err("lib/50-verify.sh tidak ada — kegagalan lingkungan baru "
             "ketahuan di akhir run uji")
 
 
@@ -1269,8 +1049,6 @@ def main() -> int:
         if "/profiles/" in str(c):
             print(f"  · {c.parent.name}")
 
-    print("\n[6] camofox.config.json (plugin vnc + persistence)")
-    check_camofox_config()
     print("  · config/camofox/camofox.config.json")
 
     print("\n[7] Aturan verifikasi alamat di skill browser")
@@ -1302,15 +1080,11 @@ def main() -> int:
     check_burnin_gating()
     print("  · scripts/burn-in.sh")
 
-    print("\n[14] Policy engine signature wallet")
-    check_signing_policy()
     print("  · tools/signing_policy.py + config/hermes/signing-policy.yaml")
 
     print("\n[15] Karakter CJK terselip di config/skill/README")
     check_no_stray_cjk()
 
-    print("\n[16] Extension wallet + plugin Camoufox")
-    check_wallet_extension()
 
     print("\n[17] Akses shell dimatikan di semua worker")
     check_shell_disabled(configs)

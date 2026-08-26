@@ -52,6 +52,9 @@ Jangan perdebatkan ulang ini tanpa alasan baru yang eksplisit.
 | **K8** | Skrip = **`install.sh` sebagai index** yang me-source `lib/*.sh`, plus **satu CLI `agentdrop`** | Operator bingung dengan 11 skrip yang tumpang tindih. |
 | **K9** | Gateway dan agent **satu perintah** | Agent berjalan di atas gateway; memisahkannya membingungkan. |
 | **K10** | Private key **tidak pernah** masuk `.env` | `.env` tersalin ke setiap profil → satu key jadi ada di tujuh tempat. Pakai `AGENTDROP_KEY_FILE` (berkas 0600). |
+| **K11** | **Docker bukan dependensi** | Camofox satu-satunya pemakainya dan sudah dihapus. Chrome for Testing + Xvfb + noVNC jalan langsung di host. |
+| **K12** | Knowledge = direktori `knowledge/` **terpisah**, per domain, dibaca **dan ditulis** agent | Berbeda dari `docs/` yang statis dan ditulis manusia. `knowledge/` dikembangkan agent lewat memory loop. |
+| **K13** | Prompt system = **`SOUL.md` per profil**, sudah cukup | Tidak perlu lapisan prompt tambahan. Installer hanya memasangnya ke tempat yang benar. |
 
 ---
 
@@ -61,15 +64,18 @@ Jangan perdebatkan ulang ini tanpa alasan baru yang eksplisit.
 Bandingkan dengan installer Python/Node/Docker: mereka memasang dependensi,
 menaruh berkas di lokasi sistem, menaruh binari di PATH, lalu berhenti.
 
-MASUK scope `install.sh`:
+MASUK scope `install.sh` (sudah dikonfirmasi operator 2026-08-26):
 
 1. **Dependensi sistem** — python3 + venv, node, hermes, Xvfb/x11vnc/websockify
-   untuk GUI browser.
+   untuk GUI browser. **Bukan Docker** (K11).
 2. **Pemasangan AgentDrop ke sistem** — salin kode ke lokasi tetap, taruh CLI
-   `agentdrop` di PATH.
-3. **Setup skill, memory, knowledge, prompt system** — profil + `SOUL.md`
-   (prompt system), skill per profil, direktori lessons, knowledge base, hook
-   audit.
+   `agentdrop` di PATH (lihat tabel layout di bawah).
+3. **Setup skill, memory, knowledge, prompt system**
+   - prompt system = `SOUL.md` per profil (K13)
+   - skill = per profil menurut `PROFILE_SKILLS`
+   - memory = `memory/lessons/` + blok `memory:` di config
+   - knowledge = `knowledge/` per domain, dibaca dan ditulis agent (K12)
+   - hook audit = shell hook + gateway hook
 4. **Kredensial** — tanya token/key, tulis ke tempat yang benar (K10).
 5. **Setup browser** — Chrome for Testing (K1/K2), unduh ekstensi wallet (K6).
 6. **Verifikasi akhir** — preflight.
@@ -109,12 +115,21 @@ AgentDrop mengikuti pola ini, bukan mengarang sendiri:
 | State (log, profil browser, key) | `~/.agentdrop/` | sama |
 | Config Hermes | `~/.hermes/` | sama |
 
-### Masih harus diputuskan, bukan diasumsikan
+### Struktur `knowledge/` (K12)
 
-**Docker tidak lagi wajib** sejak Camofox dihapus (K1) — Camofox satu-satunya
-pemakainya, dan `docker-compose.yml` sudah dihapus. Operator menyebutkannya
-sebagai dependensi, jadi tanyakan sebelum memasangnya: memasang Docker yang
-tidak dipakai adalah sampah, persis yang sedang dibersihkan.
+Berbeda dari `docs/`: `docs/` ditulis manusia dan statis; `knowledge/`
+dikembangkan agent. Satu berkas per domain supaya agent bisa membuka yang
+relevan saja, bukan memuat semuanya ke konteks.
+
+```
+knowledge/
+  chains/<slug>.md      RPC, chain ID, faucet, explorer, gas khas
+  projects/<slug>.md    syarat kualifikasi, pola task, jebakan yang ditemui
+  patterns/<slug>.md    pola lintas proyek (verifikasi tweet, klaim, dsb)
+```
+
+Isi awalnya hanya kerangka + cara mengisinya. Agent yang menambah isinya lewat
+`skills/self-improvement`, dan `SOUL.md` merujuk ke sini.
 
 ---
 

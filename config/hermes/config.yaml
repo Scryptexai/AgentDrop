@@ -9,10 +9,11 @@
 #   - hermes_cli/config_defaults.py  -> DEFAULT_CONFIG
 #
 # Yang TIDAK ada di Hermes dan sengaja TIDAK dipakai di sini:
-#   x browser.camofox.url   -> URL Camofox adalah ENV VAR `CAMOFOX_URL` di .env.
-#                              Key camofox asli HANYA: managed_persistence,
-#                              user_id, session_key, adopt_existing_tab,
-#                              rewrite_loopback_urls, loopback_host_alias.
+#   x browser.backend = "browser-use"
+#                           -> backend bawaan Hermes adalah headless Chromium
+#                              lewat `npx agent-browser`, tanpa ekstensi.
+#                              AgentDrop attach ke Chrome for Testing sendiri
+#                              lewat browser.cdp_url (lihat blok browser).
 #   x security.never_store_private_keys / stop_on_captcha / burner_only /
 #     require_approval_for_wallet
 #                           -> keempat key ini TIDAK ADA. Key `security:` sendiri
@@ -88,68 +89,60 @@ agent:
   reasoning_effort: "medium"
 
 # ----------------------------------------------------------------------------
-# BROWSER — Camofox
+# BROWSER — Chrome for Testing lewat CDP
 # ----------------------------------------------------------------------------
+# AgentDrop TIDAK memakai browser bawaan Hermes. Jalur default Hermes adalah
+# "Local mode: zero-cost headless Chromium via agent-browser"
+# (hermes-agent/tools/browser_tool.py:15) — headless, tanpa ekstensi, dan
+# karena itu tidak bisa dipakai untuk airdrop yang butuh wallet.
+#
+# Sebagai gantinya kita menyalakan Chrome for Testing sendiri (agentdrop
+# browser) lalu menyuruh Hermes ATTACH ke sana lewat cdp_url:
+#
+#   tools/browser_tool.py:2431-2435
+#       if cdp_override and not force_local:
+#           session_info = _create_cdp_session(task_id, cdp_override)
+#   tools/browser_tool.py:2909
+#       backend_args = ["--cdp", session_info["cdp_url"]]
+#   komentarnya: "The rest of the command (--json, command, args) is identical."
+#
+# Jadi seluruh tool native (browser_navigate, browser_snapshot, browser_click,
+# ...) dan protokol ref accessibility-tree tetap berfungsi persis sama.
+#
+# HARUS Chrome for Testing, BUKAN Google Chrome branded: sejak Chrome 137
+# build branded mengabaikan --load-extension.
+#
+# JANGAN set BROWSER_CDP_URL bersama --session: agent-browser >=0.13 membuat
+# browser lokal sendiri dan mengabaikan --cdp tanpa error apa pun.
 browser:
-  # "" (default) = Browser Use mode kalau CLI browser-use tersedia, selain itu
-  # built-in browser tools. PENTING dari config_defaults.py:
-  #   "Camofox setups always keep the built-in tools (no CDP surface)."
-  # Jadi dengan Camofox, nilai ini efektif diabaikan. Biarkan kosong.
+  # Kosong = built-in browser tools. Jangan diisi "browser-use".
   backend: ""
 
-  # Sesi browser ditutup otomatis setelah idle selama ini (detik).
-  # Default Hermes 120 (2 menit) terlalu pendek untuk farming: sesi login
-  # dashboard bisa tertutup di tengah rangkaian aksi. 1800 = 30 menit,
-  # disamakan dengan SESSION_TIMEOUT_MS Camofox.
+  # ATTACH ke Chrome yang sudah jalan, bukan meluncurkan browser sendiri.
+  # Harus loopback: CDP adalah remote control penuh atas browser, dan browser
+  # ini memegang wallet.
+  cdp_url: "http://127.0.0.1:9222"
+
+  # Sesi ditutup otomatis setelah idle selama ini (detik). Default Hermes 120
+  # (2 menit) terlalu pendek untuk farming: sesi login dashboard bisa tertutup
+  # di tengah rangkaian aksi.
   inactivity_timeout: 1800
-  # Timeout per perintah browser (screenshot, navigate, ...).
   command_timeout: 30
   # Karakter snapshot maksimum sebelum di-truncate-and-store. Naikkan untuk
   # halaman dashboard airdrop yang panjang.
   snapshot_threshold: 15000
-  # Rekam sesi sebagai WebM — bagus untuk audit trail.
   record_sessions: true
-  # Izinkan navigasi ke IP privat. FALSE: jangan pernah ke localhost dari agent.
+  # FALSE: agent tidak boleh diarahkan ke localhost.
   allow_private_urls: false
 
-  # ----------------------------------------------------------------------
-  # headed: jendela Chromium terlihat. HANYA berlaku untuk mode LOKAL Hermes
-  # (agent-browser), BUKAN untuk Camofox. Dari config_defaults.py:
-  #   "Local mode: launch Chromium with a visible window (also skips per-turn
-  #    cleanup so the window persists between turns; idle reaper still applies)"
-  #
-  # Setup AgentDrop memakai Camofox, dan config_defaults.py menyatakan:
-  #   "Camofox setups always keep the built-in tools (no CDP surface)."
-  # Jadi GUI-nya datang dari plugin vnc Camofox (Xvfb -> x11vnc -> noVNC),
-  # bukan dari flag ini. Biarkan false supaya tidak menyesatkan.
-  # Aktifkan HANYA kalau Anda sengaja meninggalkan Camofox dan memakai
-  # browser lokal Hermes di mesin ber-desktop.
+  # Tidak berlaku di mode CDP (hanya dipakai mode lokal Hermes). GUI di setup
+  # ini datang dari noVNC yang dijalankan `agentdrop browser`.
   headed: false
 
-  # Dialog/modal. `must_respond` = agent wajib menjawab dialog; auto-dismiss
+  # Dialog/modal. must_respond = agent wajib menjawab dialog; auto-dismiss
   # setelah dialog_timeout_s.
   dialog_policy: "must_respond"
   dialog_timeout_s: 300
-
-  camofox:
-    # true -> Hermes mengirim userId yang stabil dan scoped per profil, lalu
-    # server memetakannya ke profil Firefox yang persisten. INI yang membuat
-    # login dashboard airdrop bertahan antar sesi (pola "Take Over" Manus).
-    managed_persistence: true
-
-    # Identitas Camofox yang dikelola aplikasi lain. Kosongkan agar Hermes
-    # memakai userId-nya sendiri.
-    user_id: ""
-    session_key: ""
-
-    # Rehydrate tab_id dari Camofox sebelum membuat tab baru — berguna kalau
-    # gateway restart di tengah sesi.
-    adopt_existing_tab: true
-
-    # Camofox Docker membuka URL halaman dari DALAM container. Aktifkan untuk
-    # menulis ulang URL loopback ke alias host, tanpa mengubah CAMOFOX_URL.
-    rewrite_loopback_urls: true
-    loopback_host_alias: "host.docker.internal"
 
 # ----------------------------------------------------------------------------
 # TERMINAL

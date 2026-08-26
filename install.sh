@@ -1,291 +1,269 @@
 #!/usr/bin/env bash
 # ============================================================================
-# install.sh — One-click installer untuk Hermes Airdrop Agent (AgentDrop)
+# AgentDrop — installer
 # ============================================================================
-# Pemakaian:
-#   curl -fsSL https://raw.githubusercontent.com/<user>/AgentDrop/main/install.sh | bash
+# Memasang AgentDrop ke dalam sistem sebagai framework, mengikuti pola
+# installer Hermes (lihat AGENTS.md bagian "Acuan: pola installer Hermes").
 #
-# Atau, lebih aman (dan yang kami rekomendasikan) — unduh, baca, baru jalankan:
-#   curl -fsSL https://raw.githubusercontent.com/<user>/AgentDrop/main/install.sh -o install.sh
-#   less install.sh
-#   bash install.sh
+#   ./install.sh                     pasang penuh
+#   ./install.sh --skip-browser      lewati Chrome for Testing + ekstensi
+#   ./install.sh --skip-extensions   pasang Chrome, jangan unduh wallet
+#   ./install.sh --non-interactive   jangan tanya apa pun
+#   ./install.sh --dir PATH          lokasi kode
+#   ./install.sh --hermes-home PATH  lokasi data Hermes
+#   ./install.sh --verify-only       jalankan pemeriksaan saja
 #
-# Skrip ini TIDAK mem-pipe curl langsung ke bash untuk komponen apa pun.
-# Installer Hermes diunduh ke file dulu supaya bisa Anda periksa.
+# Yang TIDAK dilakukan installer: menyalakan browser, menyalakan gateway,
+# memasang cron, mengumpulkan log. Itu semua tugas CLI `agentdrop` yang
+# dipasang oleh skrip ini. Installer memasang; aplikasi dijalankan setelahnya.
 # ============================================================================
 set -euo pipefail
 
-REPO_URL="${AGENTDROP_REPO:-https://github.com/Scryptexai/AgentDrop.git}"
-INSTALL_DIR="${AGENTDROP_DIR:-$HOME/AgentDrop}"
-HERMES_INSTALLER="https://hermes-agent.nousresearch.com/install.sh"
-HERMES_INSTALLER_ALT="https://raw.githubusercontent.com/NousResearch/hermes-agent/main/scripts/install.sh"
-
-log()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
-ok()   { printf '\033[1;32m  ✓\033[0m %s\n' "$*"; }
-warn() { printf '\033[1;33m  !\033[0m %s\n' "$*"; }
-die()  { printf '\033[1;31m  ✗ %s\033[0m\n' "$*" >&2; exit 1; }
-
-echo "======================================================"
-echo "  Hermes Airdrop Agent (AgentDrop) — Installer"
-echo "======================================================"
-echo
-
-# ----------------------------------------------------------------------------
-# 0. Jangan root
-# ----------------------------------------------------------------------------
-if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
-  die "Jangan jalankan sebagai root/sudo. Hermes memasang ke \$HOME user biasa."
+# ---------------------------------------------------------------------------
+# GUARD — ditiru dari installer Hermes, dan keduanya beralasan.
+#
+# PYTHONPATH yang diwarisi dari sesi Python lain bisa membuat pip memasang dari
+# checkout yang salah, sehingga instalasi baru terlihat basi atau rusak.
+# Sulit didiagnosis kalau tidak diketahui, jadi dibuang di depan.
+# ---------------------------------------------------------------------------
+if [[ -n "${PYTHONPATH:-}" ]]; then
+  echo "  ! Mengabaikan PYTHONPATH warisan agar tidak terjadi module shadowing"
+  unset PYTHONPATH
+fi
+if [[ -n "${PYTHONHOME:-}" ]]; then
+  echo "  ! Mengabaikan PYTHONHOME warisan"
+  unset PYTHONHOME
 fi
 
-# ----------------------------------------------------------------------------
-# 1. Deteksi OS
-# ----------------------------------------------------------------------------
-log "Mendeteksi sistem"
-case "$(uname -s)" in
-  Linux*)  OS=linux ;;
-  Darwin*) OS=macos ;;
-  MINGW*|MSYS*|CYGWIN*) die "Windows native belum didukung skrip ini. Pakai WSL2." ;;
-  *)       die "OS tidak dikenal: $(uname -s)" ;;
-esac
-ok "$OS ($(uname -m))"
+# Mode interaktif. Di bawah `curl | bash` stdin bukan terminal, dan `read -p`
+# akan gagal dengan EOF sehingga `set -e` mematikan seluruh skrip TANPA PESAN.
+# Dideteksi di depan supaya semua tahap tanya-jawab bisa menyesuaikan diri.
+if [[ -t 0 ]]; then IS_INTERACTIVE=true; else IS_INTERACTIVE=false; fi
 
-# ----------------------------------------------------------------------------
-# 2. Dependency dasar
-# ----------------------------------------------------------------------------
-log "Memeriksa dependency dasar"
-missing=()
-for c in git curl; do
-  command -v "$c" >/dev/null 2>&1 || missing+=("$c")
+# ---------------------------------------------------------------------------
+# Opsi
+# ---------------------------------------------------------------------------
+SKIP_BROWSER=false
+SKIP_EXTENSIONS=false
+NON_INTERACTIVE=false
+VERIFY_ONLY=false
+INSTALL_DIR_ARG=""
+HERMES_HOME_ARG=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --skip-browser)     SKIP_BROWSER=true ;;
+    --skip-extensions)  SKIP_EXTENSIONS=true ;;
+    --non-interactive)  NON_INTERACTIVE=true ;;
+    --verify-only)      VERIFY_ONLY=true ;;
+    --dir)              INSTALL_DIR_ARG="${2:?butuh nilai}"; shift ;;
+    --hermes-home)      HERMES_HOME_ARG="${2:?butuh nilai}"; shift ;;
+    -h|--help)          sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    *) echo "opsi tidak dikenal: $1" >&2; exit 1 ;;
+  esac
+  shift
 done
 
-if [[ ${#missing[@]} -gt 0 ]]; then
-  log "Menginstal: ${missing[*]}"
-  if [[ "$OS" == "linux" ]]; then
-    if command -v apt-get >/dev/null 2>&1; then
-      sudo apt-get update -y && sudo apt-get install -y "${missing[@]}" ca-certificates
-    elif command -v dnf >/dev/null 2>&1; then
-      sudo dnf install -y "${missing[@]}" ca-certificates
-    elif command -v pacman >/dev/null 2>&1; then
-      sudo pacman -Sy --noconfirm "${missing[@]}"
-    else
-      die "Tidak tahu package manager untuk menginstal ${missing[*]}. Instal manual dulu."
-    fi
-  else
-    command -v brew >/dev/null 2>&1 || die "Butuh Homebrew di macOS: https://brew.sh"
-    brew install "${missing[@]}"
-  fi
-fi
-ok "git + curl tersedia"
+[[ "$NON_INTERACTIVE" == true ]] && IS_INTERACTIVE=false
 
-# ----------------------------------------------------------------------------
-# 2b. Docker — WAJIB untuk Camofox (browser GUI)
-# ----------------------------------------------------------------------------
-if command -v docker >/dev/null 2>&1; then
-  ok "docker sudah ada: $(docker --version 2>/dev/null | head -1)"
+# ---------------------------------------------------------------------------
+# Layout. FHS untuk root (kode di /usr/local/lib, perintah di /usr/local/bin),
+# lokasi pengguna untuk non-root. Data selalu di $HOME.
+# ---------------------------------------------------------------------------
+if [[ -n "$INSTALL_DIR_ARG" ]]; then
+  INSTALL_DIR="$INSTALL_DIR_ARG"
+elif [[ "$(id -u)" -eq 0 ]]; then
+  INSTALL_DIR="/usr/local/lib/agentdrop"
 else
-  log "Menginstal Docker (dibutuhkan untuk browser Camofox)"
-  if [[ "$OS" == "linux" ]]; then
-    # get.docker.com adalah jalur resmi yang direkomendasikan Docker.
-    # Unduh ke file dulu supaya bisa diperiksa, konsisten dengan installer Hermes.
-    tmp_docker="$(mktemp /tmp/get-docker.XXXXXX.sh)"
-    curl -fsSL https://get.docker.com -o "$tmp_docker" || die "gagal mengunduh installer Docker"
-    sudo sh "$tmp_docker"
-    rm -f "$tmp_docker"
-    # Izinkan user biasa memakai docker tanpa sudo.
-    sudo usermod -aG docker "$USER" 2>/dev/null || true
-    ok "docker terinstal"
-    warn "Anda baru ditambahkan ke grup 'docker'. Logout-login dulu, atau jalankan:"
-    warn "    newgrp docker"
-  else
-    die "Di macOS, instal Docker Desktop manual: https://docs.docker.com/get-docker/"
-  fi
+  INSTALL_DIR="$HOME/.agentdrop/app"
 fi
 
-# docker compose v2 (plugin) atau v1 (binary)
-if docker compose version >/dev/null 2>&1 || command -v docker-compose >/dev/null 2>&1; then
-  ok "docker compose tersedia"
-else
-  warn "docker compose tidak ada. Di Linux: sudo apt-get install -y docker-compose-plugin"
-fi
+if [[ -n "$HERMES_HOME_ARG" ]]; then export HERMES_HOME="$HERMES_HOME_ARG"; fi
 
-# ----------------------------------------------------------------------------
-# 2c. Python + PyYAML — dibutuhkan tools/validate_config.py
-# ----------------------------------------------------------------------------
-if command -v python3 >/dev/null 2>&1; then
-  ok "python3 ada"
-  if python3 -c "import yaml" >/dev/null 2>&1; then
-    ok "PyYAML ada"
-  else
-    log "Menginstal PyYAML (dibutuhkan validator)"
-    # PEP 668: banyak distro menandai Python sebagai externally-managed.
-    # Coba pip biasa dulu, fallback ke --user, terakhir --break-system-packages.
-    python3 -m pip install --quiet pyyaml 2>/dev/null \
-      || python3 -m pip install --quiet --user pyyaml 2>/dev/null \
-      || python3 -m pip install --quiet --break-system-packages pyyaml 2>/dev/null \
-      || warn "gagal menginstal PyYAML. Validator akan dilewati."
-    python3 -c "import yaml" >/dev/null 2>&1 && ok "PyYAML terpasang"
-  fi
-else
-  warn "python3 tidak ada — validator akan dilewati."
-fi
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# ----------------------------------------------------------------------------
-# 2d. eth-account — dibutuhkan tools/signing_daemon.py
-# ----------------------------------------------------------------------------
-# Tanpa ini daemon signing tidak bisa jalan, artinya rute wallet otonom mati
-# dan setiap signature harus dikerjakan manual.
-if command -v python3 >/dev/null 2>&1; then
-  if python3 -c "import eth_account" >/dev/null 2>&1; then
-    ok "eth-account ada"
-  else
-    log "Menginstal eth-account (dibutuhkan daemon signing)"
-    python3 -m pip install --quiet eth-account 2>/dev/null \
-      || python3 -m pip install --quiet --user eth-account 2>/dev/null \
-      || python3 -m pip install --quiet --break-system-packages eth-account 2>/dev/null \
-      || warn "gagal menginstal eth-account — daemon signing tidak akan jalan."
-    python3 -c "import eth_account" >/dev/null 2>&1 && ok "eth-account terpasang"
-  fi
-fi
+# Lokasi binari ditentukan di sini, bukan di dalam tahap, karena banner()
+# menampilkannya sebelum tahap apa pun berjalan.
+if [[ "$(id -u)" -eq 0 ]]; then BIN_DIR="/usr/local/bin"; else BIN_DIR="$HOME/.local/bin"; fi
 
-# ----------------------------------------------------------------------------
-# 3. Instal Hermes Agent
-# ----------------------------------------------------------------------------
-if command -v hermes >/dev/null 2>&1; then
-  ok "Hermes sudah terinstal: $(command -v hermes)"
-else
-  log "Mengunduh installer Hermes untuk diperiksa (tidak di-pipe langsung ke bash)"
-  tmp_installer="$(mktemp /tmp/hermes-install.XXXXXX.sh)"
-  if ! curl -fsSL "$HERMES_INSTALLER" -o "$tmp_installer" 2>/dev/null; then
-    warn "URL utama gagal, coba mirror GitHub resmi..."
-    curl -fsSL "$HERMES_INSTALLER_ALT" -o "$tmp_installer" || die "Gagal mengunduh installer Hermes dari kedua URL."
-  fi
-  ok "Installer tersimpan di $tmp_installer"
+# shellcheck source=lib/00-common.sh
+for m in "$REPO_ROOT"/lib/*.sh; do
+  # shellcheck source=/dev/null
+  source "$m"
+done
 
+# lib/00-common.sh menyetel HERMES_HOME_DIR dari $HERMES_HOME, jadi dibaca
+# setelah opsi diproses.
+HERMES_HOME_DIR="${HERMES_HOME:-$HOME/.hermes}"
+STATE_DIR="$HOME/.agentdrop"
+
+banner() {
+  printf '\n\033[1;35m'
+  echo "┌───────────────────────────────────────────────────────┐"
+  echo "│            AgentDrop — installer                      │"
+  echo "├───────────────────────────────────────────────────────┤"
+  echo "│  Hermes + Chrome/CDP + wallet resmi + log audit       │"
+  echo "└───────────────────────────────────────────────────────┘"
+  printf '\033[0m\n'
+  echo "  kode      : $INSTALL_DIR"
+  echo "  perintah  : $BIN_DIR"
+  echo "  data      : $STATE_DIR"
+  echo "  hermes    : $HERMES_HOME_DIR"
   echo
-  echo "  Installer Hermes akan dijalankan. Ini memasang uv, Python 3.11,"
-  echo "  Node.js, ripgrep, ffmpeg ke ~/.hermes."
-  echo "  Tekan Ctrl-C sekarang kalau Anda mau membacanya dulu: less $tmp_installer"
+}
+
+# ---------------------------------------------------------------------------
+# Tahap 1 — dependensi
+# ---------------------------------------------------------------------------
+stage_deps() { deps_install; }
+
+# ---------------------------------------------------------------------------
+# Tahap 2 — pasang kode ke sistem + CLI ke PATH
+# ---------------------------------------------------------------------------
+stage_install_code() {
+  _log "Memasang kode ke $INSTALL_DIR"
+  mkdir -p "$INSTALL_DIR"
+  # Kode disalin, bukan di-symlink ke repo: repo bisa dipindah atau dihapus,
+  # dan instalasi sistem tidak boleh ikut rusak.
+  for item in lib tools skills config hooks agent-hooks knowledge AGENTS.md; do
+    [[ -e "$REPO_ROOT/$item" ]] || continue
+    rm -rf "${INSTALL_DIR:?}/$item"
+    cp -r "$REPO_ROOT/$item" "$INSTALL_DIR/"
+  done
+  _ok "kode terpasang"
+
+  _log "Memasang perintah agentdrop"
+  mkdir -p "$BIN_DIR"
+  install -m 755 "$REPO_ROOT/agentdrop" "$BIN_DIR/agentdrop"
+  _ok "$BIN_DIR/agentdrop"
+
+  case ":$PATH:" in
+    *":$BIN_DIR:"*) ;;
+    *) _warn "$BIN_DIR tidak ada di PATH. Tambahkan ke shell rc Anda:"
+       _warn "    export PATH=\"$BIN_DIR:\$PATH\"" ;;
+  esac
+}
+
+# ---------------------------------------------------------------------------
+# Tahap 3 — kredensial
+# ---------------------------------------------------------------------------
+stage_credentials() {
+  if [[ "$IS_INTERACTIVE" == true ]]; then
+    credentials_setup
+  else
+    _log "Kredensial (non-interaktif)"
+    mkdir -p "$HERMES_HOME_DIR"
+    ENV_FILE="$HERMES_HOME_DIR/.env"
+    [[ -f "$ENV_FILE" ]] || cp "$REPO_ROOT/.env.example" "$ENV_FILE"
+    chmod 600 "$ENV_FILE"
+    _warn "mode non-interaktif: isi $ENV_FILE secara manual"
+  fi
+}
+
+# ---------------------------------------------------------------------------
+# Tahap 4 — config, profil, skill, memory, knowledge, hook
+# ---------------------------------------------------------------------------
+stage_setup() {
+  hermes_install
+
+  _log "Knowledge base"
+  # knowledge/ sudah tersalin bersama kode di tahap 2. Yang dipasang di sini
+  # adalah salinan KERJA yang bisa ditulis agent, bukan salinan read-only.
+  mkdir -p "$STATE_DIR/knowledge"
+  cp -rn "$INSTALL_DIR/knowledge/." "$STATE_DIR/knowledge/" 2>/dev/null || true
+  _ok "$STATE_DIR/knowledge (agent boleh menulis di sini)"
+
+  _log "Struktur data"
+  mkdir -p "$REPO_ROOT/data/campaigns" "$REPO_ROOT/data/screenshots" \
+           "$STATE_DIR/logs" "$STATE_DIR/run" "$LOG_DIR"
+  _ok "data/, ~/.agentdrop/{logs,run}"
+}
+
+# ---------------------------------------------------------------------------
+# Tahap 5 — browser
+# ---------------------------------------------------------------------------
+stage_browser() {
+  [[ "$SKIP_BROWSER" == true ]] && { _warn "browser dilewati (--skip-browser)"; return 0; }
+
+  _log "Browser"
+  local CHROME; CHROME="$(browser_find_chrome || true)"
+  if [[ -n "$CHROME" ]]; then
+    _ok "Chrome for Testing sudah ada: $CHROME"
+  else
+    _warn "Chrome for Testing belum ada. Memasang..."
+    browser_install_chrome || _warn "gagal memasang — jalankan nanti: agentdrop browser"
+  fi
+
+  [[ "$SKIP_EXTENSIONS" == true ]] && { _warn "ekstensi dilewati (--skip-extensions)"; return 0; }
   echo
-  read -r -p "  Lanjutkan? [y/N] " jawab
-  [[ "$jawab" =~ ^[Yy]$ ]] || die "Dibatalkan oleh user."
+  _log "Ekstensi wallet"
+  echo "  AgentDrop memasang wallet RESMI (MetaMask, OKX, Phantom), bukan"
+  echo "  ekstensi bikinan sendiri. Ekstensi non-official terdeteksi sebagai"
+  echo "  klien asing, berisiko di-ban proyek, dan ditolak sebagian dApp."
+  echo
+  echo "  Yang akan diunduh adalah kode pihak ketiga ke dalam browser yang"
+  echo "  akan memegang dana Anda. Cocokkan ID di config/extensions.yaml"
+  echo "  dengan halaman Chrome Web Store resmi proyeknya sebelum lanjut."
+  if [[ "$IS_INTERACTIVE" == true ]]; then
+    local j
+    read -r -p "  Unduh sekarang? [y/N]: " j
+    case "$j" in
+      y|Y) browser_install_extensions || _warn "sebagian ekstensi gagal" ;;
+      *)   _warn "dilewati — jalankan nanti: agentdrop extensions" ;;
+    esac
+  else
+    _warn "mode non-interaktif: jalankan nanti: agentdrop extensions"
+  fi
+}
 
-  bash "$tmp_installer"
-  rm -f "$tmp_installer"
+# ---------------------------------------------------------------------------
+# Tahap 6 — verifikasi
+# ---------------------------------------------------------------------------
+stage_verify() {
+  _log "Verifikasi"
+  verify_run || true
+}
 
-  # Installer menambahkan launcher ke shell rc; muat supaya `hermes` ada di PATH.
-  # shellcheck disable=SC1090,SC1091
-  [[ -f "$HOME/.bashrc" ]] && source "$HOME/.bashrc" 2>/dev/null || true
-  # shellcheck disable=SC1090,SC1091
-  [[ -f "$HOME/.zshrc" ]] && source "$HOME/.zshrc" 2>/dev/null || true
+# ---------------------------------------------------------------------------
+banner
+if [[ "$VERIFY_ONLY" == true ]]; then
+  stage_verify
+  exit 0
 fi
 
-# ----------------------------------------------------------------------------
-# 4. Clone repo AgentDrop
-# ----------------------------------------------------------------------------
-if [[ -d "$INSTALL_DIR/.git" ]]; then
-  log "Repo sudah ada di $INSTALL_DIR — git pull"
-  git -C "$INSTALL_DIR" pull --ff-only
-else
-  log "Clone AgentDrop ke $INSTALL_DIR"
-  git clone "$REPO_URL" "$INSTALL_DIR"
-fi
-ok "$INSTALL_DIR"
+stage_deps
+stage_install_code
+stage_credentials
+stage_setup
+stage_browser
+stage_verify
 
-cd "$INSTALL_DIR"
+cat <<'EOF'
 
-# ----------------------------------------------------------------------------
-# 5. .env
-# ----------------------------------------------------------------------------
-if [[ ! -f "$INSTALL_DIR/.env" ]]; then
-  cp .env.example .env
-  chmod 600 .env
-  ok ".env dibuat dari .env.example (mode 600)"
-  warn "EDIT $INSTALL_DIR/.env — isi API key Anda sebelum lanjut."
-else
-  ok ".env sudah ada, tidak ditimpa"
-fi
+============================================================
+  Pemasangan selesai
+============================================================
 
-# ----------------------------------------------------------------------------
-# 6. Setup config + profil + skill
-# ----------------------------------------------------------------------------
-log "Menjalankan scripts/setup.sh"
-chmod +x scripts/*.sh
-bash scripts/setup.sh
+  Selanjutnya, berurutan:
 
-# ----------------------------------------------------------------------------
-# 7. Validasi statis
-# ----------------------------------------------------------------------------
-log "Menjalankan validator"
-if python3 -c "import yaml" >/dev/null 2>&1; then
-  python3 tools/validate_config.py || warn "Validator menemukan masalah — lihat output di atas."
-else
-  warn "PyYAML tidak tersedia, validator dilewati."
-fi
+    1. agentdrop status        pastikan semuanya hijau
+    2. agentdrop browser       nyalakan Chrome + noVNC
+       -> buka noVNC, buat/impor wallet, login Google/Discord/X
+       -> di console pastikan window.ethereum ADA sebelum lanjut
+    3. agentdrop burn-in       uji stabilisasi browser SEBELUM agent dipercaya
+    4. agentdrop start         nyalakan gateway Telegram
 
-# ----------------------------------------------------------------------------
-# 8. Telegram (UI utama) — opsional tapi ini cara pakai yang direkomendasikan
-# ----------------------------------------------------------------------------
-echo
-log "Menyiapkan Telegram sebagai UI"
-echo "  Alur yang direkomendasikan: Anda forward pengumuman airdrop ke bot,"
-echo "  orchestrator menganalisis & mengklasifikasi task, lalu mendelegasikan."
-echo
-set -a; # shellcheck disable=SC1091
-source "$INSTALL_DIR/.env" 2>/dev/null || true; set +a
+  Langkah 3 bukan formalitas. Tanpanya kegagalan pertama baru terlihat saat
+  agent sedang mengerjakan campaign sungguhan, dan gejalanya akan terlihat
+  seperti kesalahan proyek — bukan seperti browser yang belum stabil.
 
-if [[ -n "${TELEGRAM_BOT_TOKEN:-}" ]]; then
-  ok "TELEGRAM_BOT_TOKEN sudah terisi"
-  [[ -z "${TELEGRAM_ALLOWED_USERS:-}" ]] && warn "TELEGRAM_ALLOWED_USERS masih kosong — bot terbuka untuk siapa pun!"
-else
-  warn "TELEGRAM_BOT_TOKEN kosong."
-  echo "    1. Buka @BotFather di Telegram -> /newbot -> salin token"
-  echo "    2. Isi di $INSTALL_DIR/.env"
-  echo "    3. Ambil user ID Anda dari @userinfobot -> isi TELEGRAM_ALLOWED_USERS"
-  echo "    4. Ulangi:  bash $INSTALL_DIR/scripts/setup.sh"
-fi
+  Perintah lain:
 
-# ----------------------------------------------------------------------------
-# 9. Selesai
-# ----------------------------------------------------------------------------
-echo
-echo "======================================================"
-ok "Instalasi selesai."
-echo "======================================================"
-echo
-echo "LANGKAH BERURUT:"
-echo
-echo "  1. Isi API key + Telegram:"
-echo "       \$EDITOR $INSTALL_DIR/.env"
-echo "     Lalu sebar ke semua profil:"
-echo "       bash $INSTALL_DIR/scripts/setup.sh"
-echo
-echo "  2. Pilih model:"
-echo "       hermes model"
-echo
-echo "  3. Nyalakan browser GUI (Camofox + noVNC):"
-echo "       bash $INSTALL_DIR/scripts/start-browser.sh"
-echo
-echo "  4. Login VISUAL sekali per platform (agent tidak boleh mengerjakan ini):"
-echo "       bash $INSTALL_DIR/scripts/takeover.sh worker-orchestrator https://x.com/login"
-echo "     GUI-nya di: http://localhost:6080/vnc.html"
-echo
-echo "  5. BURN-IN dulu — jangan dilewati (stabilkan browser sebelum kerja):"
-echo "       bash $INSTALL_DIR/scripts/burn-in.sh"
-echo "     Uji 1-4 saja; Uji 5 (wallet) dan 6 (sosial) butuh flag eksplisit."
-echo "     Tonton lewat noVNC saat berjalan — jangan cuma baca lognya."
-echo
-echo "  6. Nyalakan bot Telegram:"
-echo "       bash $INSTALL_DIR/scripts/start-gateway.sh"
-echo
-echo "  7. Pakai. Kirim ke bot Anda:"
-echo "       🔈 NamaAirdrop"
-echo "       ➖ Register"
-echo "       https://contoh.com/register?r=KODE"
-echo "       ➖ Connect EVM Wallet"
-echo "       ➖ Complete Daily Mission"
-echo "       ➖ Done"
-echo
-echo "  8. Jadwalkan daily mission:"
-echo "       bash $INSTALL_DIR/scripts/install-cron.sh"
-echo
-echo "Dokumentasi lengkap: $INSTALL_DIR/README.md"
+    agentdrop extensions       pasang/perbarui wallet
+    agentdrop logs             kumpulkan log untuk dianalisis
+    agentdrop audit doctor     diagnosis kalau ada yang rusak
+    agentdrop cron             pasang jadwal otomatis
+    agentdrop --help           semua perintah
+
+  Dokumentasi: AGENTS.md (konteks build) dan docs/prosedur-uji.md
+EOF
