@@ -894,7 +894,10 @@ def check_no_stray_cjk() -> None:
     targets = list((REPO / "config").rglob("*.md")) + \
               list((REPO / "config").rglob("*.yaml")) + \
               list((REPO / "skills").rglob("*.md")) + \
-              [REPO / "README.md"]
+              list((REPO / "scripts").glob("*.sh")) + \
+              list((REPO / "extensions").rglob("*.js")) + \
+              list((REPO / "camofox-plugins").rglob("*.js")) + \
+              [REPO / "README.md", REPO / "install.sh"]
     cjk = re.compile(r"[\u4e00-\u9fff\u3040-\u30ff]")
     hits = []
     for f in targets:
