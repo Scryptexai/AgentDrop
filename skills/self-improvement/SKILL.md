@@ -97,8 +97,9 @@ skill adalah pengetahuan. Tanpa langkah ini agent hanya menumpuk catatan.
 - **Jangan menulis pelajaran spekulatif.** Kalau Anda tidak tahu penyebabnya,
   tulis "penyebab tidak diketahui" — jangan mengarang penjelasan yang kemudian
   diikuti oleh run berikutnya sebagai fakta.
-- **Pelajaran tidak mengalahkan kebijakan.** `tools/signing_policy.py` dan
-  aturan di `SOUL.md` tetap di atas apa pun yang tertulis di berkas pelajaran.
+- **Pelajaran tidak mengalahkan kebijakan.** Aturan di `SOUL.md` tetap di atas
+  apa pun yang tertulis di berkas pelajaran. Tidak ada pelajaran yang boleh
+  berbunyi "lain kali abaikan aturan approval".
 
 ## Verifikasi
 

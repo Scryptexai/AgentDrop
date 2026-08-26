@@ -70,14 +70,15 @@ PLAYBOOK = [
     },
     {
         "match": lambda r: r.get("component") == "signing" and r.get("level") == "error",
-        "cause": "Permintaan signing ditolak",
-        "fix": "python3 tools/signing_policy.py --help",
+        "cause": "Approval wallet bermasalah",
+        "fix": "agentdrop browser-status",
         "where": [
-            "config/hermes/signing-policy.yaml  (postur: apa yang otomatis)",
-            "tools/signing_policy.py            (mesin keputusan)",
+            "config/extensions.yaml                          (wallet yang dipasang)",
+            "config/hermes/profiles/worker-orchestrator/SOUL.md  (aturan approval)",
         ],
-        "hint": "Penolakan adalah kebijakan bekerja dengan benar, bukan bug. "
-                "Periksa `rule` di detail untuk tahu aturan mana yang menolak.",
+        "hint": "Wallet resmi dipegang manusia: approval ditandatangani lewat "
+                "noVNC, bukan oleh agent. Kalau popup tidak muncul, ekstensi "
+                "wallet kemungkinan tidak termuat.",
     },
     {
         "match": lambda r: r.get("component") == "delegation" and r.get("level") == "error",

@@ -28,7 +28,7 @@ agent:
   disabled_toolsets: [terminal, code_execution]
 
 browser:
-  # 1800 (30 menit), disamakan dengan SESSION_TIMEOUT_MS Camofox.
+  # 1800 (30 menit) — cukup panjang untuk satu rangkaian aksi farming.
   # Default Hermes 120 detik terlalu pendek: sesi login dashboard
   # bisa tertutup di tengah rangkaian aksi.
   inactivity_timeout: 1800
@@ -39,7 +39,7 @@ browser:
   allow_private_urls: false
 
   # headed HANYA berlaku untuk browser lokal Hermes (agent-browser), BUKAN
-  # Camofox. GUI di setup ini datang dari plugin vnc Camofox
+  # mode CDP. GUI di setup ini datang dari noVNC
   # (Xvfb 1920x1080 -> x11vnc :5900 -> noVNC :6080). Biarkan false.
   headed: false
   # ------------------------------------------------------------------------

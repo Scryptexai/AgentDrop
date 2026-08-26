@@ -35,9 +35,14 @@ operator — bukan penyamaran. Detail: [`docs/research.md`](docs/research.md) §
 
 ## ✨ Fitur
 
-- **5 worker terspesialisasi** — analyzer, daily, quests, discord, monitor
-- **Browser persisten** — Camofox (Camoufox/Firefox) dengan profil yang bertahan
-  antar sesi, jadi login dashboard tidak hilang setiap hari
+- **6 worker terspesialisasi** — analyzer, daily, quests, discord, monitor, x
+- **Browser asli + wallet resmi** — Chrome for Testing lewat CDP dengan
+  MetaMask/OKX/Phantom yang diunduh, bukan ekstensi bikinan sendiri
+- **Profil browser persisten** — login dashboard bertahan antar sesi
+- **Log audit penuh** — setiap tool call, keputusan, dan kesalahan tercatat,
+  dengan `agentdrop audit doctor` yang menunjuk berkas yang harus dibaca
+- **Akses shell dimatikan** untuk semua worker — agent memakai tool native, tidak
+  pernah mengetik perintah untuk membuka browser sendiri
 - **Filter Sniper 4 dimensi** — Team, Product, Narrative, Timing & Cost
 - **Scheduler native Hermes** — bukan system crontab
 - **Audit trail** — screenshot bukti, log bertimestamp, rekaman sesi WebM
@@ -125,8 +130,9 @@ transaksi. Itu batas yang tidak boleh dilewati.
 ### Menyalakan
 
 ```bash
-bash scripts/start-gateway.sh              # service background
-bash scripts/start-gateway.sh --foreground # foreground (WSL/Docker/Termux)
+agentdrop start     # gateway Telegram; agent berjalan di atasnya
+agentdrop stop
+agentdrop status    # periksa kesiapan sebelum mulai
 ```
 
 > ⚠️ **Isi `TELEGRAM_ALLOWED_USERS` dulu.** Tanpa itu bot menerima perintah dari
@@ -136,68 +142,83 @@ bash scripts/start-gateway.sh --foreground # foreground (WSL/Docker/Termux)
 
 ## 📋 Prasyarat
 
-- Linux / macOS / WSL2 (bukan root)
-- Docker (untuk Camofox)
-- Python 3 (untuk validator)
+- Linux / macOS / WSL2
+- Python 3.9+
+- Node.js 18+  (Hermes menjalankan browser lewat `npx agent-browser`)
 - API key: Anthropic / OpenRouter / OpenAI / Google / Nous Portal / endpoint custom
+- Untuk GUI browser: `xvfb`, `x11vnc`, `novnc`
+
+**Docker tidak dibutuhkan.** Browser berjalan langsung di host.
 
 ---
 
 ## 🚀 Instalasi
 
-### Satu perintah
-
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Scryptexai/AgentDrop/main/install.sh -o install.sh
-less install.sh        # baca dulu — kami tidak mem-pipe curl ke bash
-bash install.sh
+git clone https://github.com/Scryptexai/AgentDrop.git
+cd AgentDrop
+./install.sh
 ```
 
-Yang dikerjakan `install.sh`:
+`install.sh` adalah **index**: ia me-source `lib/*.sh` dan menjalankan
+tahap-tahapnya berurutan. Ia memasang, tidak menjalankan apa pun.
 
-| | |
+| Tahap | Yang dikerjakan |
 |---|---|
-| ✅ | Dependency dasar (`git`, `curl`) via apt/dnf/pacman/brew |
-| ✅ | **Docker** (dari `get.docker.com`, diunduh ke file dulu + tambah user ke grup `docker`) |
-| ✅ | **PyYAML** (dengan fallback `--user` → `--break-system-packages` untuk PEP 668) |
-| ✅ | **Hermes Agent** (diunduh ke file dulu supaya bisa diperiksa, bukan di-pipe ke bash) |
-| ✅ | Clone repo + buat `.env` (mode 600) |
-| ✅ | **6 profil worker + 6 skill** ke `~/.hermes/profiles/*/` |
-| ✅ | Secret tersebar ke tiap profil (tiap profil = HERMES_HOME terpisah) |
-| ✅ | Jalankan validator |
-| ⚠️ | Telegram: **memeriksa** dan memberi instruksi, tidak membuatkan bot untuk Anda |
+| 1 | Dependensi: python3+venv, node, hermes, Xvfb/x11vnc/websockify |
+| 2 | Kode ke `/usr/local/lib/agentdrop` (root) atau `~/.agentdrop/app`, perintah `agentdrop` ke PATH |
+| 3 | Kredensial — ditanya langsung, ditulis ke tempat yang benar |
+| 4 | Config, 7 profil + `SOUL.md`, skill per profil, memory, knowledge, hook audit |
+| 5 | Chrome for Testing + unduh wallet resmi |
+| 6 | Verifikasi |
 
-Yang **tetap** harus Anda lakukan sendiri: isi API key + token Telegram di
-`.env`, pilih model, dan login visual sekali per platform.
+Opsi: `--skip-browser`, `--skip-extensions`, `--non-interactive`, `--dir PATH`,
+`--hermes-home PATH`, `--verify-only`.
 
-### Manual
+**Private key tidak pernah masuk `.env`.** `.env` tersalin ke setiap profil, jadi
+satu key di sana berarti key itu ada di tujuh tempat. Installer menulisnya ke
+berkas tersendiri berizin 0600 dan menyimpan path-nya di `.env`.
+
+Yang **tetap** harus Anda lakukan sendiri: mengisi API key dan token Telegram,
+membuat atau mengimpor wallet di browser, dan login visual sekali per platform.
+
+---
+
+## 🎛️ Perintah
 
 ```bash
-# 1. Hermes Agent
-curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash
-source ~/.bashrc
-
-# 2. Repo ini
-git clone https://github.com/Scryptexai/AgentDrop.git ~/AgentDrop
-cd ~/AgentDrop
-
-# 3. Secret
-cp .env.example .env && chmod 600 .env
-$EDITOR .env                    # isi API key
-
-# 4. Pasang config + 5 profil + skill
-bash scripts/setup.sh
-
-# 5. Camofox (butuh Docker)
-bash scripts/start-browser.sh
-
-# 6. Jadwal otomatis
-bash scripts/install-cron.sh
-
-# 7. Verifikasi
-python3 tools/validate_config.py
-hermes doctor
+agentdrop status          periksa kesiapan — lakukan ini lebih dulu
+agentdrop browser         nyalakan Chrome for Testing + noVNC
+agentdrop extensions      pasang/perbarui wallet resmi
+agentdrop start           nyalakan gateway Telegram (agent berjalan di atasnya)
+agentdrop stop
+agentdrop audit doctor    diagnosis kalau ada yang rusak
+agentdrop audit trace ID  runtutan satu task
+agentdrop logs            kumpulkan log ke data/audit/ untuk dianalisis
+agentdrop cron            pasang jadwal otomatis
+agentdrop burn-in         uji stabilisasi sebelum agent dipercaya
 ```
+
+`agentdrop start` menyalakan gateway **dan** agent sekaligus — agent berjalan di
+atas gateway, jadi memisahkannya jadi dua perintah hanya membingungkan.
+
+---
+
+## 🌐 Browser
+
+Chrome for Testing, disambungkan lewat CDP. Dua hal yang perlu diketahui:
+
+- **Harus Chrome for Testing, bukan Google Chrome branded.** Sejak Chrome 137,
+  build branded mengabaikan `--load-extension` — ekstensi tidak akan termuat dan
+  Chrome tidak memberi pesan error apa pun.
+- **Verifikasi sebelum farming.** Buka noVNC, muat halaman apa pun, lalu di
+  console pastikan `window.ethereum` dan `window.solana` ada. Kalau `undefined`,
+  ekstensi tidak termuat dan semua task wallet akan gagal dengan cara yang
+  membingungkan.
+
+Wallet yang dipakai adalah **MetaMask / OKX / Phantom yang diunduh**, bukan
+ekstensi bikinan sendiri. Ekstensi non-official terdeteksi sebagai klien asing,
+berisiko di-ban proyek, dan ditolak sebagian dApp.
 
 ---
 
@@ -207,12 +228,12 @@ Jangan langsung menyuruh agent mengerjakan campaign. **Stabilkan lapisan
 browser-nya dulu** dengan eksekusi nyata, lalu baru naik.
 
 ```bash
-./scripts/burn-in.sh                 # Uji 1-4 (aman)
-./scripts/burn-in.sh 3               # ulang satu uji saja
-./scripts/burn-in.sh --with-wallet   # + Uji 5 (connect wallet, TESTNET saja)
-./scripts/burn-in.sh --with-social   # + Uji 6 (alur sosial nyata)
-./scripts/burn-in.sh --all           # Uji 1-6
-./scripts/burn-in.sh --profile worker-quests
+agentdrop burn-in                 # Uji 1-4 (aman)
+agentdrop burn-in 3               # ulang satu uji saja
+agentdrop burn-in --with-wallet   # + Uji 5 (connect wallet, TESTNET saja)
+agentdrop burn-in --with-social   # + Uji 6 (alur sosial nyata)
+agentdrop burn-in --all           # Uji 1-6
+agentdrop burn-in --profile worker-quests
 ```
 
 | Uji | Yang diuji | Sentuh wallet/sosial? |
@@ -263,42 +284,25 @@ hermes --profile worker-monitor chat -q "Buat ringkasan mingguan semua campaign"
 
 ## 🖥️ GUI Browser — bukan headless
 
-Task airdrop hampir semuanya interaksi GUI, jadi browser di sini dijalankan
-**terlihat**, dengan resolusi manusia, dan bisa Anda ambil alih kapan saja.
+Browser dijalankan dengan **GUI sungguhan**, bukan headless. Alasannya praktis:
+login Google/Discord/X, OAuth, MFA, dan CAPTCHA dikerjakan **manusia**, dan
+manusia tidak bisa mengerjakan itu di browser yang tidak terlihat.
 
-### Arsitekturnya
-
-Plugin `vnc` camofox-browser menyusun rantai ini (dari `plugins/vnc/README.md`):
+Rantainya:
 
 ```
-Camoufox (Xvfb :99, 1920x1080)
-    ↑
-x11vnc (attach ke :99, port 5900)
-    ↑
-noVNC / websockify (port 6080)
-    ↑
-Browser Anda → http://localhost:6080/vnc.html
+Chrome for Testing  ->  Xvfb :99  ->  x11vnc :5900  ->  noVNC :6080
+       |                                                        |
+       +-- CDP :9222 <-- Hermes attach ke sini                  +-- browser Anda
 ```
 
-Plugin ini menimpa display virtual 1×1 bawaan mode headless dengan resolusi
-yang bisa dipakai manusia, lalu menjalankan watcher yang mendeteksi display
-Xvfb dan memasang x11vnc + noVNC. Watcher-nya menangani restart browser
-otomatis — saat Camoufox relaunch di display baru, x11vnc pasang ulang.
+`agentdrop browser` menyalakan keempatnya. Anda menonton dan mengambil alih di
+`http://localhost:6080/vnc.html`, agent memakai sesi yang sama.
 
-Dependency (`x11vnc`, `novnc`, `python3-websockify`, `net-tools`, `procps`)
-sudah terpasang di image saat build oleh `scripts/install-plugin-deps.sh`.
+> ⚠️ **Kalau port 6080 bisa diakses dari luar mesin, set `VNC_PASSWORD`.**
+> Tanpa itu siapa pun yang mencapai port tersebut mengendalikan browser yang
+> memegang wallet Anda.
 
-### Kenapa `headed: true` bukan jawabannya
-
-`browser.headed` di Hermes hanya berlaku untuk **browser lokal Hermes**
-(agent-browser/Chromium), bukan Camofox. Dari `config_defaults.py`:
-
-> "Camofox setups always keep the built-in tools (no CDP surface)."
-
-Jadi kalau Anda memakai Camofox (yang kami lakukan), `headed` tidak
-berpengaruh apa pun. GUI-nya datang dari plugin vnc. Karena itu semua config di
-repo ini menulis `headed: false` **dengan komentar penjelas**, supaya tidak ada
-yang mengira itu sudah mengaktifkan GUI.
 
 ### Bagaimana agent melihat & bertindak (tanpa selector)
 
@@ -337,107 +341,89 @@ manusia lewat noVNC.
 
 ### Login sekali, dipakai semua worker
 
-Plugin `persistence` menyimpan cookies + localStorage — dan kami aktifkan
-`indexedDB: true` supaya login berbasis IndexedDB (Firebase Auth, SSO) ikut
-tersimpan — ke volume Docker. Dari README upstream:
-
-> "Sessions survive browser restarts — log in once (via cookies or VNC), and
-> subsequent sessions restore the authenticated state automatically."
+Semua worker memakai **satu profil browser yang sama**
+(`~/.agentdrop/chrome-profile`). Anda login sekali lewat noVNC, dan sesi itu
+dipakai worker mana pun setelahnya. Cookie dan localStorage bertahan di profil
+itu selama tidak dihapus.
 
 ### Alur take-over
 
-```bash
-./scripts/takeover.sh worker-daily https://app.galxe.com/login
+```
+1. agent mengerjakan task sampai butuh login
+2. agent berhenti, lapor lewat Telegram: "butuh login <platform>"
+3. Anda buka noVNC, selesaikan login/MFA/CAPTCHA
+4. Anda balas "lanjut"
+5. agent melanjutkan dengan sesi yang sudah login
 ```
 
-Skrip ini:
-1. Menghitung **userId Camofox yang persis sama** dengan yang akan dipakai
-   Hermes untuk profil itu
-2. Membuka halaman login di browser persisten
-3. Memberi Anda URL noVNC untuk login manual (MFA, CAPTCHA — agent tidak
-   menyentuh ini)
-4. Mengekspor `storage_state` sebagai cadangan
-
-**Langkah 1 itu yang penting.** Hermes menurunkan userId secara deterministik
-dari `HERMES_HOME` (`tools/browser_camofox_state.py:get_camofox_identity`):
-
-```python
-scope_root  = HERMES_HOME / "browser_auth" / "camofox"
-user_id     = "hermes_" + uuid5(NAMESPACE_URL, f"camofox-user:{scope_root}").hex[:10]
-session_key = "task_"   + uuid5(NAMESPACE_URL, f"camofox-session:{scope_root}:{task}").hex[:16]
-```
-
-Kalau skrip login memakai userId karangan, login Anda masuk ke profil Firefox
-yang **berbeda** dari yang dipakai agent — sia-sia. Formula di atas sudah diuji
-melawan fungsi Hermes asli dan menghasilkan nilai identik
-(`hermes_68c00ea529` / `task_8fe86c2102965395` untuk `worker-daily`).
-
-> **Kalau semua worker harus berbagi satu login:** set `CAMOFOX_USER_ID` di
-> `.env`. Dari `_camofox_identity_override()`: *"Integrations that own the
-> visible Camofox browser can set a shared user ID so Hermes operates in the
-> same browser profile."* `takeover.sh` otomatis mengikuti nilai itu.
->
-> ⚠️ **Trade-off yang harus Anda tahu:** `_adopt_existing_tab` menyaring tab
-> berdasarkan `userId` saja. Makin banyak worker berbagi satu `userId`, makin
-> besar peluang agent meng-adopsi tab milik worker lain. Kalau Anda memakai
-> identitas bersama, aturan "verifikasi URL sebelum bertindak" di setiap skill
-> jadi wajib, bukan opsional.
+Agent tidak pernah menyentuh kredensial Anda dan tidak pernah mengetik password.
 
 ### Catatan jujur
 
-Agent tidak "melihat" GUI seperti manusia. Ia membaca snapshot DOM dan
-screenshot lewat API Camofox. Yang berubah dengan setup ini:
+- Ekstensi wallet harus dibuat atau diimpor **manual sekali** lewat noVNC. Agent
+  tidak bisa dan tidak boleh melakukannya.
+- `window.ethereum` harus diverifikasi ada sebelum farming dimulai. Lihat bagian
+  Browser di atas.
+- Chrome for Testing, bukan Google Chrome branded. Lihat alasan di bagian Browser.
 
-- Browser berjalan **terlihat** di 1920×1080, bukan display 1×1 → rendering dan
-  layout nyata, screenshot cocok dengan yang manusia lihat
-- **Anda bisa masuk dan mengambil alih** kapan saja untuk MFA/CAPTCHA
-- Login **bertahan** antar sesi dan antar restart
-
----
 
 ## 📁 Struktur
 
 ```
 AgentDrop/
 ├── README.md
-├── install.sh                  # one-click installer
-├── docker-compose.yml          # Camofox + VNC (tanpa `build:` — lihat catatan di file)
+├── AGENTS.md                   # konteks build — WAJIB dibaca sebelum mengubah kode
+├── install.sh                  # INDEX: me-source lib/*.sh, memasang, tidak menjalankan
+├── agentdrop                   # satu-satunya perintah runtime
 ├── .env.example
+│
+├── lib/                        # modul yang di-source install.sh
+│   ├── 00-common.sh            #   path + logging
+│   ├── 10-deps.sh              #   python3, node, hermes, Xvfb/x11vnc
+│   ├── 20-credentials.sh       #   tanya token/key, tulis ke tempat yang benar
+│   ├── 30-hermes.sh            #   config, profil, skill, memory, hook
+│   ├── 40-browser.sh           #   Chrome for Testing, wallet, noVNC
+│   └── 50-verify.sh            #   preflight
+│
 ├── config/
-│   ├── camofox/camofox.config.json   # plugin vnc + persistence (di-mount ke /app/)
+│   ├── extensions.yaml         # daftar wallet yang diunduh
 │   └── hermes/
-│       ├── config.yaml         # config utama
+│       ├── config.yaml         # config utama (browser.cdp_url, toolsets, security)
 │       ├── SOUL.md             # identitas agent utama
-│       └── profiles/
-│           ├── worker-orchestrator/  {config.yaml, SOUL.md}  ← pintu masuk Telegram
-│           ├── worker-analyzer/      {config.yaml, SOUL.md}
-│           ├── worker-daily/         {config.yaml, SOUL.md}
-│           ├── worker-quests/        {config.yaml, SOUL.md}
-│           ├── worker-discord/       {config.yaml, SOUL.md}
-│           └── worker-monitor/       {config.yaml, SOUL.md}
-├── skills/
-│   ├── airdrop-intake/SKILL.md     ← parse + klasifikasi (WAJIB sebelum eksekusi)
-│   ├── airdrop-analyzer/SKILL.md
-│   ├── daily-executor/SKILL.md
-│   ├── quest-executor/SKILL.md
-│   ├── discord-engager/SKILL.md
-│   └── portfolio-tracker/SKILL.md
-├── scripts/
-│   ├── setup.sh                # pasang config + profil + skill
-│   ├── start-browser.sh        # build & nyalakan Camofox + GUI
-│   ├── takeover.sh             # login VISUAL sekali, dipakai semua sesi
-│   ├── start-gateway.sh        # nyalakan bot Telegram
-│   ├── start-agent.sh          # jalankan worker
-│   └── install-cron.sh         # jadwal via cron internal Hermes
-├── tools/validate_config.py    # validator statis
-├── docs/research.md            # riset + provenance setiap klaim
-└── data/{campaigns,logs,screenshots}/
+│       └── profiles/           # 7 profil, masing-masing {config.yaml, SOUL.md}
+│           ├── worker-orchestrator/   ← pintu masuk Telegram
+│           ├── worker-analyzer/  worker-daily/  worker-quests/
+│           ├── worker-discord/   worker-monitor/  worker-x/
+│
+├── skills/                     # 10 skill; tiap profil hanya dapat yang dipetakan
+│   ├── browser-operation/  browser-burn-in/  airdrop-intake/
+│   ├── airdrop-analyzer/   daily-executor/   quest-executor/
+│   ├── discord-engager/    portfolio-tracker/ x-engager/
+│   └── self-improvement/   ← memory loop
+│
+├── knowledge/                  # dikembangkan AGENT (docs/ dikembangkan manusia)
+│   ├── chains/  projects/  patterns/
+│
+├── memory/lessons/             # catatan GAGAL append-only, per profil
+│
+├── hooks/agentdrop-audit/      # gateway hook: agent:start / step / end
+├── agent-hooks/audit-log.py    # shell hook: pre/post_tool_call, subagent_*
+│
+├── tools/
+│   ├── validate_config.py      # validator statis
+│   ├── audit_log.py            # penulis JSONL + redaksi
+│   └── audit.py                # triase: health / errors / doctor / trace / stuck
+│
+├── scripts/                    # hanya yang belum tergantikan CLI
+│   ├── burn-in.sh  collect-logs.sh  install-cron.sh
+│
+└── docs/
+    ├── prosedur-uji.md         # cara menjalankan uji di mesin Anda
+    ├── arsitektur-alur.md      # alur kerja
+    ├── meta-2026.md            # riset meta airdrop 2026
+    └── research.md             # catatan provenance tiap config key
 ```
 
-Setelah `setup.sh`, semuanya terpasang ke `~/.hermes/` dan
-`~/.hermes/profiles/<worker>/`.
-
----
 
 ## 🤖 Profil worker
 
@@ -560,65 +546,49 @@ data/
 
 ## ✅ Status verifikasi
 
-**Sudah diverifikasi** (25 Aug 2026, terhadap clone `NousResearch/hermes-agent`
-dan `jo-inc/camofox-browser`):
+**Sudah diuji dan lolos:**
 
-- 6 `config.yaml` — setiap key top-level & sub-key dicocokkan ke `DEFAULT_CONFIG`
-- 5 `SKILL.md` — frontmatter sesuai format skill bawaan Hermes
-- 6 shell script — `bash -n` bersih
-- Daftar key di validator **cocok persis** dengan sumber (0 selisih), dicek via
-  `HERMES_SRC=/tmp/ha python3 tools/validate_config.py`
-- **Formula userId Camofox** di `takeover.sh` diuji melawan fungsi Hermes asli
-  `get_camofox_identity()` → identik (`hermes_68c00ea529` / `task_8fe86c2102965395`)
-- **`.gitignore`** diuji dengan `git check-ignore`: `storage-state*.json`
-  terabaikan, `.gitkeep` tetap terlacak
-- **Negative test** (validator harus menangkap, bukan meloloskan):
-  - key karangan dari brief awal (`file_ops`, `browser.camofox.url`,
-    `security.never_store_private_keys`, `cron.enabled`,
-    `model.default: claude-sonnet-4-5`) → **10 error**
-  - toolset `browser` dicabut dari satu worker + `managed_persistence: false`
-    → **2 error**
-  - `camofox.config.json` dirusak (trailing comma) → tertangkap, dengan
-    penjelasan failure mode senyap `{}`
-  - `plugins.vnc.enabled: false` → tertangkap sebagai "browser akan headless"
+- Validator statis: **119 pemeriksaan**, exit 0
+- Suite test: 47 policy + 25 daemon + 9 plugin
+- Log audit end-to-end: penulis JSONL, redaksi dua lapis (diuji per pola dengan
+  memutus satu pola pada satu waktu), `flock` konkuren, rotasi
+- Shell hook dengan bentuk payload persis dari dokumen Hermes, termasuk stdin
+  rusak dan kosong
+- Ekstraksi CRX3 dengan CRX sintetis
+- `bash -n` bersih di semua skrip
 
-```bash
-python3 tools/validate_config.py                      # daftar beku
-HERMES_SRC=/path/to/hermes-agent python3 tools/validate_config.py   # turunkan ulang dari sumber
-```
+**Belum bisa diuji di lingkungan pembuat, dan butuh mesin Anda:**
 
-**Belum diverifikasi** — sandbox pengerjaan tidak punya `docker`, `hermes`,
-maupun `crontab`:
+- Hook yang benar-benar menyala di dalam run Hermes yang hidup
+- Chrome for Testing yang benar-benar memuat ekstensi wallet
+- Alur lengkap Telegram → orchestrator → worker → wallet
 
-- ❌ `install.sh` end-to-end di mesin bersih
-- ❌ `scripts/start-browser.sh` (build image Camofox + `/health` + noVNC :6080)
-- ❌ `scripts/takeover.sh` terhadap Camofox yang benar-benar jalan
-- ❌ `scripts/install-cron.sh` terhadap Hermes yang benar-benar jalan
-- ❌ Sesi GUI nyata: login via noVNC → agent memakai sesi itu
-
-Yang terakhir itu yang paling perlu Anda uji sendiri — itu inti dari seluruh
-setup browser di sini.
+Keduanya diuji lewat prosedur di `docs/prosedur-uji.md`, dan hasilnya
+dikumpulkan dengan `agentdrop logs` supaya bisa dianalisis.
 
 ---
 
 ## 🆘 Troubleshooting
 
-| Masalah | Periksa |
+| Gejala | Periksa |
 |---|---|
-| `hermes: command not found` | `source ~/.bashrc`, atau jalankan `install.sh` ulang |
-| Camofox tidak connect | `docker ps` → container `camofox-browser` hidup? `curl localhost:9377/health` |
-| Image Camofox tidak ada | Jalankan `make fetch && make build` di `~/.camofox-src` — **jangan** `docker build` langsung |
-| **noVNC :6080 tidak kebuka** | `ENABLE_VNC=1` di `.env`? lalu `docker compose logs camofox \| grep -i vnc`. Plugin butuh `x11vnc`+`novnc`+`websockify` di image |
-| **Browser masih terasa headless** | Cek `config/camofox/camofox.config.json` ter-mount: `docker compose exec camofox cat /app/camofox.config.json` harus menampilkan `vnc.enabled: true` |
-| **Login hilang tiap hari** | `managed_persistence: true` di config worker? volume `camofox-profiles` masih ada? `persistence.enabled` di camofox.config.json? |
-| **Login manual tidak kepakai agent** | userId harus sama. Pakai `scripts/takeover.sh` (menghitung userId), jangan login lewat tab sembarangan |
-| API key error | `hermes config` → cek provider; secret harus di `~/.hermes/.env` |
-| Cron tidak jalan | `hermes --profile <p> cron status`; scheduler butuh `hermes gateway run` |
-| Profil tidak ketemu | `ls ~/.hermes/profiles/` → jalankan `scripts/setup.sh` |
-| Skill tidak terbaca | Skill harus ada di `~/.hermes/profiles/<p>/skills/`, bukan cuma `~/.hermes/skills/` |
-| Config ditolak Hermes | `python3 tools/validate_config.py` |
+| Mulai dari mana pun | `agentdrop status` — menyebut komponen mana yang belum siap |
+| `hermes` tidak ketemu | Jalankan `./install.sh` |
+| Ekstensi tidak termuat | `agentdrop browser-status`, lalu pastikan yang dipakai Chrome for Testing, **bukan** Google Chrome branded |
+| `window.ethereum` undefined | Ekstensi tidak termuat — jalankan `agentdrop extensions`, restart browser |
+| CDP tidak menjawab | `agentdrop browser` |
+| noVNC tidak kebuka | `xvfb`, `x11vnc`, `novnc` terpasang? `agentdrop browser-status` |
+| Log audit kosong | Hook tidak terdaftar — `agentdrop status` bagian [3] |
+| Agent membuka browser sendiri | `disabled_toolsets` hilang — jalankan ulang `./install.sh` |
+| Profil tidak ketemu | `ls ~/.hermes/profiles/`, lalu jalankan ulang `./install.sh` |
+| Ada yang rusak dan tidak tahu apa | `agentdrop audit doctor` |
+
+`agentdrop audit doctor` membaca log audit, mengelompokkan kegagalan menurut
+komponen, dan **menyebut berkas yang harus dibuka**. Itu langkah pertama yang
+paling murah sebelum membaca apa pun yang lain.
 
 ---
+
 
 ## 📚 Riset
 

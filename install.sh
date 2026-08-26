@@ -219,16 +219,22 @@ stage_browser() {
 # ---------------------------------------------------------------------------
 # Tahap 6 — verifikasi
 # ---------------------------------------------------------------------------
+# Sebagai tahap akhir instalasi, kegagalan verifikasi TIDAK boleh membatalkan
+# instal: kode sudah terpasang dan pengguna tetap butuh pesan penutup.
+# Tapi lewat --verify-only, exit code adalah seluruh gunanya — jadi di jalur
+# itu kegagalan harus diteruskan, bukan ditelan.
 stage_verify() {
   _log "Verifikasi"
-  verify_run || true
+  if verify_run; then return 0; fi
+  VERIFY_FAILED=1
+  return 0
 }
 
 # ---------------------------------------------------------------------------
 banner
 if [[ "$VERIFY_ONLY" == true ]]; then
   stage_verify
-  exit 0
+  exit "${VERIFY_FAILED:-0}"
 fi
 
 stage_deps
@@ -237,6 +243,12 @@ stage_credentials
 stage_setup
 stage_browser
 stage_verify
+
+if [[ "${VERIFY_FAILED:-0}" == "1" ]]; then
+  printf '\033[1;33m\nPemasangan selesai, tapi pemeriksaan TIDAK lolos.\033[0m\n'
+  printf 'Perbaiki yang bertanda ✗ di atas sebelum menjalankan agent.\n'
+  printf 'Jalankan ulang kapan saja dengan: ./install.sh --verify-only\n\n'
+fi
 
 cat <<'EOF'
 

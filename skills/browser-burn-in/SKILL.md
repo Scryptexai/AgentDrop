@@ -7,7 +7,7 @@ license: MIT
 platforms: [linux, macos]
 metadata:
   hermes:
-    tags: [browser, testing, burn-in, validation, camofox, stability]
+    tags: [browser, testing, burn-in, validation, cdp, stability]
     related_skills: [quest-executor, daily-executor]
 ---
 
@@ -60,7 +60,7 @@ gagal** — catat, lalu berhenti.
 - `browser_snapshot`
 - **Cocokkan URL + judul** di snapshot dengan yang diharapkan
 - **Lolos kalau:** snapshot berisi heading "Example Domain" dan URL cocok
-- **Yang diuji:** konektivitas Camofox, sesi tab, AX tree berfungsi
+- **Yang diuji:** konektivitas CDP, sesi tab, AX tree berfungsi
 
 ### Uji 2 — Elemen dinamis & ref
 - `browser_navigate` ke situs dengan UI dinamis (mis. dashboard airdrop yang sedang digarap),
@@ -101,7 +101,7 @@ gagal** — catat, lalu berhenti.
 
 ```
 BURN-IN REPORT — <timestamp>
-Browser: Camofox <versi>  |  Profil: worker-burnin
+Browser: Chrome <versi>  |  Profil: worker-burnin
 
 Uji 1  Navigasi & snapshot      LOLOS/GAGAL   <bukti>
 Uji 2  Elemen dinamis & ref     LOLOS/GAGAL   <bukti>

@@ -5,7 +5,6 @@ Pustaka bersama untuk log audit AgentDrop.
 Dipakai oleh:
   - hooks/agentdrop-audit/handler.py   (gateway hook: agent:start/step/end)
   - agent-hooks/audit-log.py           (shell hook: pre/post_tool_call, dst)
-  - tools/signing_daemon.py            (keputusan signing)
   - install.sh / scripts/setup.sh      (fase instalasi)
   - tools/audit.py                     (pembaca)
 

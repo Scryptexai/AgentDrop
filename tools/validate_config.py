@@ -82,13 +82,12 @@ TOP_LEVEL_KEYS_ONLY_IN_EXAMPLE = {
 }
 TOP_LEVEL_KEYS |= TOP_LEVEL_KEYS_ONLY_IN_EXAMPLE
 
-CAMOFOX_KEYS = {
-    "adopt_existing_tab", "loopback_host_alias", "managed_persistence",
-    "rewrite_loopback_urls", "session_key", "user_id",
-}
-
 BROWSER_KEYS = {
     "allow_private_urls", "allow_unsafe_evaluate", "auto_local_for_private_urls",
+    # "camofox" sengaja tetap di daftar key valid meskipun AgentDrop sudah tidak
+    # memakainya: dengan begini, config yang masih menyisakan browser.camofox
+    # tertangkap oleh pesan error SPESIFIK di check_browser_config ("Camofox dan
+    # CDP saling eksklusif"), bukan oleh pesan generik "bukan key yang valid".
     "backend", "camofox", "cdp_url", "command_timeout", "dialog_policy",
     "dialog_timeout_s", "engine", "extension_control", "headed",
     "inactivity_timeout", "record_sessions", "restrict_evaluate",
@@ -400,7 +399,7 @@ def check_gitignore() -> None:
 # Cek bahwa SETIAP profil worker punya akses browser yang berkelanjutan
 # ============================================================================
 def check_browser_access(configs: list[Path]) -> None:
-    """Setiap worker wajib punya browser + Camofox persisten.
+    """Setiap worker wajib punya browser lewat CDP.
 
     Persyaratan: 99% task airdrop adalah interaksi GUI, jadi worker tanpa
     toolset `browser` atau tanpa `managed_persistence` tidak berguna.
@@ -737,7 +736,6 @@ def check_no_stray_cjk() -> None:
               list((REPO / "skills").rglob("*.md")) + \
               list((REPO / "scripts").glob("*.sh")) + \
               list((REPO / "extensions").rglob("*.js")) + \
-              list((REPO / "camofox-plugins").rglob("*.js")) + \
               [REPO / "README.md", REPO / "install.sh"]
     cjk = re.compile(r"[\u4e00-\u9fff\u3040-\u30ff]")
     hits = []
@@ -1049,7 +1047,6 @@ def main() -> int:
         if "/profiles/" in str(c):
             print(f"  · {c.parent.name}")
 
-    print("  · config/camofox/camofox.config.json")
 
     print("\n[7] Aturan verifikasi alamat di skill browser")
     check_url_verification_rule()
@@ -1080,7 +1077,6 @@ def main() -> int:
     check_burnin_gating()
     print("  · scripts/burn-in.sh")
 
-    print("  · tools/signing_policy.py + config/hermes/signing-policy.yaml")
 
     print("\n[15] Karakter CJK terselip di config/skill/README")
     check_no_stray_cjk()

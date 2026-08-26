@@ -23,7 +23,7 @@ data/screenshots/*
 !data/screenshots/.gitkeep
 
 # Browser profiles are per-machine, per-identity, and huge.
-# Camofox keeps its own profiles in CAMOFOX_PROFILE_DIR.
+# Chrome profile lives in CDP_PROFILE_DIR (~/.agentdrop/chrome-profile), outside the repo.
 browser-profiles/
 *.sqlite
 *.sqlite-wal

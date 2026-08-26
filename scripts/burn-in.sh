@@ -2,7 +2,7 @@
 # ============================================================================
 # burn-in.sh — jalankan uji stabilisasi browser SEBELUM agent dipakai kerja
 # ============================================================================
-# Tujuan: memastikan lapisan browser (Camofox + noVNC + persistence + snapshot
+# Tujuan: memastikan lapisan browser (Chrome/CDP + noVNC + persistence + snapshot
 # accessibility tree) benar-benar berfungsi di mesin ini, dengan eksekusi nyata,
 # sebelum kita mempercayakan campaign sungguhan ke agent.
 #
@@ -72,25 +72,25 @@ ok "skill browser-burn-in terpasang untuk profil ini"
 # ----------------------------------------------------------------------------
 # Browser harus hidup. Burn-in tanpa browser yang hidup hanya membuang token.
 # ----------------------------------------------------------------------------
-step "[2/4] Memeriksa Camofox"
+step "[2/4] Memeriksa browser"
 
-PORT="${CAMOFOX_PORT:-9377}"
+PORT="${CDP_PORT:-9222}"
 healthy=0
 for _ in $(seq 1 12); do
-  if curl -fsS "http://127.0.0.1:${PORT}/health" >/dev/null 2>&1; then healthy=1; break; fi
+  if curl -fsS "http://127.0.0.1:${PORT}/json/version" >/dev/null 2>&1; then healthy=1; break; fi
   sleep 5
 done
-[[ "$healthy" -eq 1 ]] || die "Camofox tidak menjawab /health di port ${PORT}. Jalankan ./scripts/start-browser.sh dulu."
-ok "Camofox menjawab di http://127.0.0.1:${PORT}/health"
+[[ "$healthy" -eq 1 ]] || die "CDP tidak menjawab di port ${PORT}. Jalankan: agentdrop browser"
+ok "Chrome menjawab di http://127.0.0.1:${PORT}/json/version"
 
-# noVNC: burn-in justru untuk DITONTON. Tanpa noVNC Anda buta saat agent salah.
+# Burn-in justru untuk DITONTON. Tanpa noVNC Anda buta saat agent salah.
 NOVNC_PORT="${NOVNC_PORT:-6080}"
 if curl -fsS -o /dev/null "http://127.0.0.1:${NOVNC_PORT}/vnc.html" 2>/dev/null; then
   ok "noVNC siap — tonton di http://localhost:${NOVNC_PORT}/vnc.html"
   warn "Buka noVNC di tab lain SEBELUM lanjut. Uji ini harus disaksikan, bukan hanya dibaca lognya."
 else
   warn "noVNC tidak menjawab di port ${NOVNC_PORT}. Uji tetap jalan, tapi Anda tidak bisa menonton."
-  warn "Untuk menyalakannya: docker compose up -d (lihat README, bagian GUI browser)."
+  warn "Untuk menyalakannya: agentdrop browser"
 fi
 
 # ----------------------------------------------------------------------------
