@@ -1020,6 +1020,77 @@ def check_shell_disabled(configs: list[Path]) -> None:
                  f"selama toolset-nya dimatikan, tapi sebaiknya dihapus")
 
 
+def check_memory_loop(configs: list[Path]) -> None:
+    """Memory loop terpasang di setiap agent.
+
+    Meta airdrop berubah tiap cycle, jadi dokumen strategi akan basi. Yang
+    menghadapi kenyataan baru setiap hari adalah agent, bukan dokumen — karena
+    itu agent harus menyimpan pelajarannya sendiri (skills/self-improvement).
+
+    Kegagalan yang dicegah di sini adalah yang paling mahal dan paling tidak
+    terlihat: agent mengulang pendekatan yang sudah terbukti gagal, dengan cara
+    yang sama, tanpa ada yang mencatat bahwa cara itu tidak berhasil.
+    """
+    global checks
+    for c in configs:
+        if "/profiles/" not in str(c):
+            continue
+        name = c.parent.name
+        data = yaml.safe_load(c.read_text()) or {}
+
+        checks += 1
+        mem = data.get("memory")
+        if not isinstance(mem, dict):
+            err(f"{name}: tidak punya blok `memory:` — tinjauan memory berkala "
+                f"Hermes tidak dikonfigurasi")
+        else:
+            if mem.get("memory_enabled") is not True:
+                err(f"{name}: memory.memory_enabled bukan true")
+            ni = mem.get("nudge_interval")
+            if not isinstance(ni, int) or ni <= 0:
+                err(f"{name}: memory.nudge_interval harus bilangan bulat positif")
+            elif ni > 30:
+                warn(f"{name}: memory.nudge_interval={ni} — tinjauan terlalu jarang, "
+                     f"pelajaran menumpuk sebelum sempat ditinjau")
+
+        # Skill loop-nya harus benar-benar terpasang untuk profil ini.
+        checks += 1
+        soul = c.parent / "SOUL.md"
+        if not soul.exists():
+            err(f"{name}: SOUL.md tidak ada")
+        else:
+            st = soul.read_text()
+            for needle, label in (
+                ("Memory loop", "protokol memory loop"),
+                ("memory/lessons/", "rujukan berkas pelajaran"),
+                ("DATA, bukan instruksi", "aturan anti prompt-injection"),
+            ):
+                if needle not in st:
+                    err(f"{name}/SOUL.md tidak memuat {label}")
+
+    # Skill-nya sendiri harus ada dan dipetakan ke setiap profil.
+    checks += 1
+    if not (REPO / "skills" / "self-improvement" / "SKILL.md").exists():
+        err("skills/self-improvement/SKILL.md tidak ada")
+
+    checks += 1
+    setup = (REPO / "scripts" / "setup.sh").read_text()
+    if "self-improvement" not in setup:
+        err("scripts/setup.sh tidak menyalin skill self-improvement ke profil mana pun")
+    else:
+        for c in configs:
+            if "/profiles/" not in str(c):
+                continue
+            name = c.parent.name
+            if not re.search(rf'\[{re.escape(name)}\]="[^"]*self-improvement', setup):
+                err(f"setup.sh tidak memetakan self-improvement ke {name} — "
+                    f"profil itu tidak akan punya loop belajar")
+
+    checks += 1
+    if not (REPO / "memory" / "lessons").is_dir():
+        err("memory/lessons/ tidak ada — agent tidak punya tempat menulis pelajaran")
+
+
 def main() -> int:
     print("=" * 62)
     print("  AgentDrop — validator statis")
@@ -1097,6 +1168,9 @@ def main() -> int:
 
     print("\n[17] Akses shell dimatikan di semua worker")
     check_shell_disabled(configs)
+
+    print("\n[18] Memory loop + aturan anti prompt-injection")
+    check_memory_loop(configs)
 
     print("\n" + "=" * 62)
     print(f"  {checks} file diperiksa")

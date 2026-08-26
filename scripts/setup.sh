@@ -22,7 +22,7 @@ HERMES_HOME_DIR="${HERMES_HOME:-$HOME/.hermes}"
 PROFILES=(worker-orchestrator worker-analyzer worker-daily worker-quests worker-discord worker-monitor worker-x)
 # airdrop-intake adalah langkah WAJIB pertama: parse + klasifikasi sebelum eksekusi.
 # browser-operation = protokol dasar yang dirujuk skill browser lainnya.
-SKILLS=(browser-operation browser-burn-in airdrop-intake airdrop-analyzer daily-executor quest-executor discord-engager portfolio-tracker x-engager)
+SKILLS=(browser-operation browser-burn-in airdrop-intake airdrop-analyzer daily-executor quest-executor discord-engager portfolio-tracker x-engager self-improvement)
 
 # ----------------------------------------------------------------------------
 # PEMETAAN SKILL -> PROFIL.
@@ -41,13 +41,13 @@ SKILLS=(browser-operation browser-burn-in airdrop-intake airdrop-analyzer daily-
 # diarahkan ke profil mana pun lewat --profile.
 # ----------------------------------------------------------------------------
 declare -A PROFILE_SKILLS=(
-  [worker-orchestrator]="browser-operation browser-burn-in airdrop-intake airdrop-analyzer"
-  [worker-analyzer]="browser-operation browser-burn-in airdrop-analyzer"
-  [worker-daily]="browser-operation browser-burn-in daily-executor"
-  [worker-quests]="browser-operation browser-burn-in quest-executor"
-  [worker-discord]="browser-operation browser-burn-in discord-engager"
-  [worker-monitor]="browser-operation browser-burn-in portfolio-tracker"
-  [worker-x]="browser-operation browser-burn-in x-engager"
+  [worker-orchestrator]="browser-operation browser-burn-in airdrop-intake airdrop-analyzer self-improvement"
+  [worker-analyzer]="browser-operation browser-burn-in airdrop-analyzer self-improvement"
+  [worker-daily]="browser-operation browser-burn-in daily-executor self-improvement"
+  [worker-quests]="browser-operation browser-burn-in quest-executor self-improvement"
+  [worker-discord]="browser-operation browser-burn-in discord-engager self-improvement"
+  [worker-monitor]="browser-operation browser-burn-in portfolio-tracker self-improvement"
+  [worker-x]="browser-operation browser-burn-in x-engager self-improvement"
 )
 
 log()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }

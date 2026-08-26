@@ -77,6 +77,27 @@ tool_loop_guardrails:
     same_tool_failure: 3
     idempotent_no_progress: 2
 
+# ---------------------------------------------------------------------------
+# MEMORY LOOP
+# ---------------------------------------------------------------------------
+# Hermes punya tinjauan memory berkala bawaan. `nudge_interval` adalah jumlah
+# turn di antaranya. Protokol lengkapnya di skills/self-improvement/SKILL.md:
+# baca pelajaran sebelum bertindak, catat kegagalan setelahnya, dan naikkan
+# pelajaran yang berulang menjadi pengetahuan skill.
+#
+# `memory_char_limit` kecil (default 2200 char ~= 800 token) dan SELALU ada di
+# konteks, jadi ia untuk fakta frekuensi tinggi. Pengetahuan yang menumpuk
+# pergi ke memory/lessons/<profil>.md, yang dibaca saat dibutuhkan.
+#
+# `write_approval: false` sengaja. Agent yang harus minta izin untuk mencatat
+# pelanggarannya sendiri tidak akan mencatat apa pun.
+# ---------------------------------------------------------------------------
+memory:
+  memory_enabled: true
+  user_profile_enabled: true
+  nudge_interval: 10
+  write_approval: false
+
 # ============================================================================
 # AKSES SHELL DIMATIKAN — INI DISENGAJA, JANGAN NYALAKAN
 # ============================================================================
