@@ -205,54 +205,46 @@ Isi awalnya hanya kerangka + cara mengisinya. Agent yang menambah isinya lewat
 
 ## PROGRES
 
-Terakhir diperbarui: 2026-08-26 · commit `5cceaf4` · branch `arena/01a037ea-agentdrop`
-Angka di bawah diverifikasi dengan perintah, bukan diperkirakan.
+Terakhir diperbarui: 2026-08-27 · commit `feea4ae` · branch `arena/01a037ea-agentdrop`
+Angka diverifikasi dengan perintah, bukan diperkirakan.
 
-**61 berkas ter-track · 7 profil · 10 skill · 119 pemeriksaan validator lolos (exit 0)**
+**61 berkas ter-track · 7 profil · 10 skill · 148 pemeriksaan validator lolos (exit 0)**
 
-Selesai dan terverifikasi:
+Selesai:
 
-- Struktur agent: 7 profil (`worker-orchestrator` + 6 worker), 10 skill,
-  `SOUL.md` per profil, akses shell dimatikan di semua worker (K4).
-- **Installer sebagai index** (K8): `install.sh` me-source `lib/*.sh` (6 modul),
-  ditambah satu CLI `agentdrop`. `scripts/` turun dari 11 berkas ke 3.
-- **Camofox dibersihkan total** — `grep -ril camofox` di luar `docs/` dan
-  `AGENTS.md` mengembalikan nol.
-- **Ekstensi bikinan sendiri + signing daemon dihapus** (K7).
-- Log audit penuh dengan redaksi dua lapis, diuji per pola.
-- Memory loop + `knowledge/` (K12).
-- `AGENTS.md` ini.
+- Installer sebagai index (K8) + satu CLI `agentdrop`. `scripts/` 11 → 3.
+- Camofox dibersihkan total; extension bikinan + signing daemon dihapus (K7).
+- **Mismatch E ditutup.** `delegate_task` ternyata nama *tool*, bukan id
+  toolset; id-nya `delegation`. `TOOLSET_IDS` di validator dibangun ulang dari
+  58 id asli (daftar lama punya 8 nama karangan dan kehilangan 32 yang asli).
+- **Kontrak tool browser dikunci** — lihat bagian PROTOKOL BROWSER.
+- Log audit, memory loop, `knowledge/`, `AGENTS.md`.
 
-**Dua bug nyata ditemukan saat pembersihan** — keduanya membuat hal yang rusak
-terlihat sehat:
+**Tiga bug kelas yang sama ditemukan** — semuanya menyuruh agent memakai yang
+tidak ada, dan semuanya membuat agent berimprovisasi:
 
-1. `worker-orchestrator/SOUL.md` menyuruh agent menjalankan
-   `tools/signing_policy.py` yang sudah dihapus. Agent akan memanggil skrip
-   yang tidak ada lalu harus berimprovisasi pada keputusan signing — tempat
-   terburuk untuk berimprovisasi.
-2. `scripts/burn-in.sh` memeriksa Camofox di port 9377 yang tidak ada
-   pendengarnya, jadi burn-in selalu gagal di langkah 2 dari 4.
-3. `install.sh --verify-only` exit 0 sambil melaporkan 9 kegagalan, karena
-   `verify_run || true` menelan statusnya.
+1. `SOUL.md` orchestrator → `tools/signing_policy.py` yang sudah dihapus.
+2. Tiga skill → `computer_use(mode='som')`, toolset yang tidak diaktifkan.
+3. `platform_toolsets.telegram` → `delegate_task`, bukan id toolset.
 
-Ketiganya sudah diperbaiki.
+Ketiganya sekarang punya guard di validator (seksi [17], [20]) dan sudah
+diuji mutasi.
 
 ---
 
 ## LANGKAH BERIKUTNYA
 
-1. **Operator menjalankan uji di mesinnya** — lihat `docs/prosedur-uji.md`,
-   hasilnya dikumpulkan dengan `agentdrop logs` lalu di-push ke
-   `data/audit/<stempel>/`.
-2. Yang belum pernah diuji dan hanya bisa diuji di mesin operator:
+Semua pekerjaan yang bisa dikerjakan tanpa Hermes + Chrome terpasang **sudah
+selesai**. Yang tersisa hanya bisa diuji di mesin operator:
+
+1. **Operator menjalankan uji** — `docs/prosedur-uji.md`, hasil dikumpulkan
+   dengan `agentdrop logs` lalu di-push ke `data/audit/<stempel>/`.
+2. Yang belum pernah terbukti di lingkungan mana pun:
    - hook yang benar-benar menyala di dalam run Hermes yang hidup
    - Chrome for Testing yang benar-benar memuat ekstensi wallet
    - alur lengkap Telegram → orchestrator → worker → wallet
-3. Bersihkan `docs/arsitektur-alur.md` dan `docs/prosedur-uji.md` dari sisa
-   Camofox (masih ada; `docs/research.md` dan `docs/meta-2026.md` sengaja
-   dibiarkan sebagai catatan historis).
-4. Mismatch **E** masih terbuka: `platform_toolsets.telegram` di orchestrator
-   belum memuat `delegation`.
+3. Kalau ada yang rusak: `agentdrop audit doctor` lebih dulu — ia menyebut
+   berkas yang harus dibuka.
 
 ## JALAN BUNTU
 
