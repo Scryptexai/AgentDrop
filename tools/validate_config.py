@@ -25,6 +25,7 @@ Exit code 0 = semua lolos. 1 = ada ERROR.
 from __future__ import annotations
 
 import ast
+import json
 import os
 import re
 import shutil
@@ -1091,6 +1092,125 @@ def check_memory_loop(configs: list[Path]) -> None:
         err("memory/lessons/ tidak ada — agent tidak punya tempat menulis pelajaran")
 
 
+def check_audit_log() -> None:
+    """Log audit: terpasang, tersambung, dan tidak membocorkan secret.
+
+    Tujuan sistem ini adalah memperbaiki bagian yang salah tanpa membaca
+    seluruh alur. Kalau ada satu mata rantai yang tidak tersambung, log akan
+    berlubang tepat di tempat yang sedang rusak — dan lubang itu tidak
+    terlihat sampai Anda membutuhkannya.
+    """
+    global checks
+    for f in (REPO / "tools" / "audit_log.py", REPO / "tools" / "audit.py",
+              REPO / "agent-hooks" / "audit-log.py",
+              REPO / "hooks" / "agentdrop-audit" / "HOOK.yaml",
+              REPO / "hooks" / "agentdrop-audit" / "handler.py"):
+        checks += 1
+        if not f.exists():
+            err(f"{f.relative_to(REPO)} tidak ada")
+
+    # Uji redaksi dengan artefak nyata. Ini cek paling penting di sini:
+    # kegagalan redaksi berarti private key masuk ke berkas yang bisa dibaca
+    # agent lain dan mungkin ikut ter-backup.
+    checks += 1
+    try:
+        sys.path.insert(0, str(REPO / "tools"))
+        import audit_log as A
+        bocor = []
+        # Lapisan 1: kunci bernama. Nilai dibuang apa pun bentuknya.
+        # Lapisan 2: pola nilai. Ini yang melindungi kalau kuncinya TIDAK
+        # mencurigakan — misalnya secret yang nyangkut di dalam pesan error
+        # atau di field bernama "catatan". Kedua lapisan harus diuji terpisah,
+        # kalau tidak uji ini lolos padahal regex-nya sudah rusak.
+        kasus_kunci = {
+            "private_key": "0x" + "11" * 32,
+            "api_key": "sk-" + "A" * 30,
+            "mnemonic": "x y z",
+        }
+        for nama, nilai in kasus_kunci.items():
+            out = json.dumps(A.redact({nama: nilai}), ensure_ascii=False)
+            if nilai[:16] in out:
+                bocor.append(f"kunci:{nama}")
+        if A.redact({"mnemonic": "x y z"}) != {"mnemonic": "<DIBUANG>"}:
+            bocor.append("kunci-bernama-tidak-dibuang")
+
+        # Lapisan pola. Diuji lewat MARKER-nya, bukan lewat "apakah sesuatu
+        # ikut terhapus". Alasannya konkret: pola base64-panjang adalah jaring
+        # pengaman yang ikut menangkap hex64 dan base58, jadi memeriksa
+        # "secret hilang" saja tidak membuktikan pola yang bersangkutan hidup.
+        # Memeriksa marker membuktikan pola itu sendiri yang bekerja.
+        kasus_pola = [
+            ("hex64", "<HEX64_DIBUANG>",
+             "catatan", "key 0x" + "11" * 32 + " dipakai", "11" * 32),
+            ("sk-", "<SK_DIBUANG>",
+             "pesan", "gagal dengan sk-" + "A" * 30, "A" * 30),
+            ("bot token", "<BOT_TOKEN_DIBUANG>",
+             "url", "https://api.telegram.org/bot123456789:AA" + "B" * 34, "B" * 34),
+            ("base58", "<BASE58_DIBUANG>",
+             "teks", "s " + "5" * 87 + " s", "5" * 87),
+            ("seed", "<MUNGKIN_SEED_DIBUANG>",
+             "teks", "seed: alpha bravo charlie delta echo foxtrot golf hotel india juliet kilo lima",
+             "juliet kilo lima"),
+        ]
+        for label, marker, kunci, nilai, rahasia in kasus_pola:
+            out = json.dumps(A.redact({kunci: nilai}), ensure_ascii=False)
+            if rahasia in out:
+                bocor.append(f"pola:{label}(secret-masih-ada)")
+            elif marker not in out:
+                # Secret hilang, tapi bukan oleh pola yang seharusnya —
+                # artinya pola itu mati dan hanya jaring pengaman yang menutupi.
+                bocor.append(f"pola:{label}(marker-tidak-muncul)")
+
+        if bocor:
+            err(f"redaksi audit_log bocor untuk: {', '.join(bocor)}")
+        else:
+            print("  · redaksi lapisan kunci: private_key, api_key, mnemonic")
+            print("  · redaksi lapisan pola : hex64, sk-, bot token, base58, seed")
+    except Exception as exc:
+        err(f"gagal menguji redaksi audit_log: {exc}")
+
+    # Setiap profil harus mendaftarkan hook, dengan nama event yang sah.
+    # Hermes MENGABAIKAN nama event yang salah dengan satu peringatan, jadi
+    # typo di sini menghasilkan log kosong tanpa error apa pun.
+    checks += 1
+    wajib = {"pre_tool_call", "post_tool_call"}
+    for c in sorted((REPO / "config" / "hermes" / "profiles").glob("*/config.yaml")):
+        data = yaml.safe_load(c.read_text()) or {}
+        name = c.parent.name
+        hooks = data.get("hooks") or {}
+        if not isinstance(hooks, dict) or not hooks:
+            err(f"{name}: tidak punya blok `hooks:` — aktivitasnya tidak akan tercatat")
+            continue
+        for need in wajib - set(hooks):
+            err(f"{name}: hooks tidak mendaftarkan '{need}' — pemanggilan tool tidak tercatat")
+        if data.get("hooks_auto_accept") is not True:
+            err(f"{name}: hooks_auto_accept bukan true — pada cron/gateway tanpa TTY "
+                f"hook diabaikan diam-diam")
+        for ev, entries in hooks.items():
+            for e in (entries or []):
+                cmd = (e or {}).get("command", "")
+                if "audit-log.py" not in cmd:
+                    err(f"{name}: hooks.{ev} tidak menunjuk audit-log.py")
+
+    # setup.sh harus menyalin hook ke lokasi tetap, karena command hook tidak
+    # meng-expand $VAR (hanya expanduser).
+    checks += 1
+    setup = (REPO / "scripts" / "setup.sh").read_text()
+    for needle in ("agent-hooks/audit-log.py", "hooks/agentdrop-audit"):
+        if needle not in setup:
+            err(f"scripts/setup.sh tidak memasang {needle} — hook tidak akan "
+                f"ditemukan Hermes setelah instalasi")
+
+    # Jalankan audit.py health sebagai smoke test: kalau importnya rusak,
+    # seluruh alat triase mati dan log tidak bisa dibaca.
+    checks += 1
+    proc = subprocess.run([sys.executable, str(REPO / "tools" / "audit.py"), "health"],
+                          capture_output=True, text=True, cwd=str(REPO))
+    if proc.returncode != 0:
+        err(f"tools/audit.py health GAGAL (exit {proc.returncode}):\n"
+            f"{(proc.stdout + proc.stderr).strip()[-800:]}")
+
+
 def main() -> int:
     print("=" * 62)
     print("  AgentDrop — validator statis")
@@ -1171,6 +1291,9 @@ def main() -> int:
 
     print("\n[18] Memory loop + aturan anti prompt-injection")
     check_memory_loop(configs)
+
+    print("\n[19] Log audit")
+    check_audit_log()
 
     print("\n" + "=" * 62)
     print(f"  {checks} file diperiksa")

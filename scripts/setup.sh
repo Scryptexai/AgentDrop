@@ -161,6 +161,43 @@ done
 # ----------------------------------------------------------------------------
 # 6. Struktur data
 # ----------------------------------------------------------------------------
+log "Memasang log audit"
+# Dua sistem hook Hermes, dua lokasi berbeda:
+#   shell hook   -> dipanggil dari blok `hooks:` di config.yaml
+#   gateway hook -> dipindai dari ~/.hermes/hooks/<nama>/{HOOK.yaml,handler.py}
+# Keduanya butuh tools/audit_log.py di sebelah mereka, karena hook berjalan
+# dari lokasi instal, bukan dari repo.
+mkdir -p "$HOME/.agentdrop/agent-hooks" "$HOME/.agentdrop/logs"
+cp "$REPO_ROOT/agent-hooks/audit-log.py" "$HOME/.agentdrop/agent-hooks/"
+cp "$REPO_ROOT/tools/audit_log.py"       "$HOME/.agentdrop/agent-hooks/"
+chmod +x "$HOME/.agentdrop/agent-hooks/audit-log.py"
+ok "~/.agentdrop/agent-hooks (shell hook: pre/post_tool_call, subagent_*)"
+
+mkdir -p "$HERMES_HOME_DIR/hooks/agentdrop-audit"
+cp "$REPO_ROOT/hooks/agentdrop-audit/HOOK.yaml"  "$HERMES_HOME_DIR/hooks/agentdrop-audit/"
+cp "$REPO_ROOT/hooks/agentdrop-audit/handler.py" "$HERMES_HOME_DIR/hooks/agentdrop-audit/"
+cp "$REPO_ROOT/tools/audit_log.py"               "$HERMES_HOME_DIR/hooks/agentdrop-audit/"
+ok "~/.hermes/hooks/agentdrop-audit (gateway hook: agent:start/step/end)"
+
+# Rekam instalasi ke log yang sama, supaya `audit.py health` menunjukkan
+# riwayat lengkap sejak clone — bukan hanya sejak agent pertama jalan.
+if command -v python3 >/dev/null 2>&1; then
+  python3 - "$REPO_ROOT" <<'PYLOG' || true
+import sys
+sys.path.insert(0, sys.argv[1] + "/tools")
+try:
+    import audit_log
+    audit_log.write("install", "setup-selesai", phase="install",
+                    msg="setup.sh memasang hook audit dan profil",
+                    detail={"repo": sys.argv[1]})
+except Exception:
+    pass
+PYLOG
+  ok "fase instalasi tercatat di ~/.agentdrop/logs"
+else
+  warn "python3 tidak ada — instalasi tidak tercatat ke log audit"
+fi
+
 log "Menyiapkan struktur data"
 mkdir -p "$REPO_ROOT/data/campaigns" "$REPO_ROOT/data/logs" "$REPO_ROOT/data/screenshots"
 ok "data/{campaigns,logs,screenshots}"

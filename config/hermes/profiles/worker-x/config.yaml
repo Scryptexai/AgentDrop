@@ -115,6 +115,52 @@ memory:
   nudge_interval: 10
   write_approval: false
 
+# ---------------------------------------------------------------------------
+# LOG AUDIT
+# ---------------------------------------------------------------------------
+# Setiap pemanggilan tool dicatat ke ~/.agentdrop/logs/audit-<tanggal>.jsonl.
+# Dibaca lewat:  python3 tools/audit.py doctor
+#
+# Kenapa path-nya ~/.agentdrop dan bukan path repo: Hermes menjalankan command
+# hook lewat shlex.split(os.path.expanduser(...)) dengan shell=False
+# (hermes-agent/agent/shell_hooks.py:16,555). Jadi `~` di-expand, tetapi $VAR
+# TIDAK. scripts/setup.sh menyalin skrip hook ke lokasi tetap ini supaya
+# konfigurasi tetap benar di mana pun repo di-clone.
+#
+# `fail_closed` sengaja TIDAK disetel. Logger yang bisa menggagalkan tool call
+# akan dimatikan orang, dan log yang dimatikan tidak berguna sama sekali.
+# ---------------------------------------------------------------------------
+hooks:
+  pre_tool_call:
+    - command: "python3 ~/.agentdrop/agent-hooks/audit-log.py"
+      timeout: 10
+  post_tool_call:
+    - command: "python3 ~/.agentdrop/agent-hooks/audit-log.py"
+      timeout: 10
+  subagent_start:
+    - command: "python3 ~/.agentdrop/agent-hooks/audit-log.py"
+      timeout: 10
+  subagent_stop:
+    - command: "python3 ~/.agentdrop/agent-hooks/audit-log.py"
+      timeout: 10
+  pre_approval_request:
+    - command: "python3 ~/.agentdrop/agent-hooks/audit-log.py"
+      timeout: 10
+  post_approval_response:
+    - command: "python3 ~/.agentdrop/agent-hooks/audit-log.py"
+      timeout: 10
+  on_session_start:
+    - command: "python3 ~/.agentdrop/agent-hooks/audit-log.py"
+      timeout: 10
+  on_session_end:
+    - command: "python3 ~/.agentdrop/agent-hooks/audit-log.py"
+      timeout: 10
+
+# Cron dan gateway berjalan tanpa TTY, jadi pendaftaran hook baru tidak bisa
+# meminta persetujuan interaktif. Tanpa ini hook di atas diabaikan diam-diam
+# pada run non-interaktif.
+hooks_auto_accept: true
+
 # ============================================================================
 # AKSES SHELL DIMATIKAN — INI DISENGAJA, JANGAN NYALAKAN
 # ============================================================================

@@ -48,6 +48,28 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from signing_policy import ALLOW, DENY, ESCALATE, Policy, decide  # noqa: E402
 
+# ---------------------------------------------------------------------------
+# Log audit.
+#
+# Dibungkus supaya kegagalan logging TIDAK PERNAH menjatuhkan daemon. Daemon
+# yang mati berarti extension tidak bisa signing, dan itu jauh lebih buruk
+# daripada kehilangan satu baris log.
+# ---------------------------------------------------------------------------
+try:
+    import audit_log as _audit_mod
+except Exception:  # pragma: no cover
+    _audit_mod = None
+
+
+def _audit(event: str, name: str, **kw) -> None:
+    if _audit_mod is None:
+        return
+    try:
+        _audit_mod.write(component=event, event=name, **kw)
+    except Exception:
+        pass
+
+
 try:
     from eth_account import Account
     from eth_account.messages import encode_defunct
@@ -233,25 +255,42 @@ class Handler(BaseHTTPRequestHandler):
             self._send(400, {"error": f"payload tidak valid: {exc}"})
             return
 
+        _m = payload.get("method", "")
+        _origin = payload.get("origin", "")
+        _chain = payload.get("chain_id") or self.server.chain_id
         try:
             out = handle_sign(
-                payload.get("method", ""),
+                _m,
                 payload.get("params") or [],
                 acct=self.server.acct,
-                chain_id=payload.get("chain_id") or self.server.chain_id,
-                origin=payload.get("origin", ""),
+                chain_id=_chain,
+                origin=_origin,
                 policy=self.server.policy,
                 today_count=self.server.today_count(),
                 rpc=self.server.rpc,
             )
         except UserRejected as exc:
             # 4001 adalah kode "user rejected" di EIP-1193.
+            _audit("signing", "rejected", level="warn", tool=_m, ok=False,
+                   msg=str(exc)[:300],
+                   detail={"origin": _origin, "chain_id": _chain})
             self._send(200, {"rejected": True, "error": str(exc)})
         except DaemonError as exc:
+            _audit("signing", "daemon-error", level="error", tool=_m, ok=False,
+                   msg=str(exc)[:300],
+                   detail={"origin": _origin, "chain_id": _chain})
             self._send(200, {"error": str(exc)})
         except Exception as exc:  # jaga-jaga: jangan bocorkan stack ke halaman
+            _audit("signing", "internal-error", level="error", tool=_m, ok=False,
+                   msg=f"{type(exc).__name__}: {exc}"[:300],
+                   detail={"origin": _origin, "chain_id": _chain})
             self._send(500, {"error": f"kesalahan internal: {type(exc).__name__}"})
         else:
+            # Keluaran signing TIDAK dicatat. Tanda tangan adalah kredensial;
+            # yang berguna untuk audit adalah KEPUTUSANNYA, bukan hasilnya.
+            _audit("signing", "signed", level="info", tool=_m, ok=True,
+                   detail={"origin": _origin, "chain_id": _chain,
+                           "result_keys": sorted(out.keys()) if isinstance(out, dict) else None})
             self._send(200, out)
 
     def log_message(self, fmt, *args):  # jangan spam, dan jangan bocorkan data
