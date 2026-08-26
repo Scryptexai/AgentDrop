@@ -958,6 +958,53 @@ def check_wallet_extension() -> None:
             print(f"  · {m.group(1) if m else '?'} test plugin Camoufox lolos")
 
 
+def check_shell_disabled(configs: list[Path]) -> None:
+    """Worker tidak boleh punya akses shell.
+
+    Toolset `hermes-cli` memuat seluruh _HERMES_CORE_TOOLS
+    (hermes-agent/toolsets.py:31-35), yang berisi "terminal" dan "process".
+    Jadi mencoret kata `terminal` dari daftar `toolsets:` TIDAK cukup —
+    agent tetap mendapatkannya lewat bundle.
+
+    Kegagalan yang dicegah di sini adalah yang paling mahal saat farming:
+    alih-alih memakai tool browser native, agent mengetik perintah shell untuk
+    membuka browser sendiri (headless, tanpa ekstensi, tanpa sesi login) lalu
+    melaporkan sukses.
+
+    `agent.disabled_toolsets` dikurangkan paling akhir
+    (hermes_cli/tools_config.py:2712-2726: "This runs last so it overrides
+    everything above"), jadi hanya itu yang benar-benar menutup bundle.
+    """
+    global checks
+    dilarang = {"terminal", "code_execution"}
+    for c in configs:
+        if "/profiles/" not in str(c):
+            continue
+        checks += 1
+        name = c.parent.name
+        data = yaml.safe_load(c.read_text()) or {}
+
+        dt = set((data.get("agent") or {}).get("disabled_toolsets") or [])
+        for need in sorted(dilarang - dt):
+            err(f"{name}: agent.disabled_toolsets tidak memuat '{need}' — "
+                f"agent tetap bisa menjalankan perintah shell lewat bundle hermes-cli")
+
+        # Tidak boleh juga disebut eksplisit di toolsets / platform_toolsets.
+        for ts in (data.get("toolsets") or []):
+            if ts in dilarang:
+                err(f"{name}: toolsets memuat '{ts}' padahal harus dimatikan")
+        for plat, tss in (data.get("platform_toolsets") or {}).items():
+            for ts in (tss or []):
+                if ts in dilarang:
+                    err(f"{name}: platform_toolsets.{plat} memuat '{ts}'")
+
+        # Blok konfigurasi terminal yang tersisa menyesatkan: ia menyiratkan
+        # tool itu aktif.
+        if "terminal" in data:
+            warn(f"{name}: masih punya blok top-level `terminal:` — tidak dipakai "
+                 f"selama toolset-nya dimatikan, tapi sebaiknya dihapus")
+
+
 def main() -> int:
     print("=" * 62)
     print("  AgentDrop — validator statis")
@@ -1032,6 +1079,9 @@ def main() -> int:
 
     print("\n[16] Extension wallet + plugin Camoufox")
     check_wallet_extension()
+
+    print("\n[17] Akses shell dimatikan di semua worker")
+    check_shell_disabled(configs)
 
     print("\n" + "=" * 62)
     print(f"  {checks} file diperiksa")

@@ -28,6 +28,8 @@ agent:
   max_turns: 60
   # Analisis 4 dimensi adalah pekerjaan penalaran, bukan eksekusi.
   reasoning_effort: "high"
+  # MATIKAN SHELL — lihat penjelasan di akhir file.
+  disabled_toolsets: [terminal, code_execution]
 
 browser:
   # 1800 (30 menit), disamakan dengan SESSION_TIMEOUT_MS Camofox.
@@ -46,11 +48,6 @@ browser:
     managed_persistence: true
     adopt_existing_tab: true
 
-terminal:
-  backend: "local"
-  cwd: "."
-  timeout: 180
-  home_mode: "profile"
 
 compression:
   enabled: true
@@ -58,3 +55,29 @@ compression:
 tool_loop_guardrails:
   warnings_enabled: true
   hard_stop_enabled: false
+
+# ============================================================================
+# AKSES SHELL DIMATIKAN — INI DISENGAJA, JANGAN NYALAKAN
+# ============================================================================
+# Toolset `hermes-cli` memuat SELURUH _HERMES_CORE_TOOLS, yang di dalamnya ada:
+#     # Terminal + process management
+#     "terminal", "process",
+# (hermes-agent/toolsets.py:31-35). Jadi meskipun kata "terminal" tidak pernah
+# muncul di daftar `toolsets:` di atas, agent TETAP punya tool terminal lewat
+# bundle itu.
+#
+# Akibatnya persis kegagalan yang paling mahal saat agent mengerjakan airdrop:
+# alih-alih memanggil tool browser native, agent mengetik perintah shell untuk
+# membuka browser sendiri — headless, tanpa ekstensi, tanpa sesi login — lalu
+# melaporkan sukses.
+#
+# `agent.disabled_toolsets` dikurangkan PALING AKHIR dari toolset yang aktif
+# (hermes-agent/hermes_cli/tools_config.py:2712-2726, "This runs last so it
+# overrides everything above"), jadi ini satu-satunya cara yang benar-benar
+# menutup bundle tersebut.
+#
+#   terminal       -> tool: terminal, process
+#   code_execution -> tool: execute_code (menjalankan Python yang memanggil tool)
+#
+# Browser harus dipanggil lewat tool native (browser_navigate, browser_snapshot,
+# browser_click, ...) — bukan lewat shell.
