@@ -135,51 +135,54 @@ Isi awalnya hanya kerangka + cara mengisinya. Agent yang menambah isinya lewat
 
 ## PROGRES
 
-Terakhir diperbarui: 2026-08-26 · commit `81417dc` · branch `arena/01a037ea-agentdrop`
+Terakhir diperbarui: 2026-08-26 · commit `5cceaf4` · branch `arena/01a037ea-agentdrop`
+Angka di bawah diverifikasi dengan perintah, bukan diperkirakan.
+
+**61 berkas ter-track · 7 profil · 10 skill · 119 pemeriksaan validator lolos (exit 0)**
 
 Selesai dan terverifikasi:
 
 - Struktur agent: 7 profil (`worker-orchestrator` + 6 worker), 10 skill,
-  `SOUL.md` per profil.
-- Akses shell dimatikan di semua profil (K4) + guard di validator.
-- Migrasi Camofox → CDP di ketujuh config profil.
-- Log audit penuh: `tools/audit_log.py`, `tools/audit.py`, `agent-hooks/`,
-  `hooks/agentdrop-audit/`, wired ke semua profil + daemon. Redaksi dua lapis,
-  diuji per pola.
-- `scripts/collect-logs.sh` (dengan gerbang secret) + `scripts/preflight.sh`.
-- Memory loop: `skills/self-improvement/` + `memory/lessons/` + blok `memory:`
-  di semua profil.
-- Riset meta 2026 → `docs/meta-2026.md`, dengan perubahan repo yang diakibatkannya.
-- Validator: 160 pemeriksaan; suite test policy/daemon/plugin.
+  `SOUL.md` per profil, akses shell dimatikan di semua worker (K4).
+- **Installer sebagai index** (K8): `install.sh` me-source `lib/*.sh` (6 modul),
+  ditambah satu CLI `agentdrop`. `scripts/` turun dari 11 berkas ke 3.
+- **Camofox dibersihkan total** — `grep -ril camofox` di luar `docs/` dan
+  `AGENTS.md` mengembalikan nol.
+- **Ekstensi bikinan sendiri + signing daemon dihapus** (K7).
+- Log audit penuh dengan redaksi dua lapis, diuji per pola.
+- Memory loop + `knowledge/` (K12).
+- `AGENTS.md` ini.
 
-Sedang dikerjakan (dihentikan untuk menetapkan scope lebih dulu):
+**Dua bug nyata ditemukan saat pembersihan** — keduanya membuat hal yang rusak
+terlihat sehat:
 
-- Pembersihan besar: 18 berkas era Camofox + ekstensi bikinan + signing daemon
-  **sudah di-`git rm`** tapi **belum di-commit**. Tag `arsip-sebelum-pembersihan`
-  menunjuk `81417dc` sebagai titik pemulihan.
-- `lib/00-common.sh`, `10-deps.sh`, `20-credentials.sh`, `30-hermes.sh`,
-  `40-browser.sh`, `50-verify.sh` **sudah ditulis**, `bash -n` bersih.
-- `install.sh` (index) dan CLI `agentdrop` **belum ditulis**.
+1. `worker-orchestrator/SOUL.md` menyuruh agent menjalankan
+   `tools/signing_policy.py` yang sudah dihapus. Agent akan memanggil skrip
+   yang tidak ada lalu harus berimprovisasi pada keputusan signing — tempat
+   terburuk untuk berimprovisasi.
+2. `scripts/burn-in.sh` memeriksa Camofox di port 9377 yang tidak ada
+   pendengarnya, jadi burn-in selalu gagal di langkah 2 dari 4.
+3. `install.sh --verify-only` exit 0 sambil melaporkan 9 kegagalan, karena
+   `verify_run || true` menelan statusnya.
+
+Ketiganya sudah diperbaiki.
 
 ---
 
 ## LANGKAH BERIKUTNYA
 
-1. Kunci scope `install.sh` dengan operator (dokumen ini bagian DEFINISI SCOPE),
-   termasuk pertanyaan docker.
-2. Tulis `install.sh` sebagai index yang me-source `lib/*.sh`.
-3. Tulis CLI `agentdrop` dengan subperintah: `start`, `stop`, `browser`,
-   `status`, `logs`, `audit`, `extensions`, `cron`, `burn-in`.
-4. Hapus skrip lama yang sudah digantikan (`scripts/*.sh`), sisakan yang tidak
-   tergantikan.
-5. Bersihkan sisa referensi Camofox di `config/hermes/config.yaml`
-   (blok `browser.camofox:` masih ada), `.env.example` (~20 var `CAMOFOX_*`),
-   `README.md`, `docs/`, `tools/validate_config.py`.
-6. Perbarui validator: buang pemeriksaan untuk berkas yang sudah dihapus
-   (seksi ekstensi bikinan, signing policy), tambah pemeriksaan struktur baru.
-7. Commit + push segera setelah setiap tahap — sandbox bisa hilang kapan saja.
-
----
+1. **Operator menjalankan uji di mesinnya** — lihat `docs/prosedur-uji.md`,
+   hasilnya dikumpulkan dengan `agentdrop logs` lalu di-push ke
+   `data/audit/<stempel>/`.
+2. Yang belum pernah diuji dan hanya bisa diuji di mesin operator:
+   - hook yang benar-benar menyala di dalam run Hermes yang hidup
+   - Chrome for Testing yang benar-benar memuat ekstensi wallet
+   - alur lengkap Telegram → orchestrator → worker → wallet
+3. Bersihkan `docs/arsitektur-alur.md` dan `docs/prosedur-uji.md` dari sisa
+   Camofox (masih ada; `docs/research.md` dan `docs/meta-2026.md` sengaja
+   dibiarkan sebagai catatan historis).
+4. Mismatch **E** masih terbuka: `platform_toolsets.telegram` di orchestrator
+   belum memuat `delegation`.
 
 ## JALAN BUNTU
 
