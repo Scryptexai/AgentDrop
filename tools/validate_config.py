@@ -652,6 +652,20 @@ def check_delegation_architecture() -> None:
         err("worker-orchestrator: platform_toolsets.telegram memuat 'terminal' — "
             "pintu masuk Telegram tidak boleh punya akses shell")
 
+    # Setiap worker harus disebut di routing orchestrator. Profil yang terpasang
+    # tapi tidak pernah dirutekan tidak akan pernah dipakai — worker-x sempat
+    # lolos dari sini karena ditambahkan ke setup.sh tapi tidak ke SOUL.md.
+    soul = REPO / "config/hermes/profiles/worker-orchestrator/SOUL.md"
+    if soul.exists():
+        checks += 1
+        soul_text = soul.read_text()
+        workers = [p.name for p in sorted((REPO / "config/hermes/profiles").iterdir())
+                   if p.is_dir() and p.name != "worker-orchestrator"]
+        for w in workers:
+            if f"`{w}`" not in soul_text:
+                err(f"worker-orchestrator/SOUL.md tidak merutekan ke '{w}' — "
+                    f"profil terpasang tapi tidak akan pernah didelegasikan")
+
 
 # ============================================================================
 # Cek setup.sh tidak melupakan profil/skill yang ada di disk

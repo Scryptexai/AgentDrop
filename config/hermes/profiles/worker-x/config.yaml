@@ -1,0 +1,78 @@
+# ============================================================================
+# WORKER: X / TWITTER — engagement & verifikasi quest
+# ============================================================================
+# Dipasang ke: ~/.hermes/profiles/worker-x/config.yaml
+# Profil = HERMES_HOME terpisah penuh. Tidak mewarisi config utama.
+#
+# KENAPA WORKER INI ADA
+# ---------------------
+# Crypto dan airdrop tidak bisa dipisahkan dari X. Banyak quest mewajibkan
+# post di akun X, dan ada DUA metode verifikasi yang harus ditangani:
+#
+#   1. OAUTH  — proyek terhubung ke akun X operator. Begitu post tayang,
+#               sistem proyek mendeteksinya otomatis. Agent cukup post, lalu
+#               menunggu status quest berubah.
+#
+#   2. MANUAL — proyek anggaran rendah (atau yang tidak mau urus OAuth)
+#               meminta URL post ditempel ke form quest. Agent harus:
+#               post -> ambil URL post itu -> tempel ke form -> submit.
+#
+# Metode 2 adalah yang paling sering gagal, karena URL post tidak muncul di
+# address bar. Detail penanganannya ada di skills/x-engager/SKILL.md.
+#
+# CATATAN ToS
+# -----------
+# X melarang otomasi yang menyamar sebagai aktivitas manusia organik. Worker
+# ini memakai akun operator secara transparan, dengan jeda antar aksi dan batas
+# harian. Batas itu bukan hiasan — akun yang kena suspend membuat seluruh
+# campaign yang bergantung padanya hangus.
+# ============================================================================
+
+model:
+  default: "anthropic/claude-sonnet-4"
+  provider: "auto"
+  base_url: "https://openrouter.ai/api/v1"
+
+toolsets:
+  - hermes-cli
+  - browser
+  - file
+  - memory
+  # `todo` penting di sini: satu campaign X bisa punya banyak post terjadwal,
+  # dan agent harus bisa melacak mana yang sudah tayang.
+  - todo
+
+agent:
+  max_turns: 40
+  reasoning_effort: "medium"
+
+browser:
+  inactivity_timeout: 1800
+  command_timeout: 30
+  # X adalah SPA berat dengan timeline virtual yang di-render ulang terus.
+  # Snapshot besar itu normal di sini.
+  snapshot_threshold: 20000
+  record_sessions: true
+  allow_private_urls: false
+
+  # headed HANYA berlaku untuk browser lokal Hermes (agent-browser), BUKAN
+  # Camofox. GUI di setup ini datang dari plugin vnc Camofox
+  # (Xvfb 1920x1080 -> x11vnc :5900 -> noVNC :6080). Biarkan false.
+  headed: false
+  camofox:
+    # Login X operator harus persisten lintas restart.
+    managed_persistence: true
+    adopt_existing_tab: true
+
+terminal:
+  backend: "local"
+  cwd: "."
+  timeout: 180
+  home_mode: "profile"
+
+compression:
+  enabled: true
+
+tool_loop_guardrails:
+  warnings_enabled: true
+  hard_stop_enabled: true

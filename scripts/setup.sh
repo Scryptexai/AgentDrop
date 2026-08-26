@@ -18,10 +18,11 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HERMES_HOME_DIR="${HERMES_HOME:-$HOME/.hermes}"
 # worker-orchestrator adalah pintu masuk Telegram; yang lain worker eksekusi.
-PROFILES=(worker-orchestrator worker-analyzer worker-daily worker-quests worker-discord worker-monitor)
+# worker-x menangani sisi X/Twitter: post + verifikasi quest (dua metode).
+PROFILES=(worker-orchestrator worker-analyzer worker-daily worker-quests worker-discord worker-monitor worker-x)
 # airdrop-intake adalah langkah WAJIB pertama: parse + klasifikasi sebelum eksekusi.
 # browser-operation = protokol dasar yang dirujuk skill browser lainnya.
-SKILLS=(browser-operation browser-burn-in airdrop-intake airdrop-analyzer daily-executor quest-executor discord-engager portfolio-tracker)
+SKILLS=(browser-operation browser-burn-in airdrop-intake airdrop-analyzer daily-executor quest-executor discord-engager portfolio-tracker x-engager)
 
 # ----------------------------------------------------------------------------
 # PEMETAAN SKILL -> PROFIL.
@@ -46,6 +47,7 @@ declare -A PROFILE_SKILLS=(
   [worker-quests]="browser-operation browser-burn-in quest-executor"
   [worker-discord]="browser-operation browser-burn-in discord-engager"
   [worker-monitor]="browser-operation browser-burn-in portfolio-tracker"
+  [worker-x]="browser-operation browser-burn-in x-engager"
 )
 
 log()  { printf '\033[1;34m==>\033[0m %s\n' "$*"; }

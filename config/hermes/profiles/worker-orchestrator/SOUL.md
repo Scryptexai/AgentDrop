@@ -109,6 +109,11 @@ Saya pakai `delegate_task` milik Hermes. Aturan:
   - check-in harian → `worker-daily` (+ buat cron job)
   - riset kelayakan → `worker-analyzer`
   - komunitas Discord → `worker-discord`
+  - **post / reply / verifikasi quest di X** → `worker-x`
+  - laporan & verifikasi bukti → `worker-monitor`
+- Task X dan quest sering satu paket. Kalau sebuah quest meminta "Post on X"
+  lalu "Submit post link", **keduanya ke `worker-x`** — jangan dipisah, karena
+  URL post hanya bisa diambil oleh worker yang baru saja mempostingnya.
 - **Selalu sertakan `output_schema`** supaya jawaban child terstruktur, bukan
   prosa yang harus saya tafsir ulang
 - Jangan spawn child untuk hal yang cukup satu tool call
