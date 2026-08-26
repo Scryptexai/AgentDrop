@@ -58,6 +58,76 @@ Jangan perdebatkan ulang ini tanpa alasan baru yang eksplisit.
 
 ---
 
+## PROTOKOL BROWSER — OpenManus + inventaris tool Hermes
+
+Bagian ini ada karena konteksnya hilang dua kali. **Jangan menulis ulang
+protokol browser tanpa membaca ini lebih dulu.**
+
+### Warisan OpenManus (`FoundationAgents/OpenManus`)
+
+Tiga hal yang diambil, dan satu yang sengaja ditolak:
+
+1. **Elemen dirujuk, bukan diseleksi.** OpenManus memakai
+   `[index]<type>text</type>`; Hermes memakai `ref` dari accessibility tree
+   (`@e5`). Prinsipnya sama: **tidak ada CSS selector, tidak ada XPath.**
+   UI website airdrop berubah setiap deploy; selector mengunci agent ke satu
+   versi tampilan.
+2. **`evaluation_previous_goal: Success|Failed|Unknown` wajib di setiap
+   langkah.** Di AgentDrop ini jadi `berhasil` / `gagal` / `tidak diketahui`
+   plus bukti. Tanpa ini agent menumpuk aksi di atas asumsi dan melaporkan
+   keberhasilan palsu.
+3. **Progres dihitung eksplisit** ("3 dari 7 task"). Ini yang membedakan
+   "sedang mengerjakan langkah 5" dari "sudah 40 putaran di langkah yang sama".
+
+**Yang ditolak:** prompt browser OpenManus menulis *"If captcha pops up, try to
+solve it"*. Di AgentDrop CAPTCHA selalu diserahkan ke manusia lewat noVNC.
+
+### Inventaris tool — diverifikasi dari sumber Hermes
+
+`tools/browser_tool.py` + `tools/web_tools.py`, toolset `browser` dan `web`:
+
+```
+browser_navigate  browser_snapshot  browser_click   browser_type
+browser_scroll    browser_press     browser_back    browser_vision
+browser_get_images  browser_console  browser_exec   browser_dialog
+browser_cdp       web_search        web_extract
+```
+
+Fakta yang sering salah:
+
+- **`browser_scroll(direction=...)` hanya menerima `"up"` atau `"down"`**
+  (enum, required). Paling sering dilewati padahal paling sering berhasil —
+  tombol Claim/Connect sering di bawah lipatan.
+- **`browser_type` mengosongkan field lebih dulu**, lalu mengetik. Bukan untuk
+  menambah teks.
+- **`browser_press("Enter")` untuk submit form**, lebih tahan perubahan UI
+  daripada mencari tombol Submit.
+- **Tidak ada `browser_search`.** Pencarian lewat `web_search`.
+- **`computer_use` (Set-of-Mark) BUKAN bagian browser** — ia toolset terpisah
+  dan **tidak diaktifkan** untuk profil mana pun. Skill yang menyuruh
+  memakainya adalah bug; sudah dibersihkan di `browser-operation`,
+  `browser-burn-in`, `x-engager`, README, dan `docs/arsitektur-alur.md`.
+
+### Loop otonom: lanjut atau berhenti
+
+Loop berhenti **hanya** pada satu dari empat kondisi:
+
+| Kondisi | Tindakan |
+|---|---|
+| Task selesai — semua langkah rencana `berhasil` | ringkas + bukti per langkah |
+| Butuh manusia — login, CAPTCHA, 2FA, KYC, approval wallet | sebut apa & di mana, lalu tunggu |
+| Buntu — 3 pendekatan berbeda gagal di langkah yang sama | lapor langkah, 3 pendekatan, dugaan penyebab |
+| Ragu — confidence < 0.7 pada keputusan tak-terurungkan | pertanyaan spesifik |
+
+Bukan alasan berhenti: halaman lambat, satu aksi gagal, tampilan tak terduga.
+Bukan alasan lanjut: mengulang aksi sama ketiga kalinya, atau lanjut setelah
+verifikasi `tidak diketahui`.
+
+Batas putaran ada di `agent.max_turns` per profil. Mendekatinya adalah tanda
+untuk berhenti dan melapor, bukan mempercepat.
+
+---
+
 ## DEFINISI SCOPE `install.sh`
 
 `install.sh` memasang **framework ke dalam sistem**, bukan menjalankan aplikasi.

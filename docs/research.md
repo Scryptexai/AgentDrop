@@ -131,7 +131,7 @@ Contoh di `cli-config.yaml.example`: `anthropic/claude-opus-4.6`. Help
 ### `toolsets`
 `DEFAULT_CONFIG["toolsets"] = ["hermes-cli"]`. Id valid (dari
 `hermes_cli/tools_config.py`): `browser, terminal, file, web, memory, skills,
-todo, vision, computer_use, code_execution, cronjob, delegate_task,
+todo, vision, computer_use, code_execution, cronjob, delegation,
 session_search, context_engine, clarify, delegation, image_gen, tts, stt, ...`
 
 **`file_ops` bukan id valid** — yang benar `file`.

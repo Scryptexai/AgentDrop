@@ -116,7 +116,14 @@ log "konteks lingkungan"
   python3 --version 2>&1 | sed 's/^/python3  /' || true
   node --version 2>&1 | sed 's/^/node     /' || true
   hermes --version 2>&1 | head -1 | sed 's/^/hermes   /' || true
-  "$REPO_ROOT/scripts/start-browser-cdp.sh" --status 2>&1 | sed 's/^/browser  /' || true
+  # Dulu memanggil scripts/start-browser-cdp.sh --status. Skrip itu sudah
+  # digantikan lib/40-browser.sh, jadi status dibaca langsung dari CDP di sini.
+  if curl -fsS --max-time 3 "http://127.0.0.1:${CDP_PORT:-9222}/json/version" >/dev/null 2>&1; then
+    printf 'browser  CDP hidup di port %s\n' "${CDP_PORT:-9222}"
+    curl -fsS --max-time 3 "http://127.0.0.1:${CDP_PORT:-9222}/json/version" 2>/dev/null | sed 's/^/browser  /'
+  else
+    printf 'browser  CDP TIDAK menjawab di port %s\n' "${CDP_PORT:-9222}"
+  fi || true
 } > "$DEST/05-lingkungan.txt" 2>&1
 ok "05-lingkungan.txt"
 

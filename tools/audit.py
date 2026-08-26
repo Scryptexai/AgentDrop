@@ -59,10 +59,10 @@ PLAYBOOK = [
     {
         "match": lambda r: r.get("component") == "browser" and r.get("ok") is False,
         "cause": "Tool browser gagal",
-        "fix": "scripts/start-browser-cdp.sh --status",
+        "fix": "agentdrop browser-status",
         "where": [
             "config/hermes/profiles/*/config.yaml  (browser.cdp_url harus loopback:9222)",
-            "scripts/start-browser-cdp.sh          (Chrome for Testing + ekstensi)",
+            "agentdrop browser                     (Chrome for Testing + ekstensi)",
         ],
         "hint": "Kalau pesannya menyebut CDP/websocket, browser-nya belum jalan "
                 "atau --session dipakai bersama --cdp (agent-browser >=0.13 "
@@ -117,7 +117,7 @@ PLAYBOOK = [
         "match": lambda r: r.get("phase") == "install" and r.get("level") == "error",
         "cause": "Kegagalan saat instalasi",
         "fix": "bash install.sh",
-        "where": ["install.sh", "scripts/setup.sh"],
+        "where": ["install.sh", "./install.sh"],
         "hint": "Jalankan ulang install.sh; ia idempoten dan melanjutkan dari "
                 "yang sudah berhasil.",
     },
@@ -125,10 +125,10 @@ PLAYBOOK = [
         "match": lambda r: r.get("component") == "browser" and r.get("level") == "error"
                            and "extension" in str(r.get("detail", "")).lower(),
         "cause": "Ekstensi wallet tidak berfungsi",
-        "fix": "scripts/install-extensions.sh --list",
+        "fix": "agentdrop extensions",
         "where": [
             "config/extensions.yaml           (manifest ekstensi)",
-            "scripts/install-extensions.sh    (unduh + ekstrak)",
+            "agentdrop extensions                  (unduh + ekstrak)",
         ],
         "hint": "Chrome 137+ branded mengabaikan --load-extension. Harus Chrome "
                 "for Testing.",
@@ -271,7 +271,7 @@ def cmd_doctor(args):
         for r in hang[-5:]:
             print(f"    {r.get('ts')}  {r.get('tool')}  session={r.get('session','')[:20]}")
         print(f"    {BOLD('periksa')}  : apakah browser masih hidup? "
-              f"scripts/start-browser-cdp.sh --status")
+              f"agentdrop browser-status")
         print()
 
     print(DIM("Untuk runtutan lengkap satu tugas: audit.py trace <session/trace>"))
@@ -374,7 +374,7 @@ def cmd_stuck(args):
         print(f"  {r.get('ts')}  {r.get('tool'):<22} session={r.get('session','')}")
     print()
     print("Tool yang menggantung hampir selalu berarti browsernya mati atau")
-    print("CDP terputus. Periksa: scripts/start-browser-cdp.sh --status")
+    print("CDP terputus. Periksa: agentdrop browser-status")
     return 1
 
 

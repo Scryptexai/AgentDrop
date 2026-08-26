@@ -31,7 +31,7 @@ Yang dipakai di sini, semuanya tool native Hermes:
 | Klik | `browser_click(ref="@e5")` | hasil klik |
 | Ketik | `browser_type` | hasil ketik |
 | Kalau AX tree tidak cukup | `browser_vision` | analisis screenshot |
-| Kalau masih buntu | `computer_use(action="capture", mode="som")` | **screenshot bernomor** → `click(element=N)` |
+| Kalau masih buntu | berhenti, serahkan ke manusia lewat noVNC | `computer_use` tidak diaktifkan di AgentDrop |
 
 `browser_snapshot` di Hermes didefinisikan sebagai *"a text-based snapshot of
 the current page's accessibility tree"*. Elemen dikenali dari **peran dan
@@ -43,12 +43,15 @@ Urutan eskalasi kalau sebuah tombol tidak ketemu:
 ```
 browser_snapshot (AX tree + refs)
    ↓ tidak ketemu / overlay / canvas
+browser_scroll (direction="down") → snapshot ulang
+   ↓ masih tidak ketemu
 browser_vision (screenshot + penalaran visual)
-   ↓ masih buntu
-computer_use capture mode='som' → click element=N   (level OS, jendela apa pun)
    ↓ masih buntu
 BERHENTI, laporkan, minta manusia via noVNC
 ```
+
+`computer_use` (Set-of-Mark) adalah toolset terpisah dan **tidak diaktifkan**
+untuk profil mana pun di AgentDrop. Jangan memanggilnya.
 
 ## Enam uji
 

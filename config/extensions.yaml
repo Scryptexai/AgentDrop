@@ -1,7 +1,7 @@
 # ============================================================================
 # Manifest ekstensi browser
 # ============================================================================
-# Dibaca oleh scripts/install-extensions.sh. Setiap entri diunduh dari Chrome
+# Dibaca oleh `agentdrop extensions`. Setiap entri diunduh dari Chrome
 # Web Store, diekstrak ke extensions/installed/<folder>/, lalu dimuat Chrome
 # for Testing lewat --load-extension.
 #

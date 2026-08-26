@@ -63,7 +63,7 @@ browser:
   # Jadi browser_navigate / browser_snapshot / browser_click dan seluruh
   # protokol ref accessibility-tree tetap berfungsi persis sama.
   #
-  # Browser-nya dijalankan scripts/start-browser-cdp.sh: Chrome for Testing +
+  # Browser-nya dijalankan `agentdrop browser`: Chrome for Testing +
   # ekstensi wallet + noVNC. HARUS Chrome for Testing — build Chrome branded
   # mengabaikan --load-extension sejak versi 137.
   #
@@ -113,7 +113,7 @@ memory:
 # Kenapa path-nya ~/.agentdrop dan bukan path repo: Hermes menjalankan command
 # hook lewat shlex.split(os.path.expanduser(...)) dengan shell=False
 # (hermes-agent/agent/shell_hooks.py:16,555). Jadi `~` di-expand, tetapi $VAR
-# TIDAK. scripts/setup.sh menyalin skrip hook ke lokasi tetap ini supaya
+# TIDAK. ./install.sh menyalin skrip hook ke lokasi tetap ini supaya
 # konfigurasi tetap benar di mana pun repo di-clone.
 #
 # `fail_closed` sengaja TIDAK disetel. Logger yang bisa menggagalkan tool call

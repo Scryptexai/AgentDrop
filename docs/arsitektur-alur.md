@@ -90,8 +90,9 @@ flowchart TD
 ```
 
 Kalau accessibility tree tidak cukup (canvas, overlay, popup) → turun ke
-`browser_vision` atau `computer_use(mode='som')` (Set-of-Mark, elemen bernomor
-di atas screenshot).
+`browser_vision` (screenshot halaman yang diperiksa secara visual). Kalau itu
+pun tidak cukup → berhenti dan serahkan ke manusia lewat noVNC. `computer_use`
+adalah toolset terpisah dan tidak diaktifkan di AgentDrop.
 
 ---
 
@@ -162,7 +163,8 @@ atas semua kelonggaran, diuji di validator) dan `max_auto_approvals_per_day`
 
 ## 4. Alur eskalasi ke manusia
 
-✅ noVNC terpasang di `config/camofox/camofox.config.json` (plugin vnc).
+✅ GUI datang dari noVNC yang dijalankan `agentdrop browser`
+(Xvfb → x11vnc → websockify).
 
 ```mermaid
 flowchart LR
@@ -211,10 +213,11 @@ tanpa itu laporan tidak akan sampai.
 flowchart TD
     I["bash install.sh"] --> E["Isi .env<br/>API key + Telegram"]
     E --> M["Pilih model"]
-    M --> SB["scripts/start-browser.sh<br/>Camofox + noVNC"]
-    SB --> LG["scripts/takeover.sh<br/>login VISUAL per platform"]
-    LG --> BI["scripts/burn-in.sh<br/>Uji 1-4"]
-    BI -->|hijau| G["scripts/start-gateway.sh"]
+    M --> SB["agentdrop extensions<br/>pasang wallet resmi"]
+    SB --> BC["agentdrop browser<br/>Chrome/CDP + noVNC"]
+    BC --> LG["login VISUAL per platform<br/>lewat noVNC, oleh manusia"]
+    LG --> BI["agentdrop burn-in<br/>Uji 1-4"]
+    BI -->|hijau| G["agentdrop start<br/>gateway + agent"]
     BI -->|"gagal 3x sama"| FIX(["Perbaiki lingkungan,<br/>bukan prompt"])
     G --> USE["Pakai via Telegram"]
     USE --> CR["scripts/install-cron.sh"]
@@ -244,7 +247,7 @@ ESCALATE, saya tidak mencari jalan lain untuk menandatanganinya."*
 
 ### ✅ C — Skill dibatasi per profil: SELESAI
 
-`scripts/setup.sh` sekarang punya `declare -A PROFILE_SKILLS`. Slot terpasang
+`lib/30-hermes.sh` punya `declare -A PROFILE_SKILLS`. Slot terpasang
 turun dari **48 (6×8) menjadi 19**. `worker-discord` tidak lagi bisa memanggil
 `daily-executor`.
 
@@ -263,10 +266,15 @@ tidak ada, atau baris `rm -rf` dihapus. Keempatnya sudah diuji negatif.
 
 ### ❌ B — Shim EIP-1193 belum dibangun: MASIH TERBUKA
 
-Ini satu-satunya yang membuat rute otonom belum benar-benar jalan. Policy engine
-sudah teruji 47 test, tapi **tidak ada yang memanggilnya** — website tidak punya
-`window.ethereum`. Yang harus dibuat: WebExtension Camoufox + daemon signing
-lokal. Harus addon, karena `camofox-browser` tidak punya `addInitScript`.
+**Ditutup dengan menghapusnya.** Dulu rencananya membuat WebExtension sendiri
+plus daemon signing lokal. Rencana itu dibatalkan (AGENTS.md K7): ekstensi
+non-official terdeteksi sebagai klien asing, berisiko di-ban proyek, dan
+ditolak sebagian dApp.
+
+Yang dipakai sekarang: wallet resmi (MetaMask/OKX/Phantom) yang diunduh ke
+Chrome for Testing. Kuncinya dipegang manusia, approval ditandatangani lewat
+noVNC. Daemon signing dan policy engine ikut dihapus karena tidak punya
+pemanggil lagi — masih bisa dipulihkan dari commit `81417dc`.
 
 ### ⚠️ E — `delegation` tidak ada di `platform_toolsets.telegram`: PERLU UJI HIDUP
 

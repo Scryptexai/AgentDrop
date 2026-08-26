@@ -117,13 +117,22 @@ SECURITY_KEYS = {
 }
 
 # Dari hermes_cli/tools_config.py
+# 58 id toolset, diturunkan dari toolsets.py:TOOLSETS di sumber Hermes
+# (bukan dikarang). delegate_task BUKAN id toolset — ia adalah NAMA TOOL di
+# dalam toolset "delegation". Menyebutnya di platform_toolsets membuat
+# Hermes tidak memberi tool delegasi sama sekali.
 TOOLSET_IDS = {
-    "a2a", "bfl", "browser", "clarify", "code_execution", "computer_use",
-    "context_engine", "cronjob", "delegate_task", "delegation", "discord",
-    "discord_admin", "execute_code", "file", "hermes-cli", "homeassistant",
-    "image_gen", "image_generate", "memory", "session_search", "skills",
-    "spotify", "stt", "terminal", "text_to_speech", "todo", "tts", "video",
-    "video_gen", "vision", "vision_analyze", "web", "x_search", "yuanbao",
+    "browser", "clarify", "code_execution", "coding", "computer_use", "context_engine",
+    "cronjob", "debugging", "delegation", "desktop_ui", "discord", "discord_admin",
+    "feishu_doc", "feishu_drive", "file", "hermes-acp", "hermes-api-server",
+    "hermes-bluebubbles", "hermes-cli", "hermes-cron", "hermes-dingtalk", "hermes-discord",
+    "hermes-email", "hermes-feishu", "hermes-gateway", "hermes-homeassistant",
+    "hermes-matrix", "hermes-mattermost", "hermes-qqbot", "hermes-signal", "hermes-slack",
+    "hermes-sms", "hermes-telegram", "hermes-webhook", "hermes-wecom",
+    "hermes-wecom-callback", "hermes-weixin", "hermes-whatsapp", "hermes-yuanbao",
+    "homeassistant", "image_gen", "kanban", "memory", "project", "safe", "search",
+    "session_search", "skills", "spotify", "terminal", "todo", "tts", "video", "video_gen",
+    "vision", "web", "x_search", "yuanbao",
 }
 
 # Frontmatter wajib, dari skill bawaan Hermes
@@ -586,9 +595,25 @@ def check_delegation_architecture() -> None:
     data = yaml.safe_load(orch.read_text()) or {}
 
     ts = data.get("toolsets") or []
-    for need in ("delegate_task", "delegation"):
-        if need not in ts:
-            err(f"worker-orchestrator: toolset '{need}' tidak ada — tidak bisa mendelegasikan")
+    # HANYA "delegation". "delegate_task" adalah NAMA TOOL di dalam toolset itu
+    # (toolsets.py: "delegation": {"tools": ["delegate_task"]}), bukan id
+    # toolset. Pemeriksaan lama menuntut keduanya, sehingga justru memaksa
+    # nilai yang tidak valid masuk ke config.
+    if "delegation" not in ts:
+        err("worker-orchestrator: toolset 'delegation' tidak ada — tidak bisa mendelegasikan")
+    if "delegate_task" in ts:
+        err("worker-orchestrator: 'delegate_task' dipakai sebagai id toolset. "
+            "Id-nya 'delegation'; 'delegate_task' adalah nama tool di dalamnya.")
+
+    # Guard regresi: pintu masuk Telegram adalah satu-satunya jalan operator
+    # memberi task. Kalau "delegation" hilang dari platform_toolsets.telegram,
+    # orchestrator menerima pesan tapi TIDAK BISA mendelegasikan ke worker mana
+    # pun — dan kegagalannya sunyi, karena tool-nya memang tidak pernah ada.
+    pt = (data.get("platform_toolsets") or {}).get("telegram")
+    if isinstance(pt, list) and "delegation" not in pt:
+        err("worker-orchestrator: platform_toolsets.telegram tanpa 'delegation' — "
+            "orchestrator bisa menerima task dari Telegram tapi tidak bisa "
+            "mendelegasikannya ke worker")
 
     d = data.get("delegation")
     if not isinstance(d, dict):
@@ -635,7 +660,7 @@ def check_setup_coverage() -> None:
     checks += 1
     setup = REPO / "lib/30-hermes.sh"
     if not setup.exists():
-        err("scripts/setup.sh tidak ada")
+        err("./install.sh tidak ada")
         return
     text = setup.read_text()
 
@@ -797,6 +822,49 @@ def check_shell_disabled(configs: list[Path]) -> None:
         if "terminal" in data:
             warn(f"{name}: masih punya blok top-level `terminal:` — tidak dipakai "
                  f"selama toolset-nya dimatikan, tapi sebaiknya dihapus")
+
+
+def check_browser_tool_contract() -> None:
+    """Skill tidak boleh menyuruh agent memakai tool yang tidak dimilikinya.
+
+    Ini kelas bug yang sudah terjadi dua kali: SOUL.md menyuruh agent
+    menjalankan tools/signing_policy.py yang sudah dihapus, dan tiga skill
+    menyuruh memakai computer_use(mode='som') padahal toolset itu tidak
+    diaktifkan untuk profil mana pun. Agent yang memanggil tool yang tidak ada
+    akan berimprovisasi -- dan improvisasi paling mahal terjadi di browser.
+    """
+    global checks
+
+    ADA = {
+        "browser_navigate", "browser_snapshot", "browser_click", "browser_type",
+        "browser_scroll", "browser_press", "browser_back", "browser_vision",
+        "browser_get_images", "browser_console", "browser_exec",
+        "browser_dialog", "browser_cdp", "web_search", "web_extract",
+    }
+    for md in sorted((REPO / "skills").rglob("SKILL.md")):
+        checks += 1
+        # (?<![\w/]) dan (?!\.py) mengecualikan nama berkas sumber seperti
+        # tools/browser_tool.py, yang bukan panggilan tool.
+        for m in re.finditer(r"(?<![\w/])(browser_[a-z_]+)(?!\.py)\b", md.read_text()):
+            if m.group(1) not in ADA:
+                err(f"{md.relative_to(REPO)}: memakai '{m.group(1)}' yang tidak "
+                    f"ada di tool browser Hermes")
+
+    for md in sorted(list((REPO / "skills").rglob("SKILL.md")) +
+                     list((REPO / "config" / "hermes").rglob("SOUL.md"))):
+        checks += 1
+        text = md.read_text()
+        if "computer_use(" in text or "computer_use mode" in text:
+            err(f"{md.relative_to(REPO)}: menganjurkan computer_use, padahal "
+                f"toolset itu tidak diaktifkan untuk profil mana pun")
+
+    checks += 1
+    bo = REPO / "skills" / "browser-operation" / "SKILL.md"
+    if bo.exists():
+        text = bo.read_text()
+        for wajib in ("browser_scroll", "browser_type", "browser_press", "web_search"):
+            if wajib not in text:
+                err(f"browser-operation/SKILL.md tidak mendokumentasikan {wajib}")
 
 
 def check_memory_loop(configs: list[Path]) -> None:
@@ -1090,6 +1158,9 @@ def main() -> int:
 
     print("\n[19] Log audit")
     check_audit_log()
+
+    print("\n[20] Kontrak tool browser")
+    check_browser_tool_contract()
 
     print("\n" + "=" * 62)
     print(f"  {checks} file diperiksa")

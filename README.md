@@ -273,7 +273,7 @@ hermes --profile worker-quests chat -q "Kerjakan campaign ini: https://app.galxe
 hermes --profile worker-monitor chat -q "Buat ringkasan mingguan semua campaign"
 
 # Chat interaktif
-./scripts/start-agent.sh worker-analyzer
+agentdrop start
 ```
 
 > **Catatan sintaks:** `hermes chat` **tidak menerima argumen posisional** —
@@ -321,8 +321,7 @@ Yang dipakai:
    `berhasil` / `gagal` / `tidak diketahui` — bukan menumpuk aksi di atas
    asumsi.
 5. Kalau accessibility tree tidak cukup (canvas, overlay, popup), turun ke
-   `browser_vision` atau `computer_use(mode='som')` — Set-of-Mark, elemen
-   diberi nomor di atas screenshot.
+   `browser_vision` — screenshot halaman yang bisa Anda periksa secara visual.
 
 Pendekatan ini bukan karangan: Hermes memang menyediakan tool-tool itu secara
 native (`browser_snapshot` tidak punya parameter selector sama sekali), dan pola

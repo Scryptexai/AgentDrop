@@ -63,7 +63,7 @@ model:
 # TOOLSETS — id asli dari hermes_cli/tools_config.py
 # ----------------------------------------------------------------------------
 # Valid: browser, terminal, file, web, memory, skills, todo, vision,
-#        computer_use, code_execution, cronjob, delegate_task, session_search,
+#        computer_use, code_execution, cronjob, delegation, session_search,
 #        context_engine, clarify, delegation, image_gen, tts, stt, ...
 # Catatan: `hermes-cli` adalah default bawaan Hermes.
 toolsets:

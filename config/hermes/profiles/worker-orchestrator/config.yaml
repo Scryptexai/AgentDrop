@@ -21,14 +21,15 @@ toolsets:
   - web
   - memory
   - todo
-  # Dua toolset inilah yang membuat pendelegasian mungkin.
-  - delegate_task
+  # Toolset "delegation" berisi tool delegate_task. Id-nya "delegation";
+  # "delegate_task" adalah NAMA TOOL, bukan id toolset, dan menyebutnya di sini
+  # tidak memberi apa-apa.
   - delegation
 
 # Toolset yang boleh dipakai saat pesan datang dari Telegram.
 # Sengaja TIDAK memberi terminal: pintu masuk publik tidak boleh punya shell.
 platform_toolsets:
-  telegram: [hermes-cli, browser, file, web, memory, todo, delegate_task]
+  telegram: [hermes-cli, browser, file, web, memory, todo, delegation]
 
 agent:
   # Orkestrator menunggu banyak child selesai. Butuh ruang.
@@ -93,7 +94,7 @@ browser:
   # Jadi browser_navigate / browser_snapshot / browser_click dan seluruh
   # protokol ref accessibility-tree tetap berfungsi persis sama.
   #
-  # Browser-nya dijalankan scripts/start-browser-cdp.sh: Chrome for Testing +
+  # Browser-nya dijalankan `agentdrop browser`: Chrome for Testing +
   # ekstensi wallet + noVNC. HARUS Chrome for Testing — build Chrome branded
   # mengabaikan --load-extension sejak versi 137.
   #
@@ -159,7 +160,7 @@ memory:
 # Kenapa path-nya ~/.agentdrop dan bukan path repo: Hermes menjalankan command
 # hook lewat shlex.split(os.path.expanduser(...)) dengan shell=False
 # (hermes-agent/agent/shell_hooks.py:16,555). Jadi `~` di-expand, tetapi $VAR
-# TIDAK. scripts/setup.sh menyalin skrip hook ke lokasi tetap ini supaya
+# TIDAK. ./install.sh menyalin skrip hook ke lokasi tetap ini supaya
 # konfigurasi tetap benar di mana pun repo di-clone.
 #
 # `fail_closed` sengaja TIDAK disetel. Logger yang bisa menggagalkan tool call

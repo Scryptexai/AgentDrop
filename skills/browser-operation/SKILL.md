@@ -135,19 +135,111 @@ harus dinaiki:
 
 ```
 1. Snapshot ulang           → mungkin state sudah berubah
-2. Scroll                   → elemennya mungkin di luar viewport
+2. browser_scroll           → elemennya mungkin di luar viewport
 3. Tutup popup/overlay      → cookie banner, modal, tooltip menutupi
 4. Kembali (browser_back)   → lalu coba jalan lain
 5. Tab baru                 → jangan rusak tab yang sedang dipakai
 6. browser_vision           → AX tree tidak cukup (canvas, overlay, gambar)
-7. computer_use mode='som'  → screenshot bernomor, klik by element index
-8. BERHENTI                 → laporkan, minta manusia via noVNC
+7. BERHENTI                 → laporkan, minta manusia via noVNC
 ```
 
-Langkah 7 adalah Set-of-Mark: `computer_use(action="capture", mode="som")`
-menghasilkan **screenshot dengan overlay elemen bernomor**, lalu
-`click(element=N)`. Ini satu-satunya jalan untuk UI yang tidak punya markup
-aksesibel — dan untuk jendela yang bukan halaman web biasa.
+Langkah 2 sering diabaikan padahal paling sering berhasil. Banyak tombol
+"Claim" dan "Connect" berada di bawah lipatan, dan snapshot hanya berisi apa
+yang ada di accessibility tree saat itu:
+
+```
+browser_scroll(direction="down")   # hanya "up" atau "down"
+browser_snapshot()                 # WAJIB: ref baru sah setelah ini
+```
+
+Langkah 6: `browser_vision` mengambil screenshot halaman supaya Anda
+memeriksanya secara visual. Pakai ini saat accessibility tree tidak cukup —
+canvas, overlay, atau konten yang digambar sebagai gambar.
+
+**Yang tidak tersedia.** `computer_use` (Set-of-Mark) adalah toolset terpisah
+dan **tidak diaktifkan** untuk profil mana pun di AgentDrop. Jangan
+memanggilnya. Kalau snapshot dan `browser_vision` keduanya tidak cukup, itu
+langkah 7: berhenti dan serahkan ke manusia.
+
+---
+
+## Peta tool — yang benar-benar ada
+
+Semua ini diverifikasi terhadap sumber Hermes (`tools/browser_tool.py`,
+`tools/web_tools.py`). Jangan memanggil tool di luar daftar ini.
+
+| Tool | Untuk |
+|---|---|
+| `browser_navigate` | buka URL. **Harus dipanggil dulu** sebelum tool lain |
+| `browser_snapshot` | baca accessibility tree; sumber satu-satunya untuk `ref` |
+| `browser_click` | klik elemen **by ref** |
+| `browser_type` | isi input by ref — **mengosongkan field lebih dulu**, lalu mengetik |
+| `browser_press` | tekan tombol: `Enter` untuk submit form, `Tab` untuk pindah field |
+| `browser_scroll` | `direction="up"` atau `"down"` — membuka konten di luar viewport |
+| `browser_back` | kembali satu langkah di riwayat |
+| `browser_vision` | screenshot untuk diperiksa secara visual |
+| `browser_get_images` | daftar gambar di halaman |
+| `browser_console` | baca pesan console — tempat error dApp muncul |
+| `browser_exec` | jalankan JavaScript di halaman |
+| `browser_dialog` | tangani dialog/modal asli browser |
+| `browser_cdp` | akses CDP langsung |
+| `web_search` | cari di web (juga ada di toolset `web`) |
+| `web_extract` | ambil isi satu URL sebagai teks |
+
+Dua yang paling sering salah dipakai:
+
+- **`browser_type` mengosongkan field sebelum mengetik.** Jadi jangan
+  memanggilnya untuk *menambah* teks ke isi yang sudah ada.
+- **`browser_press("Enter")` untuk submit**, bukan mencari tombol Submit dan
+  mengkliknya. Lebih tahan terhadap perubahan UI.
+
+---
+
+## Loop otonom: kapan lanjut, kapan berhenti
+
+Agent berjalan dalam loop. Setiap iterasi adalah satu siklus penuh
+**lihat → nilai → bertindak → verifikasi**. Loop ini tidak berhenti sendiri
+karena bosan atau karena sudah lama — ia berhenti hanya pada salah satu dari
+empat kondisi di bawah.
+
+**LANJUT** kalau:
+- Langkah terakhir `berhasil`, DAN
+- Masih ada langkah tersisa di rencana, DAN
+- Batas putaran belum tercapai
+
+**BERHENTI** kalau salah satu dari ini:
+
+| Kondisi | Yang dilaporkan |
+|---|---|
+| **Task selesai** — semua langkah rencana `berhasil` | Ringkasan: apa yang dicapai, bukti per langkah |
+| **Butuh manusia** — login, CAPTCHA, 2FA, KYC, approval wallet | Apa yang harus dilakukan manusia, di mana, lalu tunggu |
+| **Buntu** — tiga percobaan dengan pendekatan berbeda gagal pada langkah yang sama | Langkah mana, tiga pendekatan yang sudah dicoba, dugaan penyebab |
+| **Ragu** — confidence di bawah 0.7 pada keputusan yang tidak bisa diurungkan | Pertanyaan spesifik, bukan "mohon petunjuk" |
+
+**Yang bukan alasan berhenti:** halaman lambat, satu aksi gagal (naiki tangga
+Aturan 5 lebih dulu), atau tampilan berbeda dari yang diduga.
+
+**Yang bukan alasan lanjut:** mengulang aksi yang sama untuk ketiga kalinya,
+"mencoba sekali lagi" tanpa mengubah pendekatan, atau melanjutkan setelah
+verifikasi menghasilkan `tidak diketahui`.
+
+### Hitung putaran secara eksplisit
+
+Setiap kali selesai satu langkah, tulis statusnya dalam bentuk yang bisa
+dibandingkan dengan rencana:
+
+```
+Progres: 3 dari 7 task selesai
+Langkah 4/7: klik "Claim Daily" → berhasil (tombol jadi "Claimed", sisa 23:41:07)
+Langkah 5/7: ...
+```
+
+Ini bukan formalitas. Tanpa penghitung, agent tidak punya cara membedakan
+"sedang mengerjakan langkah 5" dari "sudah 40 putaran di langkah yang sama" —
+dan yang kedua adalah loop yang harus diputus, bukan diteruskan.
+
+Batas putaran ada di config profil (`agent.max_turns`). Mendekatinya adalah
+tanda untuk berhenti dan melapor, bukan untuk mempercepat.
 
 ---
 

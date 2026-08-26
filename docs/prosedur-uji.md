@@ -19,7 +19,7 @@ cp .env.example .env      # lalu isi
 ## 1. Preflight — lakukan ini dulu
 
 ```bash
-./scripts/preflight.sh
+agentdrop status
 ```
 
 Skrip ini memeriksa biner, kredensial, profil, hook audit, browser, ekstensi,
@@ -30,16 +30,16 @@ Yang paling sering menggagalkan:
 
 | Gejala | Sebab | Perbaikan |
 |---|---|---|
-| `hooks_auto_accept bukan true` | hook diabaikan diam-diam pada cron/gateway | jalankan ulang `scripts/setup.sh` |
+| `hooks_auto_accept bukan true` | hook diabaikan diam-diam pada cron/gateway | jalankan ulang `./install.sh` |
 | `Google Chrome BRANDED` | Chrome 137+ mengabaikan `--load-extension` | pakai Chrome for Testing |
-| `extensions/installed kosong` | wallet belum dipasang | `./scripts/install-extensions.sh` |
-| `disabled_toolsets hilang` | agent bisa membuka browser sendiri lewat shell | jalankan ulang `scripts/setup.sh` |
+| `tidak ada ekstensi` | wallet belum dipasang | `agentdrop extensions` |
+| `disabled_toolsets hilang` | agent bisa membuka browser sendiri lewat shell | jalankan ulang `./install.sh` |
 
 ## 2. Nyalakan browser
 
 ```bash
-./scripts/install-extensions.sh        # sekali saja
-./scripts/start-browser-cdp.sh
+agentdrop extensions        # sekali saja
+agentdrop browser
 ```
 
 **Verifikasi wajib sebelum lanjut** — jangan lewati ini:
@@ -69,13 +69,13 @@ satu task — supaya kalau gagal, runtutannya pendek dan mudah dibaca.
 
 ```bash
 # pantau selama berjalan, di terminal lain
-python3 tools/audit.py tail -n 20
+agentdrop audit tail -n 20
 ```
 
 ## 5. Kumpulkan dan push — INI LANGKAH YANG MEMBUAT HASILNYA BISA DIANALISIS
 
 ```bash
-./scripts/collect-logs.sh --label uji-1
+agentdrop logs --label uji-1
 git add data/audit/
 git commit -m "audit: hasil uji 1"
 git push origin arena/01a037ea-agentdrop
@@ -102,9 +102,9 @@ berhenti dengan exit 1 dan tidak menulis ke repo.
 ## 6. Kalau ada yang salah sebelum push
 
 ```bash
-python3 tools/audit.py doctor              # gejala -> komponen -> berkas
-python3 tools/audit.py trace <session_id>  # runtutan satu task
-python3 tools/audit.py stuck               # tool menggantung = browser mati
+agentdrop audit doctor              # gejala -> komponen -> berkas
+agentdrop audit trace <session_id>  # runtutan satu task
+agentdrop audit stuck               # tool menggantung = browser mati
 ```
 
 `session_id` bisa diambil dari `01-health.txt` atau dari `tail`.

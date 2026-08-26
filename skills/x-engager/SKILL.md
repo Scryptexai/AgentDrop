@@ -105,7 +105,7 @@ Aturan isi post:
 ## Kalau mentok
 
 Ikuti tangga kebuntuan di `browser-operation`: snapshot ulang → scroll → tutup
-popup → back → tab baru → `browser_vision` → `computer_use(mode='som')` →
+popup → back → tab baru → `browser_vision` →
 berhenti dan minta manusia.
 
 Tiga kali gagal dengan cara yang sama berarti itu bukan masalah prompt.

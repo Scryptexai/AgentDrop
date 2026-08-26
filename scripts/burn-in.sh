@@ -66,7 +66,7 @@ ok "profil: ${PROFILE}"
 # Skill harus sudah tersalin ke profil — setup.sh yang melakukannya.
 PROFILE_SKILLS="${HOME}/.hermes/profiles/${PROFILE}/skills/browser-burn-in"
 [[ -d "${PROFILE_SKILLS}" ]] \
-  || die "Skill 'browser-burn-in' belum terpasang di profil ${PROFILE}. Jalankan ./scripts/setup.sh."
+  || die "Skill 'browser-burn-in' belum terpasang di profil ${PROFILE}. Jalankan ././install.sh."
 ok "skill browser-burn-in terpasang untuk profil ini"
 
 # ----------------------------------------------------------------------------
