@@ -22,9 +22,10 @@ cp .env.example .env      # lalu isi
 agentdrop status
 ```
 
-Skrip ini memeriksa biner, kredensial, profil, hook audit, browser, ekstensi,
-dan daemon dalam beberapa detik. **Kalau ada yang ✗, jangan mulai uji** — Anda
-akan menghabis waktu dan lognya tidak berarti.
+`agentdrop status` memeriksa lima hal: biner, kredensial, profil + hook audit,
+browser + ekstensi, dan keadaan repo. Selesai dalam beberapa detik.
+**Kalau ada yang ✗, jangan mulai uji** — Anda akan menghabis waktu dan lognya
+tidak berarti.
 
 Yang paling sering menggagalkan:
 
@@ -123,16 +124,31 @@ agentdrop audit stuck               # tool menggantung = browser mati
 
 ## Yang belum pernah diuji oleh pembuat repo
 
-Semua ini dibangun dan diuji unit di lingkungan tanpa `docker`, tanpa Hermes
-terpasang, dan tanpa Chrome. Yang **sudah** diuji nyata:
+Semua ini dibangun di lingkungan tanpa Hermes terpasang dan tanpa Chrome, jadi
+ada batas nyata pada apa yang sudah terbukti.
 
-- penulis log, redaksi, rotasi, dan `flock` (konkuren)
+**Sudah diuji nyata:**
+
+- penulis log audit: redaksi dua lapis (diuji per pola, dengan memutus satu pola
+  pada satu waktu), rotasi, dan `flock` konkuren
 - shell hook dengan bentuk payload persis dari dokumen Hermes, termasuk stdin
   rusak dan kosong
-- daemon signing lewat HTTP sungguhan — tanda tangan terbukti tidak masuk log
 - ekstraksi CRX3 dengan CRX sintetis
-- seluruh validator (154 pemeriksaan) dan ketiga suite test
+- validator: **179 pemeriksaan**, exit 0
+- tiap guard baru diuji **mutasi** — kondisinya benar-benak dirusak, lalu
+  dipastikan validator menolaknya
 
-Yang **belum**: hook yang benar-benar menyala di dalam run Hermes hidup, dan
-browser yang benar-benar memuat ekstensi. Keduanya hanya bisa diuji di mesin
-Anda — dan itulah gunanya langkah 5.
+**Belum pernah terbukti di lingkungan mana pun:**
+
+- hook yang benar-benar menyala di dalam run Hermes yang hidup
+- Chrome for Testing yang benar-benar memuat ekstensi wallet
+- alur lengkap Telegram → orchestrator → worker → wallet
+
+Ketiganya hanya bisa diuji di mesin Anda — dan itulah gunanya langkah 5.
+
+**Catatan jujur soal cakupan uji.** Dulu ada tiga suite test (47 policy,
+25 daemon, 9 plugin). Ketiganya **dihapus bersama subsistemnya** saat ekstensi
+bikinan sendiri dan signing daemon dibuang. Yang tersisa sebagai pengaman
+adalah validator 179 pemeriksaan plus uji mutasi per guard — bukan pengganti
+suite test, dan tidak dimaksudkan sebagai itu. Kalau nanti ada logika Python
+baru yang punya cabang keputusan, ia perlu suite test sendiri.
