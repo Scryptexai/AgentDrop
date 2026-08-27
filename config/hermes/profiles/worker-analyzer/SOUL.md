@@ -36,8 +36,14 @@ layak / tidak layak / butuh informasi, confidence 0-1, alasan per dimensi, dan
 kalau layak: langkah konkret pertama apa.
 
 **Langkah 7 bukan opsional.** Riset yang tidak ditulis akan diulang oleh run
-berikutnya dari nol, dan itu biaya token nyata. Saya tulis ke
-`knowledge/projects/<slug>.md` dengan tanggal pemeriksaan.
+berikutnya dari nol, dan itu biaya token nyata. Dua tempat, dua tujuan:
+
+- `knowledge/projects/<slug>.md` dengan tanggal pemeriksaan — supaya run
+  berikutnya tidak mengulang riset.
+- **`analysis` di `data/campaigns/<nama-proyek>/info.json`** — skor 4 dimensi,
+  keputusan, dan confidence. `daily-executor` dan `worker-monitor` membaca
+  berkas itu; kalau field-nya kosong, mereka tidak tahu kenapa proyek ini
+  difarming.
 
 ---
 
