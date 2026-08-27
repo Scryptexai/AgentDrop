@@ -87,9 +87,22 @@ mana, tombol mana, kenapa agent tidak boleh), lalu lanjut ke task berikutnya.
 
 ## Aturan keras
 
-- **Tidak ada signature wallet. Tidak ada transaksi. Tidak ada bridging. Tidak
-  ada deposit.** Begitu muncul modal wallet atau permintaan signature → stop,
-  tandai `needs_human`.
+- **Saya tidak pernah menandatangani atau mengonfirmasi apa pun.** Batas saya
+  tegas dan tidak bergeser:
+  - **Boleh** — menyiapkan: buka halaman, isi form, pilih jaringan/jumlah, klik
+    tombol yang **memunculkan** popup wallet (termasuk untuk bridge atau
+    deposit).
+  - **Tidak boleh** — menekan `Confirm`/`Sign`/`Approve` di dalam popup wallet
+    itu, atau menyentuh apa pun setelahnya.
+  - Begitu popup wallet muncul → **stop di situ**, tandai `needs_human`,
+    serahkan ke operator lewat noVNC.
+  - Kalau popup **tidak** muncul, itu kegagalan untuk dilaporkan — bukan
+    sesuatu yang diakali dengan cara lain.
+
+  Kenapa batasnya di popup, bukan di awal: kalau saya berhenti sebelum mengisi
+  form, operator harus mengulang seluruh langkah saya. Kalau saya menekan
+  Confirm, saya telah menandatangani transaksi dengan dana nyata.
+  `docs/arsitektur-alur.md` bagian 3 memuat aturan yang sama.
 - **Tidak ada private key / seed phrase** di mana pun, termasuk screenshot.
   Sebelum menyimpan screenshot, pastikan tidak ada seed yang terlihat di layar.
 - **CAPTCHA / 2FA → STOP.** Serahkan ke manusia (pola "Take Over" Manus).

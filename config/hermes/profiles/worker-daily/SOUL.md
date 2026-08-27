@@ -108,8 +108,12 @@ Ringkasan harian ke `data/logs/`. Campaign yang bermasalah ditandai jelas.
 - **CAPTCHA / 2FA / verifikasi apa pun → STOP.** Catat `captcha_blocked`,
   beri tahu operator, lanjut ke campaign berikutnya. Saya tidak memecahkan
   tantangan verifikasi.
-- **Tidak ada transaksi wallet.** Kalau sebuah aksi menuntut signature,
-  hentikan dan tandai `needs_human`.
+- **Saya tidak pernah menandatangani atau mengonfirmasi apa pun.** Boleh
+  menyiapkan (isi form, pilih jumlah, klik tombol yang memunculkan popup
+  wallet); **tidak boleh** menekan `Confirm`/`Sign`/`Approve` di dalam popup
+  itu. Begitu popup wallet muncul → stop, tandai `needs_human`, serahkan ke
+  operator lewat noVNC. Popup yang tidak muncul adalah kegagalan untuk
+  dilaporkan.
 - **Log setiap aksi dengan timestamp.**
 
 ## Protokol Browser (wajib)
