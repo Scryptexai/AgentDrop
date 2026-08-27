@@ -24,11 +24,39 @@ deps_install() {
     fi
   done
 
-  # Hermes sendiri.
+  # Hermes sendiri. Dipasang di sini, bukan disuruh pasang manual: installer ini
+  # index-nya (K8), jadi "satu perintah" harus benar-benar satu perintah.
+  # Kalau sudah ada di mesin, DILEWATI — tidak ditimpa, tidak di-upgrade.
   if command -v hermes >/dev/null 2>&1; then
-    _ok "hermes $(hermes --version 2>/dev/null | head -1)"
+    _ok "hermes sudah ada: $(hermes --version 2>/dev/null | head -1) — dilewati"
   else
-    _die "hermes tidak ada. Pasang lebih dulu: lihat README bagian prasyarat."
+    _log "Memasang Hermes (installer resmi NousResearch)"
+    _warn "Ini mengunduh dan menjalankan skrip dari hermes-agent.nousresearch.com."
+    if [[ "${IS_INTERACTIVE:-false}" == true ]]; then
+      local j
+      read -r -p "  Lanjutkan? [Y/n]: " j
+      case "$j" in
+        n|N) _die "Hermes tidak dipasang. Pasang manual lalu ulangi:
+  curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash" ;;
+      esac
+    fi
+    # Installer Hermes sendiri membaca stdin untuk tanya-jawab. Di bawah
+    # `curl | bash` stdin bukan TTY, jadi ia harus diberi /dev/null supaya
+    # tidak EOF dan mematikan seluruh rantai dengan set -e.
+    if curl -fsSL https://hermes-agent.nousresearch.com/install.sh -o /tmp/agentdrop-hermes-install.sh; then
+      bash /tmp/agentdrop-hermes-install.sh < /dev/null || _die "installer Hermes gagal"
+      rm -f /tmp/agentdrop-hermes-install.sh
+    else
+      _die "gagal mengunduh installer Hermes. Periksa jaringan, atau pasang manual:
+  curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash"
+    fi
+    # Installer menaruh binari di ~/.local/bin atau ~/.hermes/bin, yang mungkin
+    # belum ada di PATH proses ini.
+    export PATH="$HOME/.local/bin:$HOME/.hermes/bin:$PATH"
+    command -v hermes >/dev/null 2>&1 \
+      && _ok "hermes terpasang: $(hermes --version 2>/dev/null | head -1)" \
+      || _die "hermes terpasang tapi tidak ditemukan di PATH. Buka shell baru, atau:
+  export PATH=\"$HOME/.local/bin:$PATH\""
   fi
 
   # PyYAML + eth-account di venv tersendiri (PEP 668 memblokir pip system).
