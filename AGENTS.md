@@ -214,7 +214,8 @@ Selesai:
 
 - Installer sebagai index (K8) + satu CLI `agentdrop`. `scripts/` 11 → 3.
 - Camofox dibersihkan total; extension bikinan + signing daemon dihapus (K7).
-- Mismatch E ditutup; `TOOLSET_IDS` dibangun ulang dari 58 id asli.
+- Mismatch E ditutup; `TOOLSET_IDS` dibangun ulang dari sumber Hermes — **34**
+  id dari `toolsets.py:TOOLSETS`, isinya diverifikasi identik.
 - Kontrak tool browser dikunci — lihat PROTOKOL BROWSER.
 - **Workflow eksplisit di ketujuh SOUL.md** (sebelumnya `grep -ci workflow` = 0
   di semua profil).

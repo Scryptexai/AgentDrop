@@ -286,8 +286,13 @@ ia nama *tool* di dalam toolset `delegation`
 telegram mencantumkan tool di tempat id, dan orchestrator menerima pesan
 Telegram yang tidak bisa ia delegasikan.
 
-Diverifikasi mekanis terhadap 58 id toolset asli: AgentDrop memakai 7, tepat
-satu tidak valid.
+Diverifikasi mekanis terhadap id toolset asli di `toolsets.py:TOOLSETS` (**34**
+id): AgentDrop memakai 7, tepat satu tidak valid.
+
+*(Angka ini sempat tertulis 58. Tidak ada sumber Hermes yang berisi 58 id —
+`toolsets.py:TOOLSETS` punya 34, `tools_config.py:CONFIGURABLE_TOOLSETS` punya
+26, gabungannya 35. Datanya sendiri benar dan isinya diverifikasi identik
+dengan sumber; hanya angkanya yang keliru.)*
 
 Yang ikut terbuka: `TOOLSET_IDS` di validator ditulis tangan dan berisi **8 nama
 karangan** (`a2a`, `bfl`, `delegate_task`, `execute_code`, `image_generate`,

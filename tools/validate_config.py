@@ -116,9 +116,12 @@ SECURITY_KEYS = {
     "tirith_timeout", "website_blocklist",
 }
 
-# Dari hermes_cli/tools_config.py
-# 58 id toolset, diturunkan dari toolsets.py:TOOLSETS di sumber Hermes
-# (bukan dikarang). delegate_task BUKAN id toolset — ia adalah NAMA TOOL di
+# 34 id toolset, diturunkan dari toolsets.py:TOOLSETS di sumber Hermes
+# (bukan dikarang). Isinya diverifikasi identik dengan sumber, bukan hanya
+# jumlahnya. Perhatikan bahwa hermes_cli/tools_config.py punya daftar berbeda
+# bernama CONFIGURABLE_TOOLSETS (26 id) — yang dipakai validator adalah
+# toolsets.py:TOOLSETS, karena itulah yang menentukan tool apa yang benar-benar
+# tersedia bagi sebuah profil. delegate_task BUKAN id toolset — ia adalah NAMA TOOL di
 # dalam toolset "delegation". Menyebutnya di platform_toolsets membuat
 # Hermes tidak memberi tool delegasi sama sekali.
 TOOLSET_IDS = {
