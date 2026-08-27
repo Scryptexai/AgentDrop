@@ -79,7 +79,3 @@ extensions/installed/
 # collect-logs.sh memeriksa secret sebelum menulis apa pun.
 !data/audit/
 !data/audit/**
-
-# Byte-compiled Python
-__pycache__/
-*.pyc
