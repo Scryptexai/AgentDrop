@@ -205,7 +205,7 @@ Isi awalnya hanya kerangka + cara mengisinya. Agent yang menambah isinya lewat
 
 ## PROGRES
 
-Terakhir diperbarui: 2026-08-27 · commit `fc3fda7` · branch `arena/01a037ea-agentdrop`
+Terakhir diperbarui: 2026-08-27 · commit `9cdd434` · branch `arena/01a037ea-agentdrop`
 Angka diverifikasi dengan perintah, bukan diperkirakan.
 
 **7 profil · 10 skill · 13 berkas knowledge · 180 pemeriksaan validator lolos (exit 0)**
@@ -246,6 +246,60 @@ Selesai:
 - **Angka toolset dikoreksi: 34, bukan 58.** `toolsets.py:TOOLSETS` = 34,
   `tools_config.py:CONFIGURABLE_TOOLSETS` = 26, gabungan 35. Tidak ada sumber
   Hermes yang berisi 58.
+
+### Arc ketiga — hal yang hanya ketahuan dari sumber Hermes
+
+Semua temuan di bawah diverifikasi terhadap `hermes-agent` yang di-clone, bukan
+dari ingatan. Clone ulang setelah reprovision:
+`git clone --depth 1 https://github.com/NousResearch/hermes-agent.git /tmp/ha`.
+
+- **`gateway.multiplex_profiles: true` wajib, dan tadinya tidak ada.** Hermes
+  menyimpan cron job **per profil** (`cron/jobs.py:68`, issue #4707):
+  `hermes --profile worker-daily cron create` menulis ke
+  `~/.hermes/profiles/worker-daily/cron/jobs.json`. Gateway yang dinyalakan
+  `agentdrop start` berjalan dengan `HERMES_HOME=~/.hermes` (profil default),
+  jadi ticker-nya membaca `~/.hermes/cron/jobs.json` yang kosong. Komentar di
+  `gateway/run.py:31774` menyebut akibatnya persis: profil sekunder
+  "**silently ignored** — jobs show as scheduled with a valid `next_run_at` but
+  never execute". `cron list` dan `cron status` semuanya terlihat sehat.
+  Rantai buktinya: `jobs.py:80` → `hermes_constants.py:114` → `main.py:680`
+  (`--profile` **menyetel** `HERMES_HOME`) → `profiles.py:2529`.
+- **Konsekuensinya:** jangan jalankan gateway per profil. Docs Hermes
+  (`multi-profile-gateways.md:108`) melarang secondary profile menyalakan
+  gateway sendiri saat multiplex aktif. README dan `install-cron.sh` sudah
+  diluruskan ke `agentdrop start`.
+- **`agentdrop run <profil> "<tugas>"** — panggil SATU agent untuk debug, tanpa
+  orkestrasi. Lewat gateway Anda tidak bisa tahu worker mana yang rusak.
+  Bentuknya `hermes --profile <p> chat -q <tugas>`; `--profile` harus di depan
+  subcommand karena di-parse sebelum argparse
+  (`_parser.py:22 PRE_ARGPARSE_INHERITED_FLAGS`).
+- **`install.sh` sekarang MEMASANG Hermes**, bukan `_die` kalau tidak ada.
+  Installer resmi: `curl -fsSL https://hermes-agent.nousresearch.com/install.sh`.
+  Dua jebakan: installer Hermes membaca stdin (di bawah `curl | bash` ia EOF dan
+  `set -e` mematikan rantai tanpa pesan → stdin diarahkan ke `/dev/null`), dan
+  binarinya masuk `~/.local/bin` yang mungkin belum ada di PATH proses ini.
+- **Log aktivitas masuk ke DALAM repo** (`data/logs/`, tidak lagi di-gitignore).
+  Hook Hermes dipanggil sebagai perintah polos tanpa environment, jadi
+  `AGENTDROP_LOG_DIR` tidak pernah sampai ke proses hook — variabel itu dibaca
+  di 5 tempat dan di-set di **nol** tempat. `install.sh` sekarang menulis path
+  ke `~/.agentdrop/logdir`, dan `tools/audit_log.py` +
+  `hooks/.../handler.py` membacanya sebagai fallback.
+- **GUI browser jadi syarat keras.** Komentarnya sudah bilang "GUI WAJIB ada"
+  tapi kodenya memakai `command -v x11vnc &&` — mesin tanpa x11vnc menjalankan
+  Chrome tanpa layar, dan operator bertemu "login tidak bisa" jauh dari
+  penyebabnya. Sekarang `_die` dengan perintah apt-nya. Path `--web` noVNC
+  juga dicari, bukan dihardcode ke `/usr/share/novnc` (salah path = websockify
+  jalan tapi 404, gejalanya identik dengan noVNC rusak).
+- **Tiga hand-off antar agent yang hilang.** Pembagian tugas agent 1–5 cocok
+  1:1 dengan profil yang ada, tapi sambungannya tidak ada: `worker-daily` tidak
+  pernah menyebut `worker-x` (task "buat konten" dikerjakan agent check-in
+  tanpa bahan riset); `worker-x` tidak membaca `knowledge/projects/<nama>.md`
+  hasil analyzer sebelum bikin konten; `worker-discord` hanya menulis
+  `discord-log.json`, tidak ke `knowledge/`. Ketiganya sudah disambung.
+- **Dua variabel orphan sisa subsistem yang dihapus:** `SIGNER_PORT`
+  (`lib/00-common.sh`, 0 pemakaian) dan `prof` (`agentdrop cmd_start`, dibaca
+  tapi tidak pernah dipakai — jadi `agentdrop start worker-daily` diam-diam
+  sama saja dengan `agentdrop start`).
 
 ### Kelas bug yang berulang — dan cara menangkapnya
 
