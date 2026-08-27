@@ -867,6 +867,38 @@ def check_browser_tool_contract() -> None:
                 err(f"browser-operation/SKILL.md tidak mendokumentasikan {wajib}")
 
 
+def check_knowledge_references() -> None:
+    """Rujukan ke knowledge/*.md harus menunjuk berkas yang benar-benar ada.
+
+    Ini kelas bug yang sama dengan SOUL.md yang menyuruh agent menjalankan
+    tools/signing_policy.py yang sudah dihapus: agent membaca "lihat
+    knowledge/patterns/x.md", berkasnya tidak ada, lalu agent berimprovisasi
+    tanpa pengetahuan yang seharusnya memandunya.
+    """
+    global checks
+    akar = REPO / "knowledge"
+    pola = re.compile(r"knowledge/[A-Za-z0-9_./-]+\.md")
+
+    sumber = sorted(
+        list((REPO / "config" / "hermes").rglob("SOUL.md")) +
+        list((REPO / "skills").rglob("SKILL.md")) +
+        list(akar.rglob("*.md"))
+    )
+    for f in sumber:
+        checks += 1
+        for m in pola.finditer(f.read_text()):
+            if not (REPO / m.group(0)).exists():
+                err(f"{f.relative_to(REPO)}: merujuk {m.group(0)} yang tidak ada")
+
+    # knowledge/ tidak boleh kosong: workflow agent membacanya di langkah awal.
+    # Kalau isinya cuma kerangka, agent melangkah tanpa pengetahuan apa pun.
+    checks += 1
+    isi = [x for x in akar.rglob("*.md") if x.name != "README.md"]
+    if len(isi) < 4:
+        err(f"knowledge/ hanya punya {len(isi)} berkas isi — workflow agent "
+            f"merujuk format-task, siklus, dan tanda-bahaya di langkah awal")
+
+
 def check_memory_loop(configs: list[Path]) -> None:
     """Memory loop terpasang di setiap agent.
 
@@ -1161,6 +1193,9 @@ def main() -> int:
 
     print("\n[20] Kontrak tool browser")
     check_browser_tool_contract()
+
+    print("\n[21] Rujukan knowledge")
+    check_knowledge_references()
 
     print("\n" + "=" * 62)
     print(f"  {checks} file diperiksa")
