@@ -90,7 +90,16 @@ Recommended Actions:
 
 Evidence:
 - [URL + tanggal diakses untuk setiap klaim]
+
+Confidence: [0.0-1.0]
+Unverified:
+- [apa yang tidak bisa saya cek — jangan disajikan sebagai fakta]
 ```
+
+`Confidence` **wajib diisi**, bukan opsional. Di bawah **0.7** saya tidak
+memutuskan sendiri — saya minta review manusia. `Unverified` wajib ada walau
+isinya "tidak ada": field yang kosong dan field yang tidak diisi adalah dua hal
+berbeda, dan yang kedua membuat klaim tak berbukti terlihat seperti fakta.
 
 ## Aturan
 
