@@ -205,7 +205,7 @@ Isi awalnya hanya kerangka + cara mengisinya. Agent yang menambah isinya lewat
 
 ## PROGRES
 
-Terakhir diperbarui: 2026-08-27 · commit `c56a419` · branch `arena/01a037ea-agentdrop`
+Terakhir diperbarui: 2026-08-27 · commit `8c742e1` · branch `arena/01a037ea-agentdrop`
 Angka diverifikasi dengan perintah, bukan diperkirakan.
 
 **7 profil · 10 skill · 12 berkas knowledge · 179 pemeriksaan validator lolos (exit 0)**
@@ -216,33 +216,32 @@ Selesai:
 - Camofox dibersihkan total; extension bikinan + signing daemon dihapus (K7).
 - Mismatch E ditutup; `TOOLSET_IDS` dibangun ulang dari 58 id asli.
 - Kontrak tool browser dikunci — lihat PROTOKOL BROWSER.
-- **Workflow eksplisit di ketujuh SOUL.md.** Sebelumnya `grep -ci workflow`
-  mengembalikan 0 di semua profil.
-- **Knowledge base berisi nyata** — 11 berkas isi + README:
-  - `patterns/` 5 berkas: format-task, tanda-bahaya, alur-airdrop, kualifikasi,
-    sidik-jari
-  - `meta/` 1 berkas: siklus
-  - `chains/` 5 berkas: ethereum, base, bnb-smart-chain, arbitrum-one, solana
-    (chain id diverifikasi terhadap chainlist + evmchainlist, dan dicocokkan
-    dengan tabel di `docs/arsitektur-alur.md`)
-  - `projects/` **sengaja kosong** — agent yang mengisinya lewat
-    `self-improvement` seiring pemakaian
-- **Alur ujung-ke-ujung** di `docs/arsitektur-alur.md` bagian 1 dan 3 sudah
-  cocok dengan kenyataan.
+- **Workflow eksplisit di ketujuh SOUL.md** (sebelumnya `grep -ci workflow` = 0
+  di semua profil).
+- **Knowledge base berisi nyata** — `patterns/` 5, `meta/` 1, `chains/` 5.
+  `projects/` sengaja kosong, diisi agent lewat `self-improvement`.
+- Alur ujung-ke-ujung di `docs/arsitektur-alur.md` bagian 1 dan 3.
+- **Sweep menyeluruh bersih**: tidak ada satu pun path backtick di repo yang
+  menunjuk berkas yang tidak ada.
 
-### Kelas bug yang berulang empat kali
+### Kelas bug yang berulang — dan cara menangkapnya
 
-**Memberi tahu agent memakai sesuatu yang tidak ada**, sehingga agent
-berimprovisasi:
+**Memberi tahu agent memakai sesuatu yang tidak ada.** Enam kali:
 
-1. `SOUL.md` orchestrator → `tools/signing_policy.py` yang sudah dihapus.
-2. Tiga skill → `computer_use(mode='som')`, toolset yang tidak diaktifkan.
-3. `platform_toolsets.telegram` → `delegate_task`, bukan id toolset.
-4. Empat workflow → "cek pengetahuan" tanpa menyebut berkas mana.
+1. `SOUL.md` orchestrator → `tools/signing_policy.py` yang sudah dihapus
+2. Tiga skill → `computer_use(mode='som')`, toolset yang tidak diaktifkan
+3. `platform_toolsets.telegram` → `delegate_task`, bukan id toolset
+4. Empat workflow → "cek pengetahuan" tanpa menyebut berkas mana
+5. Tiga skill → `scripts/takeover.sh` yang sudah dihapus
+6. **Lima skill menjelaskan aturan verifikasi-URL lewat mekanisme Camofox**
+   (`adopt_existing_tab`, `session_key`). Kuncinya nyata di Hermes tapi hidup di
+   `browser.camofox.*`, jadi tidak berlaku untuk CDP. Aturannya benar,
+   penjelasannya salah.
 
-Semuanya sekarang punya guard di validator ([17], [20], [21]) dan sudah diuji
-mutasi. **Sebelum menulis "lihat X" di SOUL.md atau SKILL.md, pastikan X ada** —
-validator sekarang memeriksanya untuk `knowledge/`, tapi tidak untuk yang lain.
+**Yang menangkap nomor 5 dan 6 bukan validator, melainkan sweep**: jalankan
+pencarian atas semua path backtick di repo dan cek keberadaannya satu per satu.
+Validator [21] hanya memeriksa rujukan `knowledge/`. **Jalankan sweep itu setiap
+kali menghapus berkas.**
 
 ---
 
@@ -258,8 +257,8 @@ Yang tersisa hanya bisa diuji di mesin operator:
    - Chrome for Testing yang benar-benar memuat ekstensi wallet
    - alur lengkap Telegram → orchestrator → worker → wallet
 3. `knowledge/projects/` sengaja kosong dan diisi agent seiring pemakaian.
-   RPC di `knowledge/chains/` sudah dicantumkan tapi **ditandai belum
-   diverifikasi** — periksa dengan `eth_chainId` sebelum dipakai.
+   RPC di `knowledge/chains/` dicantumkan tapi **ditandai belum diverifikasi** —
+   periksa dengan `eth_chainId` sebelum dipakai.
 4. Kalau ada yang rusak: `agentdrop audit doctor` lebih dulu.
 
 ## JALAN BUNTU
