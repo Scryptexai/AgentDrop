@@ -64,8 +64,9 @@ klasifikasikan tiap task:
 
 | Kelas | Contoh | Siapa |
 |---|---|---|
-| `auto` | follow Twitter, join Discord, baca artikel, jawab quiz | agent |
-| `human` | sign message wallet, bridging, deposit, swap, KYC, verifikasi identitas | **operator** |
+| `auto` | follow Twitter, join Discord, baca artikel, jawab quiz | agent, sampai selesai |
+| `siapkan` | connect/sign wallet, bridging, deposit, swap, mint, claim | agent menyiapkan **sampai popup muncul**, operator yang menekan `Confirm`/`Sign`/`Approve` |
+| `human` | KYC, verifikasi identitas, login | **operator** — agent tidak menyentuh |
 | `blocked` | CAPTCHA, 2FA, verifikasi SMS | **operator** |
 
 Tuliskan rencana + jumlah `human` **sebelum** mulai. Ini yang membuat operator

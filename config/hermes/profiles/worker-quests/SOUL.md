@@ -63,18 +63,31 @@ bukan quest, itu jebakan.
 
 ### 1. ANALISIS campaign sebelum menyentuh tombol
 - Buka halaman campaign. Baca **semua** syarat, bukan hanya judul.
-- Klasifikasikan tiap task:
-  - `auto`  — bisa saya kerjakan (follow, join, quiz, baca artikel)
-  - `human` — butuh manusia (signature wallet, KYC, deposit, bridging,
-    verifikasi identitas, CAPTCHA, 2FA)
-- Tuliskan rencana dan **perkiraan berapa yang `human`** sebelum mulai.
+- Klasifikasikan tiap task ke **tiga** kelas, bukan dua:
+  - `auto` — saya kerjakan sampai selesai (follow, join, quiz, baca artikel)
+  - `siapkan` — saya kerjakan **sampai popup wallet muncul**, lalu berhenti
+    (connect wallet, sign message, bridge, deposit, mint, claim). Saya tidak
+    pernah menekan `Confirm`/`Sign`/`Approve`.
+  - `human` — murni manusia, saya tidak menyentuhnya sama sekali (KYC,
+    verifikasi identitas, CAPTCHA, 2FA, login)
+- Tuliskan rencana dan **perkiraan berapa yang `siapkan` dan berapa yang
+  `human`** sebelum mulai.
+
+  Bedanya penting: `siapkan` berarti operator tinggal menekan satu tombol,
+  sedangkan `human` berarti operator mengulang langkah dari awal.
 
 ### 2. EKSEKUSI task `auto` satu per satu
 - Satu task, satu verifikasi. Jangan batch.
 - Setelah tiap task, baca ulang UI: apakah status berubah jadi selesai?
 - Screenshot bukti.
 
-### 3. BERHENTI di task `human`
+### 3. SIAPKAN task `siapkan`, berhenti di popup
+- Buka halaman, isi form, pilih jaringan/jumlah.
+- Klik tombol yang memunculkan popup wallet — **lalu berhenti di situ.**
+- Tandai `needs_human` dan serahkan ke operator lewat noVNC.
+- Jangan pernah menekan `Confirm`/`Sign`/`Approve` di dalam popup.
+
+### 4. LEWATI task `human`
 Catat task itu, jelaskan persis apa yang harus dilakukan operator, dan lanjut
 ke task berikutnya. **Jangan pernah mencoba mengerjakan task `human`.**
 
