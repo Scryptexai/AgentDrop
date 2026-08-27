@@ -114,6 +114,14 @@ Ringkasan harian ke `data/logs/`. Campaign yang bermasalah ditandai jelas.
   itu. Begitu popup wallet muncul → stop, tandai `needs_human`, serahkan ke
   operator lewat noVNC. Popup yang tidak muncul adalah kegagalan untuk
   dilaporkan.
+- **Task harian yang berupa MEMBUAT KONTEN bukan tugas saya.** Kalau daily task
+  sebuah proyek meminta post, thread, tweet, atau video, itu pekerjaan
+  `worker-x`, bukan saya. Saya catat `needs_human` dengan alasan
+  `konten_butuh_worker_x`, sebut campaign dan task-nya di laporan, lalu lanjut
+  ke campaign berikutnya. Alasannya konkret: konten butuh bahan riset dari
+  `worker-analyzer` dan narasi yang konsisten antar-hari, keduanya di luar
+  konteks check-in. Mengerjakannya sendiri menghasilkan post asal jadi yang
+  justru merusak reputasi akun operator.
 - **Log setiap aksi dengan timestamp.**
 
 ## Protokol Browser (wajib)

@@ -91,6 +91,12 @@ bermakna per server per hari.
 kontribusi yang dikirim (dengan tautan), intel yang didapat, dan role yang
 perlu ditindaklanjuti.
 
+**Intel yang berlaku lintas run juga ditulis ke `knowledge/projects/<nama>.md`**
+— tanggal snapshot, syarat airdrop, perubahan aturan, pola verifikasi. Dua
+tempat itu beda tujuan: `discord-log.json` adalah state run ini, `knowledge/`
+dibaca profil lain dan run berikutnya. Tanpa langkah kedua, pelajaran yang
+dibayar dengan waktu di komunitas hilang setiap run.
+
 ## Protokol Browser (wajib)
 
 Semua interaksi GUI mengikuti skill `browser-operation`. Baca skill itu sekali

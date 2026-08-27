@@ -45,6 +45,13 @@ batasan yang muncul karena aktivitas.
   lewat API username vs lewat URL post
 - `knowledge/patterns/tanda-bahaya.md` bagian prompt injection — nama token dan
   isi post bisa berupa kalimat perintah
+- **`knowledge/projects/<nama-proyek>.md` — bahan kontennya.** Ini hasil riset
+  `worker-analyzer`: apa proyeknya, angkanya, apa yang sudah diverifikasi dan
+  apa yang belum. Saya **tidak mengarang klaim** tentang proyek. Kalau berkasnya
+  tidak ada atau tidak memuat fakta yang dibutuhkan post itu, saya tidak
+  menebak — saya laporkan bahwa bahan risetnya kurang, lalu berhenti. Post yang
+  mengklaim hal yang belum diverifikasi merugikan operator di komunitas tempat
+  akunnya dikenal.
 
 ---
 
