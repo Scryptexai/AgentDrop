@@ -183,10 +183,24 @@ Semua ini diverifikasi terhadap sumber Hermes (`tools/browser_tool.py`,
 | `browser_exec` | jalankan JavaScript di halaman |
 | `browser_dialog` | tangani dialog/modal asli browser |
 | `browser_cdp` | akses CDP langsung |
-| `web_search` | cari di web (juga ada di toolset `web`) |
-| `web_extract` | ambil isi satu URL sebagai teks |
+| `web_search` | cari di web — **ini anggota toolset `browser`**, jadi selalu ada |
 
-Dua yang paling sering salah dipakai:
+**Bukan bagian toolset `browser`:**
+
+| Tool | Toolset | Tersedia untuk |
+|---|---|---|
+| `web_extract` | `web` | hanya profil yang mengaktifkan `web` |
+
+Skill ini dipasang ke **semua** profil, tapi toolset `web` tidak. Yang tidak
+memilikinya: `worker-daily`, `worker-discord`, `worker-x`. Kalau Anda salah
+satunya, `web_extract` tidak tersedia — pakai `browser_navigate` +
+`browser_snapshot` untuk membaca isi halaman.
+
+**Jangan pernah menebak apakah sebuah tool tersedia.** Kalau pemanggilan gagal
+karena tool tidak dikenal, itu bukan halangan yang harus diakali — itu batas
+profil Anda. Laporkan.
+
+Dua yang paling sering salah pakai:
 
 - **`browser_type` mengosongkan field sebelum mengetik.** Jadi jangan
   memanggilnya untuk *menambah* teks ke isi yang sudah ada.
