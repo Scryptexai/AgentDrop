@@ -547,14 +547,15 @@ data/
 
 **Sudah diuji dan lolos:**
 
-- Validator statis: **119 pemeriksaan**, exit 0
-- Suite test: 47 policy + 25 daemon + 9 plugin
+- Validator statis: **179 pemeriksaan**, exit 0
 - Log audit end-to-end: penulis JSONL, redaksi dua lapis (diuji per pola dengan
   memutus satu pola pada satu waktu), `flock` konkuren, rotasi
 - Shell hook dengan bentuk payload persis dari dokumen Hermes, termasuk stdin
   rusak dan kosong
 - Ekstraksi CRX3 dengan CRX sintetis
 - `bash -n` bersih di semua skrip
+- Tiap guard validator diuji **mutasi** — kondisinya benar-benak dirusak, lalu
+  dipastikan validator menolaknya
 
 **Belum bisa diuji di lingkungan pembuat, dan butuh mesin Anda:**
 
@@ -562,8 +563,15 @@ data/
 - Chrome for Testing yang benar-benar memuat ekstensi wallet
 - Alur lengkap Telegram → orchestrator → worker → wallet
 
-Keduanya diuji lewat prosedur di `docs/prosedur-uji.md`, dan hasilnya
+Ketiganya diuji lewat prosedur di `docs/prosedur-uji.md`, dan hasilnya
 dikumpulkan dengan `agentdrop logs` supaya bisa dianalisis.
+
+> **Catatan jujur soal cakupan uji.** Dulu ada tiga suite test (47 policy,
+> 25 daemon, 9 plugin). Ketiganya dihapus bersama subsistemnya saat ekstensi
+> bikinan sendiri dan signing daemon dibuang. Yang tersisa sebagai pengaman
+> adalah validator 179 pemeriksaan plus uji mutasi per guard — itu **bukan**
+> pengganti suite test. Kalau nanti ada logika Python baru dengan cabang
+> keputusan nyata, ia butuh suite test sendiri.
 
 ---
 
