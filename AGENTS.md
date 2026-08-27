@@ -205,37 +205,46 @@ Isi awalnya hanya kerangka + cara mengisinya. Agent yang menambah isinya lewat
 
 ## PROGRES
 
-Terakhir diperbarui: 2026-08-27 · commit `feea4ae` · branch `arena/01a037ea-agentdrop`
+Terakhir diperbarui: 2026-08-27 · commit `47fc1d7` · branch `arena/01a037ea-agentdrop`
 Angka diverifikasi dengan perintah, bukan diperkirakan.
 
-**61 berkas ter-track · 7 profil · 10 skill · 148 pemeriksaan validator lolos (exit 0)**
+**7 profil · 10 skill · 6 berkas knowledge berisi · 174 pemeriksaan validator lolos (exit 0)**
 
 Selesai:
 
 - Installer sebagai index (K8) + satu CLI `agentdrop`. `scripts/` 11 → 3.
 - Camofox dibersihkan total; extension bikinan + signing daemon dihapus (K7).
-- **Mismatch E ditutup.** `delegate_task` ternyata nama *tool*, bukan id
-  toolset; id-nya `delegation`. `TOOLSET_IDS` di validator dibangun ulang dari
-  58 id asli (daftar lama punya 8 nama karangan dan kehilangan 32 yang asli).
-- **Kontrak tool browser dikunci** — lihat bagian PROTOKOL BROWSER.
-- Log audit, memory loop, `knowledge/`, `AGENTS.md`.
+- Mismatch E ditutup; `TOOLSET_IDS` dibangun ulang dari 58 id asli.
+- Kontrak tool browser dikunci — lihat PROTOKOL BROWSER.
+- **Workflow eksplisit di ketujuh SOUL.md.** Sebelumnya `grep -ci workflow`
+  mengembalikan 0 di semua profil: ada klasifikasi, ada delegasi, tapi tidak ada
+  alur langkah-demi-langkah. Orchestrator — pintu masuk segalanya — tidak punya
+  alur sama sekali.
+- **Knowledge base berisi nyata** (6 berkas), bukan kerangka kosong. Workflow
+  merujuk `format-task.md`, `siklus.md`, `tanda-bahaya.md` di langkah awal;
+  sebelumnya ketiganya tidak ada, jadi langkah "cek pengetahuan" selalu kosong.
+- **Alur ujung-ke-ujung** ditulis ulang di `docs/arsitektur-alur.md` bagian 1
+  dan 3 — sebelumnya masih menunjuk `gateway run` dan `signing_policy.py`.
 
-**Tiga bug kelas yang sama ditemukan** — semuanya menyuruh agent memakai yang
-tidak ada, dan semuanya membuat agent berimprovisasi:
+### Kelas bug yang berulang tiga kali
+
+**Memberi tahu agent memakai sesuatu yang tidak ada**, sehingga agent
+berimprovisasi:
 
 1. `SOUL.md` orchestrator → `tools/signing_policy.py` yang sudah dihapus.
 2. Tiga skill → `computer_use(mode='som')`, toolset yang tidak diaktifkan.
 3. `platform_toolsets.telegram` → `delegate_task`, bukan id toolset.
+4. Empat workflow → "cek pengetahuan" tanpa menyebut berkas mana.
 
-Ketiganya sekarang punya guard di validator (seksi [17], [20]) dan sudah
-diuji mutasi.
+Semuanya sekarang punya guard di validator ([17], [20], [21]) dan sudah diuji
+mutasi.
 
 ---
 
 ## LANGKAH BERIKUTNYA
 
-Semua pekerjaan yang bisa dikerjakan tanpa Hermes + Chrome terpasang **sudah
-selesai**. Yang tersisa hanya bisa diuji di mesin operator:
+Semua yang bisa dikerjakan tanpa Hermes + Chrome terpasang **sudah selesai**.
+Yang tersisa hanya bisa diuji di mesin operator:
 
 1. **Operator menjalankan uji** — `docs/prosedur-uji.md`, hasil dikumpulkan
    dengan `agentdrop logs` lalu di-push ke `data/audit/<stempel>/`.
@@ -243,8 +252,10 @@ selesai**. Yang tersisa hanya bisa diuji di mesin operator:
    - hook yang benar-benar menyala di dalam run Hermes yang hidup
    - Chrome for Testing yang benar-benar memuat ekstensi wallet
    - alur lengkap Telegram → orchestrator → worker → wallet
-3. Kalau ada yang rusak: `agentdrop audit doctor` lebih dulu — ia menyebut
-   berkas yang harus dibuka.
+3. Yang perlu diisi operator seiring pemakaian: `knowledge/projects/<slug>.md`
+   dan `knowledge/chains/<slug>.md` masih kosong. Kerangkanya ada di
+   `knowledge/README.md`; agent yang menulisnya lewat `self-improvement`.
+4. Kalau ada yang rusak: `agentdrop audit doctor` lebih dulu.
 
 ## JALAN BUNTU
 
