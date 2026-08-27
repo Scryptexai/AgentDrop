@@ -21,7 +21,7 @@ Yang **ada** di sini, dan semuanya sah:
 
 | | |
 |---|---|
-| 🖥️ **GUI browser** | Firefox sungguhan 1920×1080 yang bisa Anda **lihat dan ambil alih** lewat noVNC — bukan headless |
+| 🖥️ **GUI browser** | Chrome for Testing sebagai jendela biasa di layar Anda — atau lewat noVNC di mesin tanpa layar. Bukan headless |
 | 🔍 **Riset** | Filter proyek 4 dimensi, keputusan PRIORITIZE / CONSIDER / SKIP |
 | 🗂️ **Pelacakan** | Progres campaign, bukti screenshot, laporan harian & mingguan |
 | ⚙️ **Automasi** | Daily check-in & quest atas akun milik Anda sendiri |
@@ -146,7 +146,7 @@ agentdrop status    # periksa kesiapan sebelum mulai
 - Python 3.9+
 - Node.js 18+  (Hermes menjalankan browser lewat `npx agent-browser`)
 - API key: Anthropic / OpenRouter / OpenAI / Google / Nous Portal / endpoint custom
-- Untuk GUI browser: `xvfb`, `x11vnc`, `novnc`
+- Untuk GUI browser di mesin **tanpa layar** (VPS/container): `xvfb`, `x11vnc`, `novnc`
 
 **Docker tidak dibutuhkan.** Browser berjalan langsung di host.
 
@@ -188,7 +188,7 @@ membuat atau mengimpor wallet di browser, dan login visual sekali per platform.
 
 ```bash
 agentdrop status          periksa kesiapan — lakukan ini lebih dulu
-agentdrop browser         nyalakan Chrome for Testing + noVNC
+agentdrop browser         nyalakan Chrome for Testing (jendela asli, atau noVNC)
 agentdrop extensions      pasang/perbarui wallet resmi
 agentdrop start           nyalakan gateway Telegram (agent berjalan di atasnya)
 agentdrop stop
@@ -249,7 +249,7 @@ Uji dijalankan **satu per satu**, bukan sekaligus: kalau semuanya dikirim dalam
 satu prompt, kegagalan di Uji 2 menular ke 3–6 dan Anda tidak tahu lapisan mana
 yang rusak. Uji 5 dan 6 tidak pernah ikut secara default.
 
-**Buka noVNC dulu** (`http://localhost:6080/vnc.html`) — burn-in justru untuk
+**Buka jendelanya dulu** (di VPS: noVNC `http://localhost:6080/vnc.html`) — burn-in justru untuk
 ditonton. Log saja tidak cukup untuk menilai apakah browser benar-benar stabil.
 
 Kalau satu uji gagal 3× dengan cara yang sama, itu bukan masalah prompt, itu
@@ -291,13 +291,21 @@ manusia tidak bisa mengerjakan itu di browser yang tidak terlihat.
 Rantainya:
 
 ```
-Chrome for Testing  ->  Xvfb :99  ->  x11vnc :5900  ->  noVNC :6080
-       |                                                        |
-       +-- CDP :9222 <-- Hermes attach ke sini                  +-- browser Anda
+Mesin berlayar :  Chrome for Testing  ->  layar Anda
+                         |
+                         +-- CDP :9222 <-- Hermes attach ke sini
+
+Mesin tanpa layar :  Chrome for Testing -> Xvfb :99 -> x11vnc :5900 -> noVNC :6080
+                         |
+                         +-- CDP :9222 <-- Hermes attach ke sini
 ```
 
-`agentdrop browser` menyalakan keempatnya. Anda menonton dan mengambil alih di
-`http://localhost:6080/vnc.html`, agent memakai sesi yang sama.
+`agentdrop browser` memilih jalurnya sendiri. Di desktop, jendela Chrome for
+Testing muncul langsung — itu yang paling andal, karena popup ekstensi wallet
+sering tidak bisa dibuka di dalam noVNC. Di VPS tanpa layar, rantainya jatuh ke
+noVNC dan Anda mengambil alih di `http://localhost:6080/vnc.html`.
+
+Paksa salah satu jalur dengan `BROWSER_MODE=native` atau `BROWSER_MODE=vnc`.
 
 > ⚠️ **Kalau port 6080 bisa diakses dari luar mesin, set `VNC_PASSWORD`.**
 > Tanpa itu siapa pun yang mencapai port tersebut mengendalikan browser yang
@@ -336,12 +344,12 @@ kalau blok protokol itu hilang dari SOUL.md mana pun.
 
 **Yang sengaja tidak diadopsi dari OpenManus:** prompt browser mereka menulis
 *"If captcha pops up, try to solve it"*. Di sini CAPTCHA selalu diserahkan ke
-manusia lewat noVNC.
+manusia lewat jendela browser itu.
 
 ### Login sekali, dipakai semua worker
 
 Semua worker memakai **satu profil browser yang sama**
-(`~/.agentdrop/chrome-profile`). Anda login sekali lewat noVNC, dan sesi itu
+(`~/.agentdrop/chrome-profile`). Anda login sekali di jendela itu, dan sesi itu
 dipakai worker mana pun setelahnya. Cookie dan localStorage bertahan di profil
 itu selama tidak dihapus.
 
@@ -350,7 +358,7 @@ itu selama tidak dihapus.
 ```
 1. agent mengerjakan task sampai butuh login
 2. agent berhenti, lapor lewat Telegram: "butuh login <platform>"
-3. Anda buka noVNC, selesaikan login/MFA/CAPTCHA
+3. Anda buka jendelanya, selesaikan login/MFA/CAPTCHA
 4. Anda balas "lanjut"
 5. agent melanjutkan dengan sesi yang sudah login
 ```
@@ -359,7 +367,8 @@ Agent tidak pernah menyentuh kredensial Anda dan tidak pernah mengetik password.
 
 ### Catatan jujur
 
-- Ekstensi wallet harus dibuat atau diimpor **manual sekali** lewat noVNC. Agent
+- Ekstensi wallet harus dibuat atau diimpor **manual sekali** di jendela browser.
+  Agent
   tidak bisa dan tidak boleh melakukannya.
 - `window.ethereum` harus diverifikasi ada sebelum farming dimulai. Lihat bagian
   Browser di atas.
@@ -589,7 +598,7 @@ dikumpulkan dengan `agentdrop logs` supaya bisa dianalisis.
 | Ekstensi tidak termuat | `agentdrop browser-status`, lalu pastikan yang dipakai Chrome for Testing, **bukan** Google Chrome branded |
 | `window.ethereum` undefined | Ekstensi tidak termuat — jalankan `agentdrop extensions`, restart browser |
 | CDP tidak menjawab | `agentdrop browser` |
-| noVNC tidak kebuka | `xvfb`, `x11vnc`, `novnc` terpasang? `agentdrop browser-status` |
+| noVNC tidak kebuka | Hanya relevan di mesin tanpa layar. `xvfb`, `x11vnc`, `novnc` terpasang? Di desktop pakai `BROWSER_MODE=native` |
 | Log audit kosong | Hook tidak terdaftar — `agentdrop status` bagian [3] |
 | Agent membuka browser sendiri | `disabled_toolsets` hilang — jalankan ulang `./install.sh` |
 | Profil tidak ketemu | `ls ~/.hermes/profiles/`, lalu jalankan ulang `./install.sh` |

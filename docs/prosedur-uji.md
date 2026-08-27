@@ -45,7 +45,8 @@ agentdrop browser
 
 **Verifikasi wajib sebelum lanjut** — jangan lewati ini:
 
-1. Buka noVNC (`http://localhost:6080/vnc.html`), buka `https://example.com`
+1. Buka jendelanya (di desktop: jendela Chrome for Testing; di VPS: noVNC
+   `http://localhost:6080/vnc.html`), lalu buka `https://example.com`
 2. Buka console, ketik:
    ```js
    window.ethereum     // harus ada
@@ -54,7 +55,7 @@ agentdrop browser
 3. Kalau keduanya `undefined`, **ekstensi tidak termuat**. Berhenti di sini dan
    perbaiki dulu — semua task airdrop akan gagal dengan cara yang membingungkan.
 
-Lalu **login manual sekali per platform** lewat noVNC: Google, Discord, X.
+Lalu **login manual sekali per platform** lewat jendela itu: Google, Discord, X.
 Agent tidak bisa dan tidak boleh melakukan itu sendiri.
 
 ## 3. Siapkan wallet
@@ -65,12 +66,12 @@ manusia di dalam wallet itu.
 
 Yang perlu dipastikan sebelum lanjut:
 
-1. Tiap ekstensi wallet sudah dibuat atau diimpor **sekali** lewat noVNC
+1. Tiap ekstensi wallet sudah dibuat atau diimpor **sekali** di jendela browser
 2. Wallet punya gas yang cukup di chain yang akan dipakai — BNB Smart Chain
    butuh BNB, bukan ETH (lihat `knowledge/chains/`)
 3. Chain yang benar sudah terpilih di dalam wallet
 
-Approval dan signature ditandatangani **manusia** lewat noVNC. Agent menyiapkan
+Approval dan signature ditandatangani **manusia** di jendela browser. Agent menyiapkan
 transaksi sampai popup muncul, lalu berhenti dan menyerahkan.
 
 ## 4. Jalankan uji

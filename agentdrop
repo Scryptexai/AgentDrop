@@ -165,7 +165,7 @@ main() {
   case "$sub" in
     start)        cmd_start "$@" ;;
     stop)         cmd_stop ;;
-    browser)      browser_start ;;
+    browser)      browser_start "$@" ;;
     browser-stop) browser_stop ;;
     browser-status) browser_status ;;
     run)          cmd_run "$@" ;;

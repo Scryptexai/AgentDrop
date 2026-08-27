@@ -142,7 +142,53 @@ browser_ws() {
     | sed -n 's/.*"webSocketDebuggerUrl"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1
 }
 
+# ---------------------------------------------------------------------------
+# Deteksi layar ASLI mesin.
+#
+# Chrome for Testing adalah aplikasi desktop penuh: punya ikon sendiri (logo
+# Chrome dengan tulisan "Test" di kotak hitam) dan jendela sendiri. Kalau mesin
+# sudah punya layar, memaksanya lewat VNC hanya menambah lapisan yang justru
+# merusak — popup ekstensi wallet sering tidak bisa dibuka, clipboard tidak
+# sinkron, dan koordinat klik meleset.
+#
+# DISPLAY yang di-set belum tentu hidup: SSH tanpa -X, systemd unit, dan
+# container semuanya bisa mewariskan DISPLAY yang tidak menunjuk ke mana pun.
+# Jadi kalau xdpyinfo ada, DISPLAY diverifikasi dulu sebelum dipercaya.
+# ---------------------------------------------------------------------------
+browser_real_display() {
+  [[ -n "${BROWSER_DISPLAY:-}" ]] && { echo "$BROWSER_DISPLAY"; return 0; }
+  [[ -z "${DISPLAY:-}" ]] && return 1
+  if command -v xdpyinfo >/dev/null 2>&1; then
+    xdpyinfo -display "$DISPLAY" >/dev/null 2>&1 && { echo "$DISPLAY"; return 0; }
+    return 1
+  fi
+  # Tanpa xdpyinfo, DISPLAY tidak boleh dipercaya buta. SSH tanpa -X, systemd
+  # unit, dan container semuanya mewariskan DISPLAY yang tidak menunjuk ke mana
+  # pun; kalau itu dipakai, Chrome gagal start dan yang muncul hanya "CDP tidak
+  # menjawab dalam 20 detik" — jauh dari penyebabnya.
+  #
+  # X lokal bisa dipastikan dari socketnya: :N berarti /tmp/.X11-unix/XN.
+  case "$DISPLAY" in
+    :[0-9]*)
+      local n="${DISPLAY#:}"; n="${n%%.*}"
+      [[ -S "/tmp/.X11-unix/X${n}" ]] && { echo "$DISPLAY"; return 0; }
+      return 1 ;;
+    *)
+      # DISPLAY jarak jauh (host:0) tidak bisa dipastikan dari socket lokal.
+      # Dipakai apa adanya: kalau salah, Chrome gagal cepat dan CDP tidak naik.
+      echo "$DISPLAY"; return 0 ;;
+  esac
+}
+
 browser_start() {
+  local a
+  for a in "$@"; do
+    case "$a" in
+      --native) BROWSER_MODE=native ;;
+      --vnc)    BROWSER_MODE=vnc ;;
+    esac
+  done
+
   local CHROME; CHROME="$(browser_find_chrome || true)"
   [[ -n "$CHROME" ]] || { browser_install_chrome; CHROME="$(browser_find_chrome)"; }
   [[ -x "$CHROME" ]] || _die "Chrome for Testing tidak ditemukan setelah instalasi"
@@ -168,53 +214,82 @@ browser_start() {
   [[ "$count" -gt 0 ]] && _ok "$count ekstensi dari $EXT_ROOT" \
     || _warn "tidak ada ekstensi di $EXT_ROOT — jalankan: ./agentdrop extensions"
 
-  command -v Xvfb >/dev/null 2>&1 || _die "butuh Xvfb. Debian/Ubuntu: apt install xvfb"
   mkdir -p "$STATE_DIR/run" "$PROFILE_DIR"
-  if ! pgrep -f "Xvfb :${DISPLAY_NUM}" >/dev/null 2>&1; then
-    _log "Xvfb :${DISPLAY_NUM} ${RESOLUTION}"
-    Xvfb ":${DISPLAY_NUM}" -screen 0 "$RESOLUTION" -nolisten tcp >/dev/null 2>&1 &
-    echo $! > "$STATE_DIR/run/xvfb.pid"; sleep 2
-  fi
-  export DISPLAY=":${DISPLAY_NUM}"
 
-  # GUI WAJIB ada: login Google/Discord/X, OAuth, pembuatan wallet, dan CAPTCHA
-  # semuanya dikerjakan manusia lewat layar ini. Tanpa VNC, Chrome berjalan
-  # headless-secara-efektif dan operator tidak punya cara masuk — jadi ini
-  # berhenti keras, bukan lanjut diam-diam. Kegagalan yang muncul nanti akan
-  # terlihat seperti "login tidak bisa", jauh dari penyebabnya.
-  local kurang=()
-  command -v x11vnc      >/dev/null 2>&1 || kurang+=(x11vnc)
-  command -v websockify  >/dev/null 2>&1 || kurang+=(websockify)
-  if [[ ${#kurang[@]} -gt 0 ]]; then
-    _err "GUI tidak bisa dinyalakan, kurang: ${kurang[*]}"
-    _err "Debian/Ubuntu: sudo apt install x11vnc novnc"
-    _die "Login manual butuh layar. Pasang dulu, lalu ulangi: agentdrop browser"
+  # -------------------------------------------------------------------------
+  # PILIH LAYAR. Chrome for Testing adalah aplikasi desktop biasa — punya ikon
+  # sendiri dan jendela sendiri. Kalau mesin sudah punya layar, pakai layar itu
+  # langsung; Xvfb + noVNC hanya untuk mesin tanpa layar (VPS, container).
+  #
+  # noVNC bukan sekadar "kurang nyaman". Popup ekstensi wallet sering tidak
+  # bisa dibuka di dalamnya, clipboard tidak sinkron, dan koordinat klik bisa
+  # meleset. Untuk login manual dan persetujuan transaksi itu fatal, bukan
+  # kosmetik. Karena itu layar asli didahulukan, bukan dijadikan pengecualian.
+  # -------------------------------------------------------------------------
+  local mode="${BROWSER_MODE:-auto}" layar_asli="" pakai_vnc=false CHROME_DISPLAY
+  layar_asli="$(browser_real_display || true)"
+  case "$mode" in
+    native) pakai_vnc=false ;;
+    vnc)    pakai_vnc=true ;;
+    auto)   [[ -n "$layar_asli" ]] && pakai_vnc=false || pakai_vnc=true ;;
+    *)      _die "BROWSER_MODE tidak dikenal: '$mode' — pakai auto|native|vnc" ;;
+  esac
+  if [[ "$pakai_vnc" == false && -z "$layar_asli" ]]; then
+    _err "Tidak ada layar yang bisa dipakai, padahal BROWSER_MODE=$mode."
+    _die "Set BROWSER_MODE=vnc untuk lewat noVNC, atau jalankan di mesin berlayar."
   fi
 
-  if ! pgrep -f "x11vnc.*:${DISPLAY_NUM}" >/dev/null 2>&1; then
-    _log "x11vnc :${VNC_PORT}"
-    x11vnc -display ":${DISPLAY_NUM}" -rfbport "$VNC_PORT" -nopw -forever -shared >/dev/null 2>&1 &
-    echo $! > "$STATE_DIR/run/x11vnc.pid"
-    sleep 1
-    pgrep -f "x11vnc.*:${DISPLAY_NUM}" >/dev/null 2>&1 \
-      || _die "x11vnc gagal hidup di display :${DISPLAY_NUM}"
-  fi
-  if ! pgrep -f "websockify.*${NOVNC_PORT}" >/dev/null 2>&1; then
-    _log "noVNC :${NOVNC_PORT}"
-    # --web dicari, bukan dihardcode: lokasi novnc berbeda antar distro, dan
-    # path yang salah membuat websockify jalan tapi halamannya 404.
-    local novnc_web="" c
-    for c in /usr/share/novnc /usr/share/webapps/novnc /opt/novnc; do
-      [[ -d "$c" ]] && { novnc_web="$c"; break; }
-    done
-    if [[ -n "$novnc_web" ]]; then
-      websockify --web="$novnc_web" "$NOVNC_PORT" "127.0.0.1:${VNC_PORT}" >/dev/null 2>&1 &
-    else
-      _warn "direktori novnc tidak ditemukan — VNC tetap jalan di port ${VNC_PORT},"
-      _warn "tapi tanpa halaman web. Pakai VNC viewer ke 127.0.0.1:${VNC_PORT}."
-      websockify "$NOVNC_PORT" "127.0.0.1:${VNC_PORT}" >/dev/null 2>&1 &
+  if [[ "$pakai_vnc" == false ]]; then
+    CHROME_DISPLAY="$layar_asli"
+    _ok "Layar asli mesin dipakai: $CHROME_DISPLAY"
+    _ok "Chrome for Testing akan muncul sebagai jendela biasa — popup ekstensi bisa dibuka"
+  else
+    command -v Xvfb >/dev/null 2>&1 || _die "butuh Xvfb. Debian/Ubuntu: apt install xvfb"
+    if ! pgrep -f "Xvfb :${DISPLAY_NUM}" >/dev/null 2>&1; then
+      _log "Xvfb :${DISPLAY_NUM} ${RESOLUTION}"
+      Xvfb ":${DISPLAY_NUM}" -screen 0 "$RESOLUTION" -nolisten tcp >/dev/null 2>&1 &
+      echo $! > "$STATE_DIR/run/xvfb.pid"; sleep 2
     fi
-    echo $! > "$STATE_DIR/run/novnc.pid"
+    CHROME_DISPLAY=":${DISPLAY_NUM}"
+
+    # GUI WAJIB ada di jalur ini: login Google/Discord/X, OAuth, pembuatan
+    # wallet, dan CAPTCHA semuanya dikerjakan manusia lewat layar ini. Tanpa
+    # VNC, Chrome berjalan headless-secara-efektif dan operator tidak punya
+    # cara masuk — jadi berhenti keras, bukan lanjut diam-diam.
+    local kurang=()
+    command -v x11vnc      >/dev/null 2>&1 || kurang+=(x11vnc)
+    command -v websockify  >/dev/null 2>&1 || kurang+=(websockify)
+    if [[ ${#kurang[@]} -gt 0 ]]; then
+      _err "GUI tidak bisa dinyalakan, kurang: ${kurang[*]}"
+      _err "Debian/Ubuntu: sudo apt install x11vnc novnc"
+      _die "Login manual butuh layar. Pasang dulu, lalu ulangi: agentdrop browser"
+    fi
+
+    if ! pgrep -f "x11vnc.*:${DISPLAY_NUM}" >/dev/null 2>&1; then
+      _log "x11vnc :${VNC_PORT}"
+      x11vnc -display ":${DISPLAY_NUM}" -rfbport "$VNC_PORT" -nopw -forever -shared >/dev/null 2>&1 &
+      echo $! > "$STATE_DIR/run/x11vnc.pid"
+      sleep 1
+      pgrep -f "x11vnc.*:${DISPLAY_NUM}" >/dev/null 2>&1 \
+        || _die "x11vnc gagal hidup di display :${DISPLAY_NUM}"
+    fi
+    if ! pgrep -f "websockify.*${NOVNC_PORT}" >/dev/null 2>&1; then
+      _log "noVNC :${NOVNC_PORT}"
+      # --web dicari, bukan dihardcode: lokasi novnc berbeda antar distro, dan
+      # path yang salah membuat websockify jalan tapi halamannya 404.
+      local novnc_web="" c
+      for c in /usr/share/novnc /usr/share/webapps/novnc /opt/novnc; do
+        [[ -d "$c" ]] && { novnc_web="$c"; break; }
+      done
+      if [[ -n "$novnc_web" ]]; then
+        websockify --web="$novnc_web" "$NOVNC_PORT" "127.0.0.1:${VNC_PORT}" >/dev/null 2>&1 &
+      else
+        _warn "direktori novnc tidak ditemukan — VNC tetap jalan di port ${VNC_PORT},"
+        _warn "tapi tanpa halaman web. Pakai VNC viewer ke 127.0.0.1:${VNC_PORT}."
+        websockify "$NOVNC_PORT" "127.0.0.1:${VNC_PORT}" >/dev/null 2>&1 &
+      fi
+      echo $! > "$STATE_DIR/run/novnc.pid"
+    fi
   fi
 
   _log "Chrome for Testing + remote debugging"
@@ -225,7 +300,7 @@ browser_start() {
   # --load-extension hanya kalau ada ekstensi valid: Chrome gagal start kalau
   # path-nya tidak ada, dan pesannya tidak menjelaskan apa-apa.
   [[ -n "$list" ]] && args+=(--load-extension="${list}")
-  DISPLAY=":${DISPLAY_NUM}" "$CHROME" "${args[@]}" >/dev/null 2>&1 &
+  DISPLAY="$CHROME_DISPLAY" "$CHROME" "${args[@]}" >/dev/null 2>&1 &
   echo $! > "$STATE_DIR/run/chrome.pid"
 
   local ws="" i
@@ -244,7 +319,13 @@ browser_start() {
     fi
   fi
   echo
-  echo "  noVNC : http://localhost:${NOVNC_PORT}/vnc.html"
+  if [[ "$pakai_vnc" == true ]]; then
+    echo "  noVNC : http://localhost:${NOVNC_PORT}/vnc.html"
+    echo "  (paksa jendela asli di mesin berlayar: BROWSER_MODE=native agentdrop browser)"
+  else
+    echo "  jendela : Chrome for Testing muncul di layar $CHROME_DISPLAY"
+    echo "  (paksa lewat noVNC: BROWSER_MODE=vnc agentdrop browser)"
+  fi
   echo "  cdp   : http://127.0.0.1:${CDP_PORT}"
 }
 
@@ -255,9 +336,15 @@ browser_status() {
     echo "   ws   : $(browser_ws)"
     echo "   tab  : $(curl -fsS "http://127.0.0.1:${CDP_PORT}/json" 2>/dev/null | grep -c '"type"' || echo 0)"
   else _warn "CDP tidak menjawab di ${CDP_PORT}"; fi
-  for s in Xvfb x11vnc websockify; do
-    pgrep -f "$s" >/dev/null 2>&1 && _ok "$s jalan" || _warn "$s tidak jalan"
-  done
+  # Xvfb/VNC hanya relevan di jalur tanpa layar. Melaporkannya sebagai "tidak
+  # jalan" di desktop biasa membuat operator mengira ada yang rusak.
+  if [[ -n "$(browser_real_display || true)" ]]; then
+    _ok "layar asli dipakai (${DISPLAY}) — Xvfb/VNC tidak diperlukan"
+  else
+    for s in Xvfb x11vnc websockify; do
+      pgrep -f "$s" >/dev/null 2>&1 && _ok "$s jalan" || _warn "$s tidak jalan"
+    done
+  fi
   echo "   profil   : $PROFILE_DIR"
   echo "   ekstensi : $EXT_ROOT"
 }

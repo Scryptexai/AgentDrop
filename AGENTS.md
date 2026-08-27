@@ -205,7 +205,7 @@ Isi awalnya hanya kerangka + cara mengisinya. Agent yang menambah isinya lewat
 
 ## PROGRES
 
-Terakhir diperbarui: 2026-08-27 · commit `9cdd434` · branch `arena/01a037ea-agentdrop`
+Terakhir diperbarui: 2026-08-28 · branch `arena/01a037ea-agentdrop`
 Angka diverifikasi dengan perintah, bukan diperkirakan.
 
 **7 profil · 10 skill · 13 berkas knowledge · 180 pemeriksaan validator lolos (exit 0)**
@@ -300,6 +300,46 @@ dari ingatan. Clone ulang setelah reprovision:
   (`lib/00-common.sh`, 0 pemakaian) dan `prof` (`agentdrop cmd_start`, dibaca
   tapi tidak pernah dipakai — jadi `agentdrop start worker-daily` diam-diam
   sama saja dengan `agentdrop start`).
+
+### Arc keempat — koreksi operator: noVNC bukan satu-satunya layar
+
+Dipicu laporan operator: **ekstensi bisa diunduh tapi tidak bisa dibuka di
+dalam noVNC.** Itu benar, dan bukan keluhan kosmetik — popup ekstensi wallet
+sering gagal muncul di dalam sesi VNC, clipboard tidak sinkron, dan koordinat
+klik bisa meleset. Untuk login manual dan persetujuan transaksi, itu fatal.
+
+Yang salah adalah kode saya, bukan Chrome-nya. `browser_start` **menimpa
+`DISPLAY` tanpa syarat** (dulu baris 178 dan 228) dan tidak pernah memeriksa
+apakah mesin sudah punya layar. Jadi di desktop biasa pun Chrome dipaksa masuk
+framebuffer virtual dan hanya bisa dicapai lewat noVNC.
+
+Chrome for Testing adalah **aplikasi desktop penuh** — logo Chrome dengan
+tulisan "Test" di kotak hitam, jendela sendiri (developer.chrome.com,
+`docs/chrome_for_testing`). Ia tidak butuh VNC kalau mesin punya layar.
+
+Perbaikan:
+
+- `browser_real_display()` mendeteksi layar asli. Kalau `xdpyinfo` ada,
+  DISPLAY diverifikasi; kalau tidak, X lokal dipastikan dari socketnya
+  (`:N` → `/tmp/.X11-unix/XN`). DISPLAY mati **ditolak**, bukan dipercaya.
+- `BROWSER_MODE=auto|native|vnc` di `.env`, atau `agentdrop browser --native|--vnc`.
+  `auto` memakai layar mesin kalau ada, jatuh ke noVNC kalau tidak.
+- Blok Xvfb + x11vnc + websockify sekarang **bersyarat** — hanya di jalur VNC.
+  `lib/10-deps.sh` dan `browser_status()` ikut sadar layar, supaya tidak
+  memperingatkan Xvfb di desktop biasa.
+- **18 rujukan dokumen disisir.** README, `docs/prosedur-uji.md`, dan
+  `install.sh` semuanya menjanjikan noVNC sebagai satu-satunya jalan masuk;
+  sekarang menyebut jendela asli sebagai jalur utama dan noVNC untuk mesin
+  tanpa layar.
+
+**Yang tertangkap oleh uji, bukan oleh pembacaan:** versi pertama
+`browser_real_display` mempercayai DISPLAY buta ketika `xdpyinfo` tidak
+terpasang. Sandbox ini tidak punya `xdpyinfo`, jadi uji enam keadaan
+langsung menunjukkannya — `DISPLAY=:77` yang mati diterima. Diperbaiki dengan
+pemeriksaan socket. Dua kali harness uji saya sendiri yang salah sebelum itu
+(delimiter `:` bertabrakan dengan nilai DISPLAY; `touch` membuat berkas biasa,
+bukan socket) — pola lama: **kalau dua pemeriksaan saya tidak setuju, yang
+dicurigai adalah pemeriksaannya.**
 
 ### Kelas bug yang berulang — dan cara menangkapnya
 

@@ -271,8 +271,9 @@ cat <<'EOF'
   Selanjutnya, berurutan:
 
     1. agentdrop status        pastikan semuanya hijau
-    2. agentdrop browser       nyalakan Chrome + noVNC
-       -> buka noVNC, buat/impor wallet, login Google/Discord/X
+    2. agentdrop browser       nyalakan Chrome for Testing
+       -> buat/impor wallet, login Google/Discord/X di jendelanya
+          (mesin tanpa layar: lewat noVNC http://localhost:6080/vnc.html)
        -> di console pastikan window.ethereum ADA sebelum lanjut
     3. agentdrop burn-in       uji stabilisasi browser SEBELUM agent dipercaya
     4. agentdrop start         nyalakan gateway Telegram

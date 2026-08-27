@@ -15,14 +15,20 @@ deps_install() {
     _warn "Pasang Node.js 18+ sebelum menjalankan browser."
   fi
 
-  # GUI browser butuh X server + VNC supaya manusia bisa login manual.
-  for b in Xvfb x11vnc websockify; do
-    if ! command -v "$b" >/dev/null 2>&1; then
-      _warn "$b tidak ada — browser akan jalan tanpa GUI yang bisa dilihat,"
-      _warn "sehingga login Google/Discord/X tidak bisa dilakukan manual."
-      _warn "Debian/Ubuntu: sudo apt install xvfb x11vnc novnc"
-    fi
-  done
+  # GUI browser. Mesin berlayar memakai layarnya langsung, jadi Xvfb/VNC hanya
+  # dibutuhkan di mesin tanpa layar (VPS, container). Memperingatkan ketiganya
+  # di desktop biasa hanya membuat operator mengira ada yang rusak.
+  if [[ -n "$(browser_real_display || true)" ]]; then
+    _ok "layar asli terdeteksi (${DISPLAY}) — Chrome for Testing akan muncul sebagai jendela biasa"
+  else
+    for b in Xvfb x11vnc websockify; do
+      if ! command -v "$b" >/dev/null 2>&1; then
+        _warn "$b tidak ada — tanpa layar asli, browser butuh ini untuk GUI,"
+        _warn "sehingga login Google/Discord/X tidak bisa dilakukan manual."
+        _warn "Debian/Ubuntu: sudo apt install xvfb x11vnc novnc"
+      fi
+    done
+  fi
 
   # Hermes sendiri. Dipasang di sini, bukan disuruh pasang manual: installer ini
   # index-nya (K8), jadi "satu perintah" harus benar-benar satu perintah.
