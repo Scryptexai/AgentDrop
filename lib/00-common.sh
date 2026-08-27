@@ -16,7 +16,6 @@ NOVNC_PORT="${NOVNC_PORT:-6080}"
 VNC_PORT="${VNC_PORT:-5900}"
 DISPLAY_NUM="${CDP_DISPLAY:-99}"
 RESOLUTION="${CDP_RESOLUTION:-1920x1080x24}"
-SIGNER_PORT="${AGENTDROP_SIGNER_PORT:-9721}"
 
 _log()  { printf '\033[1;34m==> %s\033[0m\n' "$*"; }
 _ok()   { printf '\033[1;32m  ✓\033[0m %s\n' "$*"; }
