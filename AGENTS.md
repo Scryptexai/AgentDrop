@@ -374,6 +374,45 @@ menangkap bug logika layar, tapi tidak ada yang menjalankan cabang
 "ekstensi terlihat lewat CDP". Cabang yang tidak pernah dieksekusi adalah
 tempat bug bersembunyi.
 
+### Penyebab sebenarnya "popup ekstensi tidak bisa dibuka"
+
+Operator melaporkan popup tetap tidak bisa dibuka **setelah** perbaikan layar.
+Jadi diagnosis saya sebelumnya salah: ini tidak pernah soal VNC.
+
+Penyebabnya `--load-extension` berubah perilaku sejak **Chrome 126**. Tanpa
+flag pendamping, Chrome memperlakukan ekstensi itu sebagai *sementara*:
+halamannya bisa dibuka, tapi ekstensi **tidak ditulis ke Secure Preferences**
+profil. Akibatnya service worker tidak pernah jalan, content script tidak
+disuntikkan, dan **popup tidak bisa dibuka** — semuanya tanpa pesan error.
+MetaMask, OKX, dan Phantom ketiganya MV3 dengan service worker, jadi ketiganya
+kena.
+
+Perbaikannya satu flag: `--enable-unsafe-extension-debugging`. Dengan flag itu
+Chrome memperlakukan ekstensi `--load-extension` sebagai instalasi sungguhan.
+Aman di sini karena CDP diikat ke `127.0.0.1` (`--remote-debugging-address`),
+jadi permukaan serangnya lokal.
+
+Dua sumber independen: dev.to/toyama0919 (Chrome 126+ broke extension dev
+setup) dan RFC chromium-extensions `aEHdhDZ-V0E` (Oliver Dunk, tim Chrome).
+
+**Koreksi atas klaim saya sendiri.** Saya menulis di `lib/40-browser.sh` bahwa
+"popup ekstensi bisa dibuka" di jendela asli, dan di pesan peringatan bahwa
+hilangnya target `chrome-extension://` di `/json` "BUKAN hal normal" sejak
+Chrome 126. Keduanya overklaim:
+
+- Yang pertama belum pernah saya uji — sandbox tidak punya display.
+- Yang kedua salah secara faktual: service worker MV3 memang sering tidak
+  terdaftar di `/json` walau ekstensinya sehat. Jadi `/json` **bukan bukti**
+  ke arah mana pun.
+
+Bukti yang sah hanya satu: `window.ethereum` dan `window.solana` di console
+jendela browser. Pesan peringatannya sekarang mengatakan itu.
+
+**Pelajaran:** saya punya dua arc yang memperbaiki gejala (layar) sementara
+penyebabnya ada di tempat lain (flag Chrome). Keduanya lolos validator karena
+validator tidak menjalankan Chrome. **Klaim "ini akan bekerja" yang tidak pernah
+dieksekusi adalah klaim, bukan hasil.**
+
 ### Kelas bug yang berulang — dan cara menangkapnya
 
 **Memberi tahu agent memakai sesuatu yang tidak ada — atau melarang/mewajibkan

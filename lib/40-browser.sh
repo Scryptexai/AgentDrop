@@ -293,10 +293,26 @@ browser_start() {
   fi
 
   _log "Chrome for Testing + remote debugging"
+  # --enable-unsafe-extension-debugging BUKAN opsional sejak Chrome 126.
+  #
+  # Tanpa flag ini, Chrome memperlakukan ekstensi dari --load-extension sebagai
+  # sementara: halamannya bisa dibuka, TAPI ekstensi tidak ditulis ke Secure
+  # Preferences profil, service worker tidak pernah jalan, content script tidak
+  # disuntikkan, dan popup-nya tidak bisa dibuka. Semuanya gagal tanpa pesan
+  # error apa pun. MetaMask/OKX/Phantom persis kena ini — ketiganya MV3 dengan
+  # service worker.
+  #
+  # Ini sebabnya keluhan "ekstensi terunduh tapi tidak bisa dibuka" tidak pernah
+  # sembuh dengan berpindah layar: penyebabnya bukan VNC, melainkan flag ini
+  # tidak ada.
+  #
+  # Aman di sini karena CDP diikat ke 127.0.0.1 saja (lihat
+  # --remote-debugging-address di atas), jadi permukaan serangnya lokal.
   local args=(--remote-debugging-port="${CDP_PORT}" --remote-debugging-address=127.0.0.1
               --user-data-dir="${PROFILE_DIR}" --no-sandbox --disable-dev-shm-usage
               --window-size=1920,1080 --window-position=0,0
-              --no-first-run --no-default-browser-check)
+              --no-first-run --no-default-browser-check
+              --enable-unsafe-extension-debugging)
   # --load-extension hanya kalau ada ekstensi valid: Chrome gagal start kalau
   # path-nya tidak ada, dan pesannya tidak menjelaskan apa-apa.
   [[ -n "$list" ]] && args+=(--load-extension="${list}")
@@ -318,9 +334,11 @@ browser_start() {
     if [[ "$n" -gt 0 ]]; then _ok "ekstensi terlihat lewat CDP ($n target)"
     else
       _warn "target chrome-extension:// tidak terlihat di /json."
-      _warn "Bisa normal (service worker tidak selalu terdaftar di sana)."
-      _warn "VERIFIKASI PASTI lewat noVNC: buka halaman, lalu di console cek"
-      _warn "window.ethereum dan window.solana. Jangan farming sebelum itu hijau."
+      _warn "Ini belum tentu cacat: service worker MV3 memang sering tidak"
+      _warn "terdaftar di /json walau ekstensinya sehat. Jadi /json bukan bukti."
+      _warn "BUKTI sebenarnya cuma satu — di jendela browser, buka halaman lalu"
+      _warn "di console cek window.ethereum dan window.solana."
+      _warn "Kalau keduanya undefined, popup tidak akan bisa dibuka."
     fi
   fi
   echo
