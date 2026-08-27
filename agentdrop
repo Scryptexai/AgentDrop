@@ -54,7 +54,6 @@ cmd_start() {
   echo "  Agent berjalan DI ATAS gateway, jadi ini menyalakan keduanya."
   echo "  Kirim task ke bot Telegram Anda untuk memulai."
   echo
-  local prof="${1:-worker-orchestrator}"
   # Log gateway juga masuk ke log audit, supaya kegagalan startup terlihat.
   local glog="$LOG_DIR/gateway.log"
   HERMES_HOME="$HERMES_HOME_DIR" \
