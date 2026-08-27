@@ -20,6 +20,11 @@ menghasilkan kegagalan yang sulit dilacak.
 
 ## Cara agent melihat halaman (penting — baca dulu)
 
+**Sebelum menjalankan enam uji, baca `knowledge/patterns/sidik-jari.md`.**
+Isinya tanda tangan otomatisasi yang dideteksi proyek — dan burn-in adalah
+tempat yang tepat untuk memastikan lingkungan tidak memproduksinya.
+
+
 **Jangan pernah memakai CSS selector, XPath, atau `querySelector`.** Itu mengunci
 agent ke struktur DOM yang berubah setiap kali situs di-deploy.
 

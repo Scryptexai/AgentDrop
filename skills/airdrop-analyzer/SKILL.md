@@ -21,6 +21,22 @@ mengeluarkan waktu atau modal.
 Saat operator memberi URL, nama proyek, atau deskripsi sebuah airdrop dan
 bertanya "ini layak nggak?".
 
+**Sebelum menilai, baca dulu:**
+
+- `knowledge/patterns/kualifikasi.md` — bagaimana kualifikasi **benar-benar**
+  ditentukan. Sebagian besar proyek yang lolos filter 4 dimensi tetap memangkas
+  pesertanya lewat kriteria yang tidak dipublikasikan, dan pola pemangkasan itu
+  berulang antar-proyek.
+- `knowledge/patterns/tanda-bahaya.md` — daftar hentikan. Filter 4 dimensi tidak
+  mencakup ini; sebuah proyek bisa lolos semuanya dan tetap meminta seed phrase.
+- `knowledge/projects/<nama>.md` kalau sudah ada — penilaian sebelumnya untuk
+  proyek yang sama. Jangan menilai ulang dari nol.
+
+**Sesudah menilai, tulis balik** ke `knowledge/projects/<nama>.md`: keputusan,
+alasan, tanggal, dan **apa yang ternyata benar setelah TGE**. Tanpa itu,
+penilaian berikutnya mengulang tebakan yang sama.
+
+
 ## Kerangka: 4 Dimensi (Sniper approach)
 
 Sumber: prinsip farming yang dipublikasikan @0xsexybanana, HTX Insights,

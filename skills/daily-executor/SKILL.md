@@ -18,6 +18,19 @@ membuktikan bahwa setiap aksi benar-benar terjadi.
 
 ## Kapan dipakai
 
+**Sebelum mulai, baca dulu:**
+
+- `knowledge/patterns/format-task.md` — tujuh format task dan cara mengerjakannya
+- `knowledge/meta/siklus.md` — di tahap apa siklus ini sekarang
+- `knowledge/patterns/sidik-jari.md` — tanda tangan otomatisasi yang harus
+  dihindari, karena daily check-in adalah aksi paling repetitif yang agent
+  lakukan dan paling mudah terdeteksi
+
+**Sesudah selesai, tulis balik** temuan baru ke `knowledge/projects/<nama>.md`:
+task yang berubah, tombol yang pindah, syarat yang baru muncul. Worker besok
+membaca itu.
+
+
 Dijadwalkan otomatis lewat cron Hermes (lihat `scripts/install-cron.sh`), atau
 manual:
 

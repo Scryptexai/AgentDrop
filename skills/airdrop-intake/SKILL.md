@@ -25,6 +25,19 @@ dan **menginvestigasi** yang tidak pasti sebelum menyentuh apa pun.
 
 Skill ini adalah langkah WAJIB pertama. Tidak ada eksekusi tanpa intake.
 
+**Sebelum mem-parse, baca dulu:**
+
+- `knowledge/patterns/format-task.md` — tujuh format task yang sudah dikenal,
+  lengkap dengan cara eksekusi, bukti keberhasilan, dan titik hentikan manusia
+  untuk masing-masing. Format yang sudah dikenal **tidak perlu** ditandai
+  `unknown` dan diinvestigasi ulang.
+- `knowledge/projects/<nama>.md` kalau proyeknya sudah pernah diintake.
+
+**Sesudah mengklasifikasi, tulis balik** format baru ke
+`knowledge/patterns/format-task.md`. File itu **dirancang untuk ditulis**, dan
+intake adalah tempat format baru pertama kali terlihat.
+
+
 ## Langkah 1 — Parse
 
 Dari teks pengumuman, ekstrak:

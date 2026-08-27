@@ -18,6 +18,18 @@ tegas antara yang bisa dikerjakan agent dan yang wajib dikerjakan manusia.
 
 ## Kapan dipakai
 
+**Sebelum menyentuh tombol, baca dulu:**
+
+- `knowledge/patterns/format-task.md` — format task dan bukti keberhasilannya
+- `knowledge/patterns/alur-airdrop.md` — posisi tahap ini dalam alur, supaya
+  tidak klaim sebelum snapshot
+- `knowledge/patterns/kualifikasi.md` — "selesai" bukan berarti "terhitung"
+- `knowledge/projects/<nama>.md` — apa yang sudah pernah dikerjakan
+
+**Sesudah selesai, tulis balik** hasilnya ke `knowledge/projects/<nama>.md`:
+task mana yang berhasil, mana yang gagal dan kenapa, bukti apa yang terkumpul.
+
+
 ```bash
 hermes --profile worker-quests chat -q "Kerjakan campaign ini: https://app.galxe.com/quest/..."
 ```

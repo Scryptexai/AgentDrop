@@ -18,6 +18,19 @@ operator gambaran yang bisa dipercaya.
 
 ## Kapan dipakai
 
+**Sebelum melaporkan, baca dulu:**
+
+- `knowledge/patterns/kualifikasi.md` — supaya laporan tidak menyamakan
+  "semua task selesai" dengan "kualifikasi tercapai". Keduanya berbeda, dan
+  melaporkan yang pertama sebagai yang kedua membuat operator optimis keliru.
+- `knowledge/projects/<nama>.md` — kondisi terakhir yang tercatat, supaya
+  laporan berisi **perubahan**, bukan daftar ulang keadaan yang sama.
+
+**Sesudah melaporkan, tulis balik** state terbaru ke
+`knowledge/projects/<nama>.md`. Worker lain mengandalkan itu untuk mendeteksi
+perubahan.
+
+
 ```bash
 hermes --profile worker-monitor chat -q "Buat ringkasan progres mingguan semua campaign"
 ```

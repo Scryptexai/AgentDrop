@@ -19,7 +19,7 @@ mahal adalah yang **diulang diam-diam**: agent mencoba hal yang sama, gagal
 dengan cara yang sama, dan tidak ada yang mencatat bahwa cara itu sudah terbukti
 tidak berhasil.
 
-## Dua tempat menyimpan pengetahuan
+## Tiga tempat menyimpan pengetahuan
 
 **Memory Hermes** (`memory_char_limit: 2200`, sekitar 800 token). Kecil, selalu
 ada di konteks, ditinjau berkala oleh `memory.nudge_interval`. Pakai untuk fakta
@@ -29,6 +29,21 @@ operasional frekuensi tinggi: "dashboard X memuat lambat, tunggu 8 detik",
 **Berkas pelajaran** `memory/lessons/<profil>.md`. Append-only, tidak ada batas
 ukuran, dibaca saat dibutuhkan. Pakai untuk hal yang perlu bertahan lama dan
 terlalu besar untuk memory.
+
+**Basis pengetahuan** `knowledge/`. Berbeda dari dua di atas: ini **bukan** milik
+satu profil, tapi dibaca semua profil, dan isinya pengetahuan tentang dunia
+(chain, proyek, pola task) — bukan tentang diri sendiri.
+
+Bedanya praktis:
+
+| Kalau pelajarannya tentang... | Tulis ke |
+|---|---|
+| cara kerja tool, batas profil, kesalahan sendiri | `memory/lessons/<profil>.md` |
+| cara kerja sebuah situs, proyek, atau chain | `knowledge/` |
+
+Contoh: "saya lupa memanggil `browser_scroll`" → lesson. "Galxe memverifikasi
+tweet lewat cron tiap 15 menit, bukan langsung" → `knowledge/`. Yang kedua
+berguna bagi profil lain; yang pertama tidak.
 
 Kalau ragu, tulis ke berkas pelajaran. Memory penuh lebih cepat daripada yang
 diperkirakan.
@@ -68,7 +83,16 @@ Aturan entri:
   tidak relevan lebih baik ditandai usang daripada dihapus — jejaknya berguna
   untuk melihat pola.
 
-### Menaikkan pelajaran menjadi pengetahuan
+### Menaikkan pelajaran menjadi pengetahuan# Pelajaran yang ternyata **berlaku lintas proyek** tidak boleh berhenti di berkas
+pelajaran. Naikkan ke `knowledge/` supaya profil lain ikut tahu:
+
+- pola task baru → `knowledge/patterns/format-task.md`
+- jebakan sebuah platform → `knowledge/projects/<nama>.md`
+- sifat sebuah chain → `knowledge/chains/<nama>.md`
+
+Tandai di lesson aslinya: `**Dinaikkan ke:** knowledge/patterns/format-task.md`.
+`knowledge/README.md` memuat aturan menulisnya — satu topik per berkas, tulis
+penyebab bukan gejala, dan jangan pernah menyalin teks halaman apa adanya.
 
 Sekitar setiap sepuluh entri baru, atau ketika Anda melihat pola yang sama
 muncul tiga kali:

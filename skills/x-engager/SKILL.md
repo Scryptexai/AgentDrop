@@ -13,6 +13,16 @@ CSS selector di sini, semua elemen diambil dari snapshot.
 
 ## Langkah 0 — tentukan metode verifikasinya DULU
 
+**Sebelum mulai, baca dulu:**
+
+- `knowledge/patterns/format-task.md` — bagian task X/Twitter
+- `knowledge/patterns/tanda-bahaya.md` — apa yang harus dihentikan
+
+**Sesudah selesai, tulis balik** ke `knowledge/projects/<nama>.md`: metode
+verifikasi mana yang dipakai, dan apakah platform itu berhasil mendeteksi
+akun yang dikelola agent.
+
+
 Jangan mulai memposting sebelum tahu metode apa yang dipakai proyek. Salah
 menebak berarti post sudah tayang tapi tidak terhitung.
 
