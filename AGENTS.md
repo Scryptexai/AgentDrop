@@ -205,7 +205,7 @@ Isi awalnya hanya kerangka + cara mengisinya. Agent yang menambah isinya lewat
 
 ## PROGRES
 
-Terakhir diperbarui: 2026-08-27 · commit `9a7a206` · branch `arena/01a037ea-agentdrop`
+Terakhir diperbarui: 2026-08-27 · commit `fc3fda7` · branch `arena/01a037ea-agentdrop`
 Angka diverifikasi dengan perintah, bukan diperkirakan.
 
 **7 profil · 10 skill · 13 berkas knowledge · 180 pemeriksaan validator lolos (exit 0)**
