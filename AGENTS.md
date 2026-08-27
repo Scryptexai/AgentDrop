@@ -205,10 +205,10 @@ Isi awalnya hanya kerangka + cara mengisinya. Agent yang menambah isinya lewat
 
 ## PROGRES
 
-Terakhir diperbarui: 2026-08-27 · commit `e950896` · branch `arena/01a037ea-agentdrop`
+Terakhir diperbarui: 2026-08-27 · commit `9a7a206` · branch `arena/01a037ea-agentdrop`
 Angka diverifikasi dengan perintah, bukan diperkirakan.
 
-**7 profil · 10 skill · 12 berkas knowledge · 179 pemeriksaan validator lolos (exit 0)**
+**7 profil · 10 skill · 13 berkas knowledge · 180 pemeriksaan validator lolos (exit 0)**
 
 Selesai:
 
@@ -220,7 +220,9 @@ Selesai:
 - **Workflow eksplisit di ketujuh SOUL.md** (sebelumnya `grep -ci workflow` = 0
   di semua profil).
 - **Knowledge base berisi nyata** — `patterns/` 5, `meta/` 1, `chains/` 5.
-  `projects/` sengaja kosong, diisi agent lewat `self-improvement`.
+  `projects/` berisi satu berkas penjelas saja (supaya direktorinya terlacak
+  git — direktori kosong tidak dilacak, padahal 13 berkas menyuruh agent
+  menulis ke sana); catatan per proyek diisi agent seiring pemakaian.
 - Alur ujung-ke-ujung di `docs/arsitektur-alur.md` bagian 1 dan 3.
 - **Sweep menyeluruh bersih**: tidak ada satu pun path backtick di repo yang
   menunjuk berkas yang tidak ada.
@@ -233,10 +235,22 @@ Selesai:
   diaktifkan untuk `worker-daily`, `worker-discord`, `worker-x`.
 - **Dokumen dibaca ulang dari awal sampai akhir**, bukan di-grep. Ini menemukan
   8 klaim palsu yang lolos dari semua validator (lihat di bawah).
+- **Ketujuh `SOUL.md` sudah dibaca penuh** (arc kedua dari teknik yang sama).
+  Ini menemukan cacat paling berbahaya sejauh ini — lihat di bawah.
+- **Batas wallet ditegaskan**: agent menyiapkan sampai popup muncul, **tidak
+  pernah** menekan `Confirm`/`Sign`/`Approve`. Klasifikasi task jadi tiga kelas
+  (`auto` / `siapkan` / `human`), bukan dua.
+- **Alasan anti-prompt-injection dikoreksi di ketujuh profil.** Sebelumnya:
+  "agent memegang wallet" — padahal tidak. Alasan yang benar justru lebih kuat,
+  karena manusia menandatangani apa yang agent sodorkan.
+- **Angka toolset dikoreksi: 34, bukan 58.** `toolsets.py:TOOLSETS` = 34,
+  `tools_config.py:CONFIGURABLE_TOOLSETS` = 26, gabungan 35. Tidak ada sumber
+  Hermes yang berisi 58.
 
 ### Kelas bug yang berulang — dan cara menangkapnya
 
-**Memberi tahu agent memakai sesuatu yang tidak ada.** Tujuh kali:
+**Memberi tahu agent memakai sesuatu yang tidak ada — atau melarang/mewajibkan
+sesuatu yang bertentangan dengan rancangan.** Sepuluh kali:
 
 1. `SOUL.md` orchestrator → `tools/signing_policy.py` yang sudah dihapus
 2. Tiga skill → `computer_use(mode='som')`, toolset yang tidak diaktifkan
@@ -259,6 +273,29 @@ Selesai:
    bukan anggota toolset `browser`. Karena skill itu dipasang ke semua profil
    sementara toolset `web` hanya di empat, tiga agent ditawari tool yang tidak
    bisa mereka panggil.
+
+8. **🔴 Tabel klasifikasi orchestrator menyerahkan SEMUA signature ke agent.**
+   Dua barisnya: `auto:wallet` → "agent, lewat policy engine"; `human:wallet` →
+   "**hanya** kalau policy engine menjawab `ESCALATE`/`DENY`". Policy engine
+   sudah dihapus, jadi syarat yang membuat sebuah aksi menjadi milik manusia
+   adalah panggilan ke sesuatu yang tidak akan pernah menjawab. Dibaca harfiah:
+   `human:wallet` tidak pernah terpicu, semua aksi wallet jatuh ke agent, dan
+   **agent menandatangani sendiri** — kebalikan persis dari rancangan.
+   Beberapa baris di bawahnya (tabel baris 152, prosa baris 170), berkas yang
+   sama mengatakan hal yang benar.
+   **Berkas yang berkontradiksi dengan dirinya lebih berbahaya daripada yang
+   sekadar salah**, karena setengah mana yang lebih dipercayai agent menentukan
+   apakah kunci tetap di tangan manusia.
+
+9. **Aturan keras melarang langkah yang justru ditugaskan.** "Tidak ada
+   transaksi. Tidak ada bridging." Padahal mengisi form bridge adalah yang
+   memunculkan popup. Titik berhentinya benar; kata-katanya melarang pekerjaan.
+
+10. **Template output tidak punya field yang workflow-nya sendiri wajibkan.**
+    `worker-analyzer` menulis "VERDICT → dengan confidence eksplisit", tapi
+    template yang disalin agent berhenti di `Evidence`. Agent mengikuti
+    template, bukan kalimat yang menjelaskan template — jadi confidence hilang,
+    dan ambang 0.7 yang memicu review manusia ikut mati.
 
 **Yang menangkap 5, 6, dan 7 bukan validator, melainkan sweep**: jalankan
 pencarian atas semua path backtick di repo dan cek keberadaannya satu per satu.
@@ -305,7 +342,8 @@ Yang tersisa hanya bisa diuji di mesin operator:
    - hook yang benar-benar menyala di dalam run Hermes yang hidup
    - Chrome for Testing yang benar-benar memuat ekstensi wallet
    - alur lengkap Telegram → orchestrator → worker → wallet
-3. `knowledge/projects/` sengaja kosong dan diisi agent seiring pemakaian.
+3. `knowledge/projects/` berisi `README.md` penjelas saja; catatan per proyek
+   diisi agent seiring pemakaian.
    RPC di `knowledge/chains/` dicantumkan tapi **ditandai belum diverifikasi** —
    periksa dengan `eth_chainId` sebelum dipakai.
 4. Kalau ada yang rusak: `agentdrop audit doctor` lebih dulu.
