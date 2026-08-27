@@ -49,8 +49,30 @@ from pathlib import Path
 # ---------------------------------------------------------------------------
 # Lokasi
 # ---------------------------------------------------------------------------
+def _marker_log_dir() -> str:
+    """Path log yang ditulis install.sh, supaya log masuk ke DALAM repo.
+
+    Hook Hermes dipanggil sebagai perintah polos tanpa environment, jadi
+    AGENTDROP_LOG_DIR tidak pernah sampai ke proses ini. install.sh menulis
+    path yang benar ke ~/.agentdrop/logdir dan berkas itu yang dibaca di sini.
+    Tanpa ini log selalu jatuh ke ~/.agentdrop/logs — di luar repo, sehingga
+    tidak mungkin di-commit dan tidak bisa dipakai mendiagnosis dari branch.
+    """
+    try:
+        f = Path.home() / ".agentdrop" / "logdir"
+        if f.is_file():
+            v = f.read_text(encoding="utf-8").strip()
+            if v:
+                return v
+    except OSError:
+        pass
+    return ""
+
+
 def log_dir() -> Path:
-    p = os.environ.get("AGENTDROP_LOG_DIR") or str(Path.home() / ".agentdrop" / "logs")
+    p = (os.environ.get("AGENTDROP_LOG_DIR")
+         or _marker_log_dir()
+         or str(Path.home() / ".agentdrop" / "logs"))
     d = Path(p)
     try:
         d.mkdir(parents=True, exist_ok=True)

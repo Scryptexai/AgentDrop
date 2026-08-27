@@ -43,8 +43,18 @@ except Exception:  # pragma: no cover - jalur darurat
         @staticmethod
         def write(component, event, **kw):
             try:
-                d = Path(os.environ.get("AGENTDROP_LOG_DIR")
-                         or str(Path.home() / ".agentdrop" / "logs"))
+                _p = os.environ.get("AGENTDROP_LOG_DIR", "")
+                if not _p:
+                    # install.sh menulis path log ke ~/.agentdrop/logdir supaya
+                    # log masuk ke DALAM repo dan bisa di-commit. Hook Hermes
+                    # dipanggil tanpa environment, jadi env tidak pernah sampai.
+                    try:
+                        _f = Path.home() / ".agentdrop" / "logdir"
+                        if _f.is_file():
+                            _p = _f.read_text(encoding="utf-8").strip()
+                    except OSError:
+                        _p = ""
+                d = Path(_p or str(Path.home() / ".agentdrop" / "logs"))
                 d.mkdir(parents=True, exist_ok=True)
                 rec = {"ts": datetime.now(timezone.utc).isoformat(),
                        "component": component, "event": event, **kw}

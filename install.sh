@@ -177,6 +177,18 @@ stage_setup() {
   mkdir -p "$REPO_ROOT/data/campaigns" "$REPO_ROOT/data/screenshots" \
            "$STATE_DIR/logs" "$STATE_DIR/run" "$LOG_DIR"
   _ok "data/, ~/.agentdrop/{logs,run}"
+
+  _log "Log aktivitas ke dalam repo"
+  # Hook Hermes dipanggil sebagai perintah polos tanpa environment, jadi
+  # AGENTDROP_LOG_DIR tidak pernah sampai ke proses hook. Berkas penanda ini
+  # yang dibaca tools/audit_log.py dan hooks/.../handler.py sebagai fallback.
+  #
+  # Kenapa ke dalam repo, bukan ~/.agentdrop/logs: log harus bisa di-commit dan
+  # di-push, supaya kegagalan di mesin operator bisa dibaca dari branch tanpa
+  # perlu akses ke mesinnya. Log sudah diredaksi secret oleh audit_log.py.
+  mkdir -p "$STATE_DIR"
+  printf '%s\n' "$REPO_ROOT/data/logs" > "$STATE_DIR/logdir"
+  _ok "$STATE_DIR/logdir -> $REPO_ROOT/data/logs (masuk git)"
 }
 
 # ---------------------------------------------------------------------------

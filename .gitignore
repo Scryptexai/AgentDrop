@@ -17,8 +17,13 @@ auth.json
 # ============================================================
 data/campaigns/*/
 !data/campaigns/.gitkeep
-data/logs/*
-!data/logs/.gitkeep
+# LOG AKTIVITAS SENGAJA TIDAK DI-IGNORE.
+# Log audit harus bisa di-commit dan di-push ke branch kerja, supaya kegagalan
+# di mesin operator bisa didiagnosis dari repo tanpa akses ke mesinnya.
+# Rahasia sudah dibuang saat tulis oleh tools/audit_log.py (_SECRET_KEYS +
+# pola regex), dan scripts/collect-logs.sh menolak menulis kalau ada sisa.
+!data/logs/
+!data/logs/**
 data/screenshots/*
 !data/screenshots/.gitkeep
 
