@@ -164,6 +164,24 @@ compression:
   enabled: true
 
 # ----------------------------------------------------------------------------
+# GATEWAY — satu proses melayani semua profil
+# ----------------------------------------------------------------------------
+# WAJIB untuk cron. Hermes menyimpan cron job PER-PROFIL
+# (cron/jobs.py:68, issue #4707): `hermes --profile worker-daily cron create`
+# menulis ke ~/.hermes/profiles/worker-daily/cron/jobs.json.
+#
+# Tanpa flag ini, ticker gateway hanya membaca HERMES_HOME prosesnya — yaitu
+# ~/.hermes/cron/jobs.json, yang kosong. Komentar di gateway/run.py:31774
+# menyebut akibatnya persis: "every secondary profile's cron store is silently
+# ignored — jobs show as scheduled with a valid next_run_at but never execute
+# because no ticker owns that store."
+#
+# Jadi keempat job dari scripts/install-cron.sh tidak akan pernah jalan tanpa
+# ini. Default Hermes adalah false (gateway/config.py:980).
+gateway:
+  multiplex_profiles: true
+
+# ----------------------------------------------------------------------------
 # CRON — scheduler INTERNAL Hermes (ticker in-process 60 detik)
 # ----------------------------------------------------------------------------
 # JANGAN pakai system crontab untuk ini; Hermes punya scheduler sendiri dan
