@@ -85,9 +85,10 @@ credentials_setup() {
   fi
   [[ -f "$KEYF" ]] && _env_set AGENTDROP_KEY_FILE "$KEYF"
 
-  # Salin .env ke setiap profil. Hermes membaca HERMES_HOME/.env dengan
-  # override=True (hermes_cli/env_loader.py:470-504), dan --profile menyetel
-  # HERMES_HOME — jadi tiap profil butuh salinannya sendiri.
+  # Kunci izinnya. Penyalinan ke tiap profil terjadi nanti di tahap setup
+  # (lib/30-hermes.sh, `install -m 600 ... "$dst/.env"`), karena tiap profil
+  # adalah HERMES_HOME terpisah dan --profile menyetel HERMES_HOME sebelum
+  # env_loader membaca .env (override=True, hermes_cli/env_loader.py:470-504).
   chmod 600 "$ENV_FILE"
   _ok "~/.hermes/.env (mode 600)"
 }
