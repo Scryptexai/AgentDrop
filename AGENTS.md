@@ -205,7 +205,7 @@ Isi awalnya hanya kerangka + cara mengisinya. Agent yang menambah isinya lewat
 
 ## PROGRES
 
-Terakhir diperbarui: 2026-08-27 · commit `8c742e1` · branch `arena/01a037ea-agentdrop`
+Terakhir diperbarui: 2026-08-27 · commit `e950896` · branch `arena/01a037ea-agentdrop`
 Angka diverifikasi dengan perintah, bukan diperkirakan.
 
 **7 profil · 10 skill · 12 berkas knowledge · 179 pemeriksaan validator lolos (exit 0)**
@@ -223,25 +223,73 @@ Selesai:
 - Alur ujung-ke-ujung di `docs/arsitektur-alur.md` bagian 1 dan 3.
 - **Sweep menyeluruh bersih**: tidak ada satu pun path backtick di repo yang
   menunjuk berkas yang tidak ada.
+- **`knowledge/` terhubung ke SEMUA skill** — sebelumnya 22 rujukan di tujuh
+  `SOUL.md` dan **nol** di sepuluh `SKILL.md`. Skill adalah prosedur yang
+  benar-benar dijalankan, jadi memori lintas-proyek tidak pernah dibaca saat
+  bekerja. Tiap skill kini membuka dengan "baca dulu" dan "tulis balik".
+- **Peta tool browser dikoreksi**: toolset `browser` punya **14** anggota, dan
+  `web_extract` bukan salah satunya — ia milik toolset `web`, yang tidak
+  diaktifkan untuk `worker-daily`, `worker-discord`, `worker-x`.
+- **Dokumen dibaca ulang dari awal sampai akhir**, bukan di-grep. Ini menemukan
+  8 klaim palsu yang lolos dari semua validator (lihat di bawah).
 
 ### Kelas bug yang berulang — dan cara menangkapnya
 
-**Memberi tahu agent memakai sesuatu yang tidak ada.** Enam kali:
+**Memberi tahu agent memakai sesuatu yang tidak ada.** Tujuh kali:
 
 1. `SOUL.md` orchestrator → `tools/signing_policy.py` yang sudah dihapus
 2. Tiga skill → `computer_use(mode='som')`, toolset yang tidak diaktifkan
 3. `platform_toolsets.telegram` → `delegate_task`, bukan id toolset
 4. Empat workflow → "cek pengetahuan" tanpa menyebut berkas mana
 5. Tiga skill → `scripts/takeover.sh` yang sudah dihapus
-6. **Lima skill menjelaskan aturan verifikasi-URL lewat mekanisme Camofox**
-   (`adopt_existing_tab`, `session_key`). Kuncinya nyata di Hermes tapi hidup di
-   `browser.camofox.*`, jadi tidak berlaku untuk CDP. Aturannya benar,
-   penjelasannya salah.
+6. **Tujuh berkas menjelaskan aturan verifikasi-URL lewat mekanisme Camofox**
+   (`adopt_existing_tab`, `session_key`): enam `SKILL.md` (airdrop-intake,
+   browser-burn-in, browser-operation, daily-executor, discord-engager,
+   quest-executor) dan `SOUL.md` orchestrator. Kuncinya nyata di Hermes tapi
+   hidup di `browser.camofox.*`, jadi tidak berlaku untuk CDP. Aturannya benar,
+   penjelasannya salah. Lima ditemukan lebih dulu; **tiga lagi** lolos karena
+   kata "camofox" tidak muncul di baris itu — hanya perilakunya.
 
-**Yang menangkap nomor 5 dan 6 bukan validator, melainkan sweep**: jalankan
+   *(Angka ini sendiri sempat salah tulis sebagai "delapan skill". Perhitungan
+   5 + 3 tidak mengurangi `browser-burn-in` yang muncul di kedua commit, dan
+   menyebut `SOUL.md` sebagai skill. Diperbaiki dengan `git show --name-only |
+   sort -u` — **hitung berkas unik dari git, jangan jumlahkan dua daftar**.)*
+7. **`browser-operation` menyajikan `web_extract` di tabel tool browser.** Ia
+   bukan anggota toolset `browser`. Karena skill itu dipasang ke semua profil
+   sementara toolset `web` hanya di empat, tiga agent ditawari tool yang tidak
+   bisa mereka panggil.
+
+**Yang menangkap 5, 6, dan 7 bukan validator, melainkan sweep**: jalankan
 pencarian atas semua path backtick di repo dan cek keberadaannya satu per satu.
 Validator [21] hanya memeriksa rujukan `knowledge/`. **Jalankan sweep itu setiap
 kali menghapus berkas.**
+
+### Teknik kedua: baca dokumen dari awal sampai akhir
+
+Lima commit berturut-turut (`de994ba`…`ff31472`) semuanya memperbaiki klaim yang
+**tidak akan pernah tertangkap grep**, karena tidak ada kata kunci yang salah —
+hanya isinya yang basi. Yang ditemukan:
+
+| Dokumen | Klaim palsu | Kenyataan |
+|---|---|---|
+| `docs/prosedur-uji.md` | preflight memeriksa "daemon" | daemon dihapus; `lib/50-verify.sh` punya 5 bagian |
+| `docs/prosedur-uji.md` | "47 policy + 25 daemon + 9 plugin" | **nol** suite test tersisa |
+| `docs/prosedur-uji.md` | "154 checks" | 179 |
+| `README.md` | "119 pemeriksaan" | 179 |
+| `README.md` | "Suite test: 47 + 25 + 9" | nol |
+| `arsitektur-alur.md` | "tiga selesai, tiga terbuka" | lima selesai, satu terbuka |
+| `arsitektur-alur.md` | heading B "MASIH TERBUKA" padahal isinya "ditutup dengan menghapusnya" | kontradiksi internal |
+| `arsitektur-alur.md` | entri A: policy engine memutuskan wallet | policy engine dihapus |
+
+**Pelajarannya: dokumen yang sudah ditambal beberapa kali harus dibaca ulang
+utuh, bukan di-grep.** Grep mencari kata yang salah; yang basi adalah angka dan
+mekanisme yang kedengarannya masuk akal.
+
+**Catatan penting soal grep sendiri.** Saat memverifikasi jadwal cron, grep saya
+melaporkan 3 job lalu 5 — keduanya salah. Polanya melewatkan bentuk mingguan
+`0 21 * * 0`, lalu menghitung definisi fungsi `create_job() {`. Ada **4** job,
+dan dokumennya benar. **Sebuah selisih bisa berarti dokumennya salah ATAU
+pemeriksaannya salah. Pastikan yang mana sebelum menulis apa pun.**
 
 ---
 
