@@ -59,7 +59,7 @@ browser_navigate(URL)          # eksplisit, bukan tab yang kebetulan terbuka
       ↓
 browser_snapshot               # AX tree + refs + URL + judul
       ↓
-cocokkan URL & judul           # Hermes bisa meng-adopsi tab yang salah
+cocokkan URL & judul           # agent & operator berbagi SATU browser (noVNC)
       ↓
 baru putuskan aksi
 ```

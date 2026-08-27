@@ -127,7 +127,8 @@ Catatan kegagalan:
 2. **Jangan lanjut setelah gagal.** Catat dan berhenti.
 3. **Setiap uji butuh bukti** — screenshot atau perubahan state yang dibaca ulang.
 4. **Verifikasi alamat sebelum bertindak:** navigasi eksplisit → snapshot →
-   cocokkan URL/judul. Hermes bisa meng-adopsi tab yang salah.
+   cocokkan URL/judul. Agent dan operator berbagi SATU browser lewat noVNC,
+   jadi tab aktif bisa saja tab yang dibuka operator, bukan tab Anda.
 5. **Jangan membuat akun nyata atau transaksi nyata** selama burn-in kecuali
    operator memintanya eksplisit.
 6. **Uji 5 lolos karena agent berhenti di tempat yang benar**, bukan karena
