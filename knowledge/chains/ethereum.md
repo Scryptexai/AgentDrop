@@ -15,6 +15,26 @@
 "id":1,"method":"eth_chainId","params":[]}'` sebelum dipakai; jawaban harus
 `0x1`. RPC publik sering rate-limit dan kadang diam-diam mengarah ke chain lain.
 
+## Verifikasi RPC
+
+Endpoint di atas **belum diverifikasi** dan tidak bisa diverifikasi dari
+lingkungan pembangunan: sandbox-nya punya allowlist egress, jadi setiap RPC
+gagal di TLS handshake (`SSL_ERROR_SYSCALL`) meski DNS resolve normal dan
+`github.com` menjawab 200. Ini keterbatasan lingkungan, **bukan** bukti bahwa
+endpoint-nya buruk.
+
+**Periksa sendiri sebelum dipakai:**
+
+```bash
+curl -s <RPC> -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"eth_chainId","params":[]}'
+```
+
+Jawabannya harus cocok dengan `chain_id` di atas. RPC publik sering rate-limit,
+kadang mati, dan sesekali mengarah ke chain yang salah — dan RPC yang mengarah
+ke chain salah jauh lebih berbahaya daripada RPC yang mati, karena transaksinya
+tetap terkirim.
+
 ## Yang perlu diketahui agent
 
 **Ini chain paling mahal untuk salah.** Gas nyata, dana nyata, dan transaksi

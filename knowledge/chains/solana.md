@@ -13,6 +13,17 @@
 Rate-limit-nya ketat untuk pemakaian publik. Untuk pemakaian serius butuh RPC
 berbayar atau milik sendiri.
 
+**Belum diverifikasi** — sandbox pembangunan punya allowlist egress sehingga
+tidak bisa menguji endpoint mana pun. Periksa sendiri:
+
+```bash
+curl -s https://api.mainnet-beta.solana.com -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"getHealth","params":[]}'
+```
+
+Solana tidak punya `eth_chainId`; yang diperiksa adalah `getHealth` dan, untuk
+memastikan cluster, `getVersion`.
+
 ## Yang perlu diketahui agent
 
 **Ini chain yang paling berbeda dari yang lain, dan perbedaannya penting.**
