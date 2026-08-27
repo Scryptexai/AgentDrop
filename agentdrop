@@ -9,6 +9,8 @@
 #   agentdrop stop         hentikan gateway
 #   agentdrop browser      nyalakan Chrome for Testing + noVNC
 #   agentdrop browser-stop hentikan browser
+#   agentdrop run <profil> "<tugas>"   jalankan SATU agent untuk debug
+#   agentdrop run --list   daftar profil yang bisa dijalankan
 #   agentdrop status       periksa kesiapan sistem
 #   agentdrop extensions   pasang/perbarui wallet  [--all | --only a,b]
 #   agentdrop audit <cmd>  baca log: health | errors | doctor | trace | stuck | tail
@@ -89,6 +91,69 @@ cmd_stop() {
 }
 
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# run — panggil SATU agent saja, untuk debug perilaku sebelum orkestrasi.
+# ---------------------------------------------------------------------------
+# Kenapa perlu: lewat gateway+orchestrator Anda tidak bisa tahu worker mana yang
+# benar dan mana yang error, karena semuanya berjalan di balik satu percakapan.
+# Perintah ini menjalankan satu profil dengan satu tugas, di depan mata, dengan
+# log audit yang sama. Selesaikan tiap agent satu per satu dulu; orkestrasi
+# baru masuk akal setelah masing-masing stabil.
+#
+#   agentdrop run worker-quests "Kerjakan quest Galxe proyek X, berhenti di popup"
+#   agentdrop run worker-analyzer "Analisis kelayakan https://..."
+#   agentdrop run --list
+cmd_run() {
+  command -v hermes >/dev/null 2>&1 || _die "hermes tidak ada — jalankan ./install.sh"
+
+  local profile="" task=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --list|-l)
+        echo "Profil yang bisa dijalankan:"
+        local d
+        for d in "$HERMES_HOME_DIR"/profiles/*/; do
+          [[ -f "${d}config.yaml" ]] || continue
+          echo "  $(basename "$d")"
+        done
+        return 0 ;;
+      -*) _die "opsi tidak dikenal: $1" ;;
+      *)  if [[ -z "$profile" ]]; then profile="$1"; else task="$1"; fi ;;
+    esac
+    shift
+  done
+
+  [[ -n "$profile" ]] || { _err "butuh nama profil. Lihat: agentdrop run --list"; return 1; }
+
+  # Tolak profil yang tidak terpasang SEBELUM hermes mengeluh dengan pesan
+  # yang tidak menyebut daftar profil yang ada.
+  if [[ ! -f "$HERMES_HOME_DIR/profiles/$profile/config.yaml" ]]; then
+    _err "profil '$profile' tidak terpasang di $HERMES_HOME_DIR/profiles/"
+    echo "  yang ada:"; local d
+    for d in "$HERMES_HOME_DIR"/profiles/*/; do
+      [[ -f "${d}config.yaml" ]] && echo "    $(basename "$d")"
+    done
+    return 1
+  fi
+
+  [[ -n "$task" ]] || { _err "butuh tugas. Contoh: agentdrop run $profile \"lakukan X\""; return 1; }
+
+  _log "Menjalankan $profile (satu tugas, tanpa orkestrasi)"
+  echo "  tugas : $task"
+  echo "  log   : agentdrop audit tail"
+  echo
+  # --profile adalah flag global pre-argparse, jadi harus di depan subcommand.
+  # HERMES_HOME disetel eksplisit: tanpa itu get_hermes_home() jatuh ke default
+  # dan profil yang dimaksud tidak dipakai sama sekali.
+  HERMES_HOME="$HERMES_HOME_DIR" \
+    hermes --profile "$profile" chat -q "$task"
+  local rc=$?
+  echo
+  if [[ $rc -eq 0 ]]; then _ok "$profile selesai (rc=0)"
+  else _err "$profile berhenti dengan rc=$rc"; fi
+  return $rc
+}
+
 cmd_status()   { verify_run "${1:-}"; }
 cmd_audit()    { "$(_pyu)" "$ROOT/tools/audit.py" "$@"; }
 cmd_cron()     { bash "$ROOT/scripts/install-cron.sh" "$@"; }
@@ -103,6 +168,7 @@ main() {
     browser)      browser_start ;;
     browser-stop) browser_stop ;;
     browser-status) browser_status ;;
+    run)          cmd_run "$@" ;;
     status)       cmd_status "$@" ;;
     extensions)   browser_install_extensions "$@" ;;
     audit)        cmd_audit "$@" ;;
