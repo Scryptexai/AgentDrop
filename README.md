@@ -468,8 +468,13 @@ hermes --profile worker-monitor cron runs    # riwayat eksekusi
 
 Job cron butuh scheduler yang hidup. Jalankan gateway:
 ```bash
-hermes --profile worker-monitor gateway run
+agentdrop start
 ```
+
+Jangan jalankan `hermes --profile <worker> gateway run` per profil. Config repo
+ini menyalakan `gateway.multiplex_profiles: true`, jadi gateway default yang
+melayani semua profil dan yang menjalankan cron job tiap profil. Docs Hermes
+melarang secondary profile menyalakan gateway sendiri saat multiplex aktif.
 
 ---
 

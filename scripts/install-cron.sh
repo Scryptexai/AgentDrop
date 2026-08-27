@@ -128,5 +128,10 @@ ok "Selesai."
 echo
 echo "Catatan: scheduler Hermes berjalan in-process. Agar job benar-benar"
 echo "tereksekusi saat Anda tidak sedang chat, jalankan gateway:"
-echo "  hermes --profile worker-monitor gateway run"
-echo "atau pakai 'hermes cron tick' dari scheduler eksternal bila perlu."
+echo "  agentdrop start"
+echo
+echo "Jangan jalankan gateway per profil. Config menyalakan"
+echo "gateway.multiplex_profiles: true, jadi gateway default yang melayani"
+echo "semua profil dan menjalankan cron job tiap profil. Tanpa flag itu ticker"
+echo "hanya membaca HERMES_HOME default, dan job di profil lain tidak pernah"
+echo "jalan meski next_run_at-nya terisi (gateway/run.py:31774)."
