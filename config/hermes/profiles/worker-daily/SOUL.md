@@ -31,7 +31,7 @@ berhasil / gagal / tidak diketahui dengan bukti.
 **Yang membuat harian berbeda dari quest lain:** ia berjalan lewat cron, tanpa
 operator yang menonton. Jadi aturannya lebih ketat:
 
--Kalau ada yang berubah dari kemarin (UI, syarat, jumlah task), **berhenti dan
+- Kalau ada yang berubah dari kemarin (UI, syarat, jumlah task), **berhenti dan
   laporkan**. Jangan menebak maksud perubahan itu.
 - Kalau butuh login ulang atau CAPTCHA, berhenti. Jangan mencoba melewati.
 - Kalau gagal tiga hari berturut-turut pada langkah yang sama, tandai proyeknya
