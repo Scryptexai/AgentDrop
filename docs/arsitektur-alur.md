@@ -230,23 +230,22 @@ flowchart TD
 
 ## Status temuan
 
-Enam titik sempat ditandai tidak sesuai. Tiga sudah dibereskan, tiga masih terbuka.
+Enam titik sempat ditandai tidak sesuai. **Lima sudah ditutup** (A, B, C, D, E) dan **satu masih terbuka** (F — belum pernah dijalankan hidup).
 
 ### ✅ A — Kontradiksi wallet: SELESAI
 
-`worker-orchestrator/SOUL.md` tidak lagi menulis "signature -> wajib operator".
-Klasifikasi `human:wallet` dipecah:
+`worker-orchestrator/SOUL.md` tidak lagi menulis "signature -> wajib operator"
+tanpa penjelasan. Yang menggantikannya **berubah lagi sejak K7**, jadi catatan
+aslinya perlu dibaca dengan hati-hati:
 
-- `auto:wallet` — signature & transaksi, agent jalan terus, **policy engine yang
-  memutuskan**
-- `human:wallet` — hanya kalau policy engine menjawab `ESCALATE` atau `DENY`
+- Dulu keputusannya diserahkan ke policy engine (`auto:wallet` jalan terus,
+  `human:wallet` hanya kalau engine menjawab `ESCALATE`/`DENY`).
+- **Sekarang policy engine sudah dihapus.** Wallet resmi dipegang manusia dan
+  setiap approval ditandatangani manusia lewat noVNC. Lihat bagian 3 di atas.
 
-`Submit EVM Address` juga dikoreksi: dulu masuk `human:wallet` padahal cuma
-alamat publik. Sekarang `auto`.
-
-SOUL.md sekarang menyertakan perintah nyata untuk memanggil policy engine dan
-aturan tegas: *"Saya tidak menimpa keputusan policy engine. Kalau jawabannya
-ESCALATE, saya tidak mencari jalan lain untuk menandatanganinya."*
+Yang **tetap benar** dari temuan ini: `Submit EVM Address` bukan tindakan
+wallet. Ia cuma menyerahkan alamat publik, jadi masuk `auto`, bukan
+`human:wallet`. Koreksi itu masih berlaku.
 
 ### ✅ C — Skill dibatasi per profil: SELESAI
 
@@ -267,7 +266,7 @@ tidak ada, atau baris `rm -rf` dihapus. Keempatnya sudah diuji negatif.
 `--deliver local` diganti `--deliver "$DELIVER"` dengan `CRON_DELIVER` default
 `telegram`. Ada peringatan kalau `TELEGRAM_BOT_TOKEN` belum diisi.
 
-### ❌ B — Shim EIP-1193 belum dibangun: MASIH TERBUKA
+### ✅ B — Shim EIP-1193: DITUTUP DENGAN MENGHAPUSNYA
 
 **Ditutup dengan menghapusnya.** Dulu rencananya membuat WebExtension sendiri
 plus daemon signing lokal. Rencana itu dibatalkan (AGENTS.md K7): ekstensi
