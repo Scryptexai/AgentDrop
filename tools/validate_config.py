@@ -344,6 +344,20 @@ def check_shell(path: Path) -> None:
                     f"posisional. `hermes chat` hanya menerima -q/--query atau "
                     f"--query-file (mutually exclusive). Baris: {line.strip()}")
 
+    # `grep -c ... || echo 0` menghasilkan "0\n0", bukan "0": grep -c mencetak
+    # 0 DAN keluar dengan status 1 saat tidak ada kecocokan, jadi echo ikut jalan.
+    # Nilai itu lalu membuat `[[ "$n" -gt 0 ]]` gagal dengan "syntax error in
+    # expression" — bug nyata yang lolos 180 pemeriksaan dan baru ketahuan di
+    # mesin operator. Yang benar: `|| true` lalu default `${n:-0}`.
+    for i, line in enumerate(text.splitlines(), 1):
+        if line.lstrip().startswith("#"):
+            continue  # komentar yang MENDOKUMENTASIKAN pola ini bukan cacat
+        if re.search(r"grep\s+-c.*\|\|\s*echo\s+0", line):
+            err(f"{rel}:{i}: `grep -c ... || echo 0` menghasilkan \"0\\n0\" saat tidak "
+                f"ada kecocokan (grep -c mencetak 0 lalu keluar 1), dan itu merusak "
+                f"perbandingan numerik. Pakai `|| true` lalu `${{n:-0}}`. "
+                f"Baris: {line.strip()}")
+
     # crontab sistem: kita sengaja pakai cron internal Hermes
     if re.search(r"^\s*\(crontab", text, re.MULTILINE):
         warn(f"{rel}: memakai system crontab. AgentDrop memakai scheduler internal "

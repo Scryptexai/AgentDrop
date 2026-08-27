@@ -309,7 +309,12 @@ browser_start() {
   _ok "CDP siap: $ws"
 
   if [[ "$count" -gt 0 ]]; then
-    local n; n="$(curl -fsS "http://127.0.0.1:${CDP_PORT}/json" 2>/dev/null | grep -c 'chrome-extension://' || echo 0)"
+    # `grep -c` mencetak 0 DAN keluar dengan status 1 saat tidak ada kecocokan.
+    # Jadi `|| echo 0` di sini mencetak nol KEDUA dan n menjadi "0\n0", yang
+    # membuat [[ -gt ]] gagal dengan "syntax error in expression". `|| true`
+    # menahan statusnya untuk set -e tanpa menambah keluaran.
+    local n; n="$(curl -fsS "http://127.0.0.1:${CDP_PORT}/json" 2>/dev/null | grep -c 'chrome-extension://' || true)"
+    n="${n:-0}"
     if [[ "$n" -gt 0 ]]; then _ok "ekstensi terlihat lewat CDP ($n target)"
     else
       _warn "target chrome-extension:// tidak terlihat di /json."
@@ -334,7 +339,9 @@ browser_status() {
   if curl -fsS "http://127.0.0.1:${CDP_PORT}/json/version" >/dev/null 2>&1; then
     _ok "CDP hidup di ${CDP_PORT}"
     echo "   ws   : $(browser_ws)"
-    echo "   tab  : $(curl -fsS "http://127.0.0.1:${CDP_PORT}/json" 2>/dev/null | grep -c '"type"' || echo 0)"
+    # Cacat yang sama seperti di atas: tanpa ini barisnya tercetak "0\n0".
+    local tab; tab="$(curl -fsS "http://127.0.0.1:${CDP_PORT}/json" 2>/dev/null | grep -c '"type"' || true)"
+    echo "   tab  : ${tab:-0}"
   else _warn "CDP tidak menjawab di ${CDP_PORT}"; fi
   # Xvfb/VNC hanya relevan di jalur tanpa layar. Melaporkannya sebagai "tidak
   # jalan" di desktop biasa membuat operator mengira ada yang rusak.

@@ -341,6 +341,39 @@ pemeriksaan socket. Dua kali harness uji saya sendiri yang salah sebelum itu
 bukan socket) — pola lama: **kalau dua pemeriksaan saya tidak setuju, yang
 dicurigai adalah pemeriksaannya.**
 
+### Bug pertama yang ketahuan dari mesin operator
+
+`agentdrop browser` di mesin operator mencetak:
+
+```
+lib/40-browser.sh: line 313: [[: 0
+0: syntax error in expression (error token is "0")
+```
+
+Penyebabnya `grep -c ... || echo 0`. **`grep -c` mencetak `0` DAN keluar dengan
+status 1** saat tidak ada kecocokan, jadi `echo 0` ikut jalan dan menempelkan
+nol kedua — `n` menjadi `$'0\n0'`, dan `[[ "$n" -gt 0 ]]` gagal. `|| echo 0`
+itu sendiri disengaja (menahan status untuk `set -euo pipefail`), tapi caranya
+salah: yang benar `|| true` lalu `${n:-0}`.
+
+Empat tempat, bukan satu: `lib/40-browser.sh:312` dan `:337`,
+`scripts/collect-logs.sh:152` dan `:153`. Keempatnya diperbaiki.
+
+**Kenapa 180 pemeriksaan validator melewatkannya:** tidak ada satu pun yang
+membandingkan keluaran `grep -c` secara numerik. Ditambahkan pemeriksaan di
+`check_shell` yang menolak pola `grep -c ... || echo 0` pada baris non-komentar.
+Diuji dengan menyuntikkan pola buruk ke `collect-logs.sh` — tertangkap di
+baris 154 — lalu dipulihkan dan lolos.
+
+Pemeriksaan itu sempat menangkap **komenarnya sendiri** yang mendokumentasikan
+pola tersebut, jadi baris yang diawali `#` dilewati.
+
+Pelajarannya: **verifikasi saya tidak pernah menjalankan `agentdrop browser`
+sungguhan** karena sandbox tidak punya display. Uji enam keadaan display
+menangkap bug logika layar, tapi tidak ada yang menjalankan cabang
+"ekstensi terlihat lewat CDP". Cabang yang tidak pernah dieksekusi adalah
+tempat bug bersembunyi.
+
 ### Kelas bug yang berulang — dan cara menangkapnya
 
 **Memberi tahu agent memakai sesuatu yang tidak ada — atau melarang/mewajibkan

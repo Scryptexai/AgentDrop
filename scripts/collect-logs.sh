@@ -149,8 +149,10 @@ log "status hook"
   echo "-- blok hooks di tiap profil (HANYA jumlah + auto_accept, bukan isinya) --"
   for c in "$HOME"/.hermes/profiles/*/config.yaml "$HOME"/.hermes/config.yaml; do
     [[ -f "$c" ]] || continue
-    n=$(grep -c "audit-log.py" "$c" 2>/dev/null || echo 0)
-    aa=$(grep -c "^hooks_auto_accept: true" "$c" 2>/dev/null || echo 0)
+    # grep -c mencetak 0 dan keluar 1 saat tidak cocok; `|| echo 0` akan
+    # menghasilkan "0\n0" dan merusak perbandingan numerik di bawahnya.
+    n=$(grep -c "audit-log.py" "$c" 2>/dev/null || true); n="${n:-0}"
+    aa=$(grep -c "^hooks_auto_accept: true" "$c" 2>/dev/null || true); aa="${aa:-0}"
     printf '  %-50s audit-log=%s auto_accept=%s\n' "${c/#$HOME/~}" "$n" "$aa"
   done
   echo
