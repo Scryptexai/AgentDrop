@@ -177,15 +177,43 @@ browser_start() {
   fi
   export DISPLAY=":${DISPLAY_NUM}"
 
-  # GUI WAJIB ada: login Google/Discord/X, OAuth, dan CAPTCHA dikerjakan manusia.
-  if command -v x11vnc >/dev/null 2>&1 && ! pgrep -f "x11vnc.*:${DISPLAY_NUM}" >/dev/null 2>&1; then
+  # GUI WAJIB ada: login Google/Discord/X, OAuth, pembuatan wallet, dan CAPTCHA
+  # semuanya dikerjakan manusia lewat layar ini. Tanpa VNC, Chrome berjalan
+  # headless-secara-efektif dan operator tidak punya cara masuk — jadi ini
+  # berhenti keras, bukan lanjut diam-diam. Kegagalan yang muncul nanti akan
+  # terlihat seperti "login tidak bisa", jauh dari penyebabnya.
+  local kurang=()
+  command -v x11vnc      >/dev/null 2>&1 || kurang+=(x11vnc)
+  command -v websockify  >/dev/null 2>&1 || kurang+=(websockify)
+  if [[ ${#kurang[@]} -gt 0 ]]; then
+    _err "GUI tidak bisa dinyalakan, kurang: ${kurang[*]}"
+    _err "Debian/Ubuntu: sudo apt install x11vnc novnc"
+    _die "Login manual butuh layar. Pasang dulu, lalu ulangi: agentdrop browser"
+  fi
+
+  if ! pgrep -f "x11vnc.*:${DISPLAY_NUM}" >/dev/null 2>&1; then
     _log "x11vnc :${VNC_PORT}"
     x11vnc -display ":${DISPLAY_NUM}" -rfbport "$VNC_PORT" -nopw -forever -shared >/dev/null 2>&1 &
     echo $! > "$STATE_DIR/run/x11vnc.pid"
+    sleep 1
+    pgrep -f "x11vnc.*:${DISPLAY_NUM}" >/dev/null 2>&1 \
+      || _die "x11vnc gagal hidup di display :${DISPLAY_NUM}"
   fi
-  if command -v websockify >/dev/null 2>&1 && ! pgrep -f "websockify.*${NOVNC_PORT}" >/dev/null 2>&1; then
+  if ! pgrep -f "websockify.*${NOVNC_PORT}" >/dev/null 2>&1; then
     _log "noVNC :${NOVNC_PORT}"
-    websockify --web=/usr/share/novnc "$NOVNC_PORT" "127.0.0.1:${VNC_PORT}" >/dev/null 2>&1 &
+    # --web dicari, bukan dihardcode: lokasi novnc berbeda antar distro, dan
+    # path yang salah membuat websockify jalan tapi halamannya 404.
+    local novnc_web="" c
+    for c in /usr/share/novnc /usr/share/webapps/novnc /opt/novnc; do
+      [[ -d "$c" ]] && { novnc_web="$c"; break; }
+    done
+    if [[ -n "$novnc_web" ]]; then
+      websockify --web="$novnc_web" "$NOVNC_PORT" "127.0.0.1:${VNC_PORT}" >/dev/null 2>&1 &
+    else
+      _warn "direktori novnc tidak ditemukan — VNC tetap jalan di port ${VNC_PORT},"
+      _warn "tapi tanpa halaman web. Pakai VNC viewer ke 127.0.0.1:${VNC_PORT}."
+      websockify "$NOVNC_PORT" "127.0.0.1:${VNC_PORT}" >/dev/null 2>&1 &
+    fi
     echo $! > "$STATE_DIR/run/novnc.pid"
   fi
 
