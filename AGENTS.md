@@ -205,10 +205,10 @@ Isi awalnya hanya kerangka + cara mengisinya. Agent yang menambah isinya lewat
 
 ## PROGRES
 
-Terakhir diperbarui: 2026-08-27 · commit `47fc1d7` · branch `arena/01a037ea-agentdrop`
+Terakhir diperbarui: 2026-08-27 · commit `c56a419` · branch `arena/01a037ea-agentdrop`
 Angka diverifikasi dengan perintah, bukan diperkirakan.
 
-**7 profil · 10 skill · 6 berkas knowledge berisi · 174 pemeriksaan validator lolos (exit 0)**
+**7 profil · 10 skill · 12 berkas knowledge · 179 pemeriksaan validator lolos (exit 0)**
 
 Selesai:
 
@@ -217,16 +217,20 @@ Selesai:
 - Mismatch E ditutup; `TOOLSET_IDS` dibangun ulang dari 58 id asli.
 - Kontrak tool browser dikunci — lihat PROTOKOL BROWSER.
 - **Workflow eksplisit di ketujuh SOUL.md.** Sebelumnya `grep -ci workflow`
-  mengembalikan 0 di semua profil: ada klasifikasi, ada delegasi, tapi tidak ada
-  alur langkah-demi-langkah. Orchestrator — pintu masuk segalanya — tidak punya
-  alur sama sekali.
-- **Knowledge base berisi nyata** (6 berkas), bukan kerangka kosong. Workflow
-  merujuk `format-task.md`, `siklus.md`, `tanda-bahaya.md` di langkah awal;
-  sebelumnya ketiganya tidak ada, jadi langkah "cek pengetahuan" selalu kosong.
-- **Alur ujung-ke-ujung** ditulis ulang di `docs/arsitektur-alur.md` bagian 1
-  dan 3 — sebelumnya masih menunjuk `gateway run` dan `signing_policy.py`.
+  mengembalikan 0 di semua profil.
+- **Knowledge base berisi nyata** — 11 berkas isi + README:
+  - `patterns/` 5 berkas: format-task, tanda-bahaya, alur-airdrop, kualifikasi,
+    sidik-jari
+  - `meta/` 1 berkas: siklus
+  - `chains/` 5 berkas: ethereum, base, bnb-smart-chain, arbitrum-one, solana
+    (chain id diverifikasi terhadap chainlist + evmchainlist, dan dicocokkan
+    dengan tabel di `docs/arsitektur-alur.md`)
+  - `projects/` **sengaja kosong** — agent yang mengisinya lewat
+    `self-improvement` seiring pemakaian
+- **Alur ujung-ke-ujung** di `docs/arsitektur-alur.md` bagian 1 dan 3 sudah
+  cocok dengan kenyataan.
 
-### Kelas bug yang berulang tiga kali
+### Kelas bug yang berulang empat kali
 
 **Memberi tahu agent memakai sesuatu yang tidak ada**, sehingga agent
 berimprovisasi:
@@ -237,7 +241,8 @@ berimprovisasi:
 4. Empat workflow → "cek pengetahuan" tanpa menyebut berkas mana.
 
 Semuanya sekarang punya guard di validator ([17], [20], [21]) dan sudah diuji
-mutasi.
+mutasi. **Sebelum menulis "lihat X" di SOUL.md atau SKILL.md, pastikan X ada** —
+validator sekarang memeriksanya untuk `knowledge/`, tapi tidak untuk yang lain.
 
 ---
 
@@ -252,9 +257,9 @@ Yang tersisa hanya bisa diuji di mesin operator:
    - hook yang benar-benar menyala di dalam run Hermes yang hidup
    - Chrome for Testing yang benar-benar memuat ekstensi wallet
    - alur lengkap Telegram → orchestrator → worker → wallet
-3. Yang perlu diisi operator seiring pemakaian: `knowledge/projects/<slug>.md`
-   dan `knowledge/chains/<slug>.md` masih kosong. Kerangkanya ada di
-   `knowledge/README.md`; agent yang menulisnya lewat `self-improvement`.
+3. `knowledge/projects/` sengaja kosong dan diisi agent seiring pemakaian.
+   RPC di `knowledge/chains/` sudah dicantumkan tapi **ditandai belum
+   diverifikasi** — periksa dengan `eth_chainId` sebelum dipakai.
 4. Kalau ada yang rusak: `agentdrop audit doctor` lebih dulu.
 
 ## JALAN BUNTU
