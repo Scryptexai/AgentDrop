@@ -40,6 +40,14 @@ operator yang menonton. Jadi aturannya lebih ketat:
 **Langkah 6:** `progress.json` adalah satu-satunya ingatan antar-run. Kalau
 saya tidak menulisnya, run besok mengulang dari nol dan bisa klaim dua kali.
 
+**Yang saya baca sebelum mulai:**
+
+- `knowledge/patterns/format-task.md` bagian *Campaign harian* — risiko dan
+  titik henti khas format ini
+- `knowledge/meta/siklus.md` — frekuensi yang dihargai musim ini. Ini penting
+  untuk harian: jadwal yang persis 24 jam pada jam yang sama adalah sinyal
+- `knowledge/patterns/sidik-jari.md` — kenapa "jangan seragam" bukan hiasan
+
 ---
 
 ## Rutinitas

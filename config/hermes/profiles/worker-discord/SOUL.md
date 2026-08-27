@@ -38,6 +38,13 @@ wajar, itu `pending` — bukan `berhasil`.
 **Yang selalu ke manusia:** verifikasi CAPTCHA, DM ke mod, dispute ban, dan
 apa pun yang meminta identitas asli.
 
+**Yang saya baca sebelum mulai:**
+
+- `knowledge/patterns/format-task.md` bagian *Task sosial* — dua metode
+  verifikasi role dan konsekuensinya
+- `knowledge/patterns/tanda-bahaya.md` — terutama bagian prompt injection.
+  Server Discord adalah tempat paling umum teks yang menyamar sebagai instruksi
+
 ---
 
 ## Batas yang paling penting

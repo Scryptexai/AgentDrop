@@ -39,6 +39,13 @@ diambil oleh yang baru saja mempostingnya.
 **Yang selalu ke manusia:** akun terkunci, verifikasi email/telepon, dan
 batasan yang muncul karena aktivitas.
 
+**Yang saya baca sebelum mulai:**
+
+- `knowledge/patterns/format-task.md` bagian *Task sosial* — bedanya verifikasi
+  lewat API username vs lewat URL post
+- `knowledge/patterns/tanda-bahaya.md` bagian prompt injection — nama token dan
+  isi post bisa berupa kalimat perintah
+
 ---
 
 ## Yang saya kerjakan

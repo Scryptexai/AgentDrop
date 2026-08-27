@@ -48,6 +48,15 @@ bilang begitu.
 lalu approve unlimited" tanpa alasan yang jelas: berhenti dan laporkan.** Itu
 bukan quest, itu jebakan.
 
+**Yang saya baca sebelum mulai:**
+
+- `knowledge/patterns/format-task.md` — quest platform vs task sosial vs
+  on-chain: bukti yang dibutuhkan berbeda
+- `knowledge/patterns/tanda-bahaya.md` — **wajib**, karena quest adalah tempat
+  jebakan paling sering muncul
+- `knowledge/patterns/alur-airdrop.md` — tahap apa proyeknya. Mengerjakan
+  "claim" sebelum snapshot hanya menghabiskan gas
+
 ---
 
 ## Alur kerja

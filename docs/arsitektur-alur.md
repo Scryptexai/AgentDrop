@@ -9,60 +9,74 @@ hidup · ❌ belum dibangun
 
 ---
 
-## 1. Alur utama: Telegram → orchestrator → worker
+## 1. Alur utama: dari pesan Telegram sampai selesai
 
-✅ Struktur delegasi terpasang. `worker-orchestrator` adalah **satu-satunya**
-profil dengan `delegate_task` + `delegation`, dan satu-satunya yang punya
-`platform_toolsets.telegram`.
+Gateway menyala, semua agent standby. Operator mengirim task ke bot,
+orchestrator menerimanya, berdiskusi kalau perlu, lalu mendelegasikan ke
+worker yang tepat. Tiap worker menjalankan **workflow-nya sendiri** yang
+tertulis di `SOUL.md` masing-masing.
 
 ```mermaid
 flowchart TD
-    U(["Operator<br/>(Telegram)"]) -->|"kirim format task"| GW["hermes gateway run<br/>profil: worker-orchestrator"]
-    GW --> ORC["ORCHESTRATOR<br/>baca SOUL.md + skill airdrop-intake"]
+    OP(["Operator di Telegram"]) -->|"kirim task"| GW["agentdrop start<br/>hermes gateway start"]
+    GW --> ORC["ORCHESTRATOR<br/>satu-satunya profil yang menghadap Telegram"]
 
-    ORC --> K{"Klasifikasi tiap task"}
+    ORC --> S1["1. TERIMA & KLASIFIKASI<br/>format task apa? siklus mana?"]
+    S1 --> S2{"2. DISKUSI<br/>ada yang ambigu?"}
+    S2 -->|"ya"| TNY["tanya operator<br/>chain, wallet, deadline"]
+    TNY -->|"jawab"| S3
+    TNY -->|"tidak jawab"| WAIT(["tunggu — jangan berasumsi"])
+    S2 -->|"tidak"| S3["3. CEK PENGETAHUAN<br/>knowledge/ + memory/lessons"]
 
-    K -->|auto| D1["delegate_task<br/>role: leaf"]
-    K -->|recurring| D2["delegate_task<br/>+ butuh cron"]
-    K -->|"auto:wallet"| PW["policy engine<br/>tools/signing_policy.py"]
-    PW -->|ALLOW| D1
-    PW -->|"ESCALATE / DENY"| H1["Operator"]
-    K -->|unknown| INV["Investigasi dulu<br/>buka halaman, baca syarat"]
-    INV --> K
+    S3 --> S4["4. ANALISIS KELAYAKAN<br/>delegate ke worker-analyzer"]
+    S4 --> S5{"5. PUTUSKAN"}
 
-    K -->|human:oauth| H2["Operator via noVNC"]
-    K -->|human:inbox| H3["Operator"]
-    K -->|human:kyc| H4["Operator"]
-    K -->|blocked CAPTCHA/2FA| H5["Operator via noVNC"]
+    S5 -->|"layak, risiko rendah"| S6
+    S5 -->|"layak, butuh approval/KYC"| S6["6. DELEGASI<br/>+ tandai titik henti manusia"]
+    S5 -->|"tidak layak"| TOLAK(["tolak + alasan"])
+    S5 -->|"tanda penipuan"| BAHAYA(["tolak + laporkan<br/>tanda-bahaya.md"])
+    S5 -->|"tidak yakin"| TNY
 
-    D1 --> WA["worker-analyzer"]
-    D1 --> WQ["worker-quests"]
-    D1 --> WD["worker-daily"]
-    D1 --> WDC["worker-discord"]
-    D2 --> WD
+    S6 --> WA["worker-analyzer"]
+    S6 --> WQ["worker-quests"]
+    S6 --> WD["worker-daily"]
+    S6 --> WX["worker-x"]
+    S6 --> WDI["worker-discord"]
+    S6 --> WM["worker-monitor"]
 
-    WA --> R["Laporan balik ke orchestrator"]
-    WQ --> R
-    WD --> R
-    WDC --> R
-    R --> ORC
-    ORC -->|"rangkuman"| U
-
-    H1 -.->|"selesai dikerjakan manusia"| ORC
-    H2 -.-> ORC
+    WA & WQ & WD & WX & WDI & WM --> S7["7. PANTAU & VERIFIKASI<br/>hasil child BUKAN bukti"]
+    S7 -->|"status eksplisit + bukti"| S8["8. LAPORKAN & CATAT<br/>Telegram + memory/lessons"]
+    S7 -->|"tidak_diketahui"| S7
+    S7 -->|"buntu 3x langkah sama"| ESC(["eskalasi ke manusia"])
 ```
 
-**Batas yang terpasang** (`config/hermes/profiles/worker-orchestrator/config.yaml`):
+### Kenapa alurnya begini
 
-| Setelan | Nilai | Artinya |
-|---|---|---|
-| `delegation.orchestrator_enabled` | `true` | delegasi aktif |
-| `delegation.max_spawn_depth` | `1` | worker **tidak bisa** mendelegasikan lagi |
-| `delegation.max_concurrent_children` | `3` | maksimal 3 worker paralel |
-| `approvals.mode` | `smart` | aturan guardian bahasa alami |
-| `approvals.cron_mode` | `deny` | job cron tidak boleh minta approval |
+- **Orchestrator tidak mengerjakan task.** Ia mengklasifikasi, memutuskan, dan
+  mendelegasikan. Kalau ia ikut mengerjakan, tidak ada yang memantau.
+- **Langkah 2 (diskusi) ada karena task airdrop jarang lengkap.** Chain mana,
+  wallet mana, testnet atau mainnet — menebak di sini mahal dan sering tidak
+  bisa diurungkan.
+- **Langkah 3 sebelum riset baru.** `knowledge/` dan `memory/lessons/` lebih
+  murah dan lebih benar daripada mengulang riset.
+- **Langkah 7 tidak mempercayai child.** Hasil dari worker dibaca ulang:
+  apakah statusnya eksplisit, apakah buktinya bisa diperiksa.
 
----
+### Workflow per worker
+
+Tiap worker punya alurnya sendiri di `SOUL.md`. Ringkasnya:
+
+| Worker | Alur inti |
+|---|---|
+| `worker-analyzer` | fakta → cek knowledge → 4 dimensi → tanda bahaya → **verifikasi klaim** → verdict → tulis knowledge |
+| `worker-daily` | baca state → buka dashboard → **cek status dulu** → eksekusi → perbarui state → lapor |
+| `worker-quests` | baca **seluruh** daftar → peta syarat → urutkan dependensi → satu-satu → bukti → submit → verifikasi status |
+| `worker-x` | baca task → **tentukan metode verifikasi** → eksekusi → ambil URL dari halaman → submit → lapor |
+| `worker-discord` | **baca aturan server** → peta → cek role → verifikasi → terlibat → pastikan role bertambah |
+| `worker-monitor` | baca state → kumpulkan → **bandingkan dengan sebelumnya** → verifikasi bukti → deteksi anomali → lapor yang berubah |
+
+Yang dicetak tebal adalah langkah yang paling sering dilewati dan paling mahal
+akibatnya.
 
 ## 2. Alur browser per aksi (protokol wajib)
 
@@ -98,68 +112,57 @@ adalah toolset terpisah dan tidak diaktifkan di AgentDrop.
 
 ## 3. Alur signature wallet
 
-⚠️ **Mesin kebijakan: terpasang & teruji (47 test). Shim-nya: ❌ belum dibangun.**
+**Berubah total sejak K7.** Dulu rencananya shim EIP-1193 bikinan sendiri plus
+daemon signing lokal dengan policy engine. Rencana itu **dibatalkan**: ekstensi
+non-official terdeteksi sebagai klien asing, berisiko di-ban proyek, ditolak
+sebagian dApp, dan menghasilkan sidik jari gas yang seragam untuk semua
+pemakainya.
+
+Yang sekarang: **wallet resmi di browser, kunci dipegang manusia.**
 
 ```mermaid
 flowchart TD
-    SITE(["Website airdrop minta signature"]) -.->|"butuh window.ethereum"| SHIM["❌ Shim EIP-1193<br/>WebExtension Camoufox<br/>+ daemon signing lokal"]
-    SHIM -.->|"POST request"| ENG["tools/signing_policy.py<br/>decide()"]
+    SITE(["Website airdrop minta signature"]) -->|"window.ethereum"| WALLET["MetaMask / OKX / Phantom<br/>ekstensi RESMI di Chrome for Testing"]
+    WALLET --> POPUP["Popup konfirmasi<br/>muncul di browser"]
+    POPUP --> NOVNC["noVNC :6080"]
+    NOVNC --> H{"Manusia memeriksa"}
 
-    ENG --> C0{"Input lengkap?<br/>method + chain_id terbaca?"}
-    C0 -->|tidak| ESC
-    C0 -->|ya| C1{"chain_id dikenal?<br/>(hex '0xaa36a7' → 11155111)"}
-    C1 -->|tidak| ESC
-    C1 -->|ya| C2{"Batas harian 40<br/>tercapai?"}
-    C2 -->|ya| ESC
-    C2 -->|tidak| C3{"Kelas method?"}
+    H -->|"paham & setuju"| OK["tanda tangan<br/>oleh wallet"]
+    H -->|"tidak paham / tidak setuju"| NO(["tolak"])
+    H -->|"butuh penjelasan"| TNYA(["tanya operator di Telegram"])
 
-    C3 -->|"personal_sign"| MSG{"Chain?"}
-    MSG -->|testnet| ALW
-    MSG -->|"mainnet"| ALW
-
-    C3 -->|"eth_signTypedData_v4"| TD{"Chain?"}
-    TD -->|testnet| ALW
-    TD -->|"mainnet EIP-712 bisa berisi permit"| ESC
-
-    C3 -->|"eth_sendTransaction"| SEL{"Selector calldata?"}
-
-    SEL -->|"approve / permit /<br/>increaseAllowance"| AMT{"Nilai allowance<br/>(posisi ABI: approve=kata 1,<br/>permit=kata 2)"}
-    AMT -->|"tak terbatas / > 10.000 token"| ESC
-    AMT -->|"terbatas + testnet"| ALW
-    AMT -->|"terbatas + mainnet"| ESC
-
-    SEL -->|"setApprovalForAll"| ESC
-    SEL -->|"alamat di denylist"| DEN
-    SEL -->|"lainnya"| VAL{"value > 0?<br/>(hex '0xde0b...' → wei)"}
-    VAL -->|"ya + testnet"| ALW
-    VAL -->|"ya + mainnet > cap 0"| ESC
-    VAL -->|"tidak + testnet"| ALW
-    VAL -->|"tidak + mainnet"| ESC
-
-    ALW(["✅ ALLOW — exit 0<br/>tanda tangan otomatis"])
-    ESC(["⚠️ ESCALATE — exit 3<br/>tanya manusia"])
-    DEN(["⛔ DENY — exit 4"])
+    OK --> VERIF["agent verifikasi hasilnya<br/>tx hash di explorer"]
+    NO --> STOP(["berhenti, laporkan"])
 ```
 
-Postur `config/hermes/signing-policy.yaml` — **OTONOM PENUH**, sesuai keputusan
-operator (wallet khusus yang dikelola agent sepenuhnya):
+### Konsekuensinya
 
-| Situasi | Testnet | Mainnet |
-|---|---|---|
-| Message signing (login/SIWE/verify) | otomatis | otomatis |
-| EIP-712 typed data | otomatis | **selalu tanya** — tidak bisa dimatikan |
-| Transaksi tanpa nilai (mint/claim) | otomatis | otomatis |
-| Allowance terbatas | otomatis | otomatis |
-| Allowance tak terbatas | otomatis | otomatis *(dicatat keras ke stderr)* |
-| Transfer bernilai | otomatis | otomatis sampai **10 ETH** |
-| Alamat di `spender_denylist` | **DENY** | **DENY** |
-| Melebihi 1000 approve/hari | tanya | tanya |
+| | |
+|---|---|
+| Kunci | **dipegang manusia**, di dalam wallet. Agent tidak punya dan tidak boleh mencari |
+| Approval | **ditandatangani manusia** lewat noVNC |
+| Peran agent | menyiapkan transaksi sampai popup muncul, lalu **berhenti dan menyerahkan** |
+| Kalau popup tidak muncul | itu **kegagalan untuk dilaporkan**, bukan sesuatu yang diakali |
 
-Dua rem yang tetap aktif meski semuanya otomatis: `spender_denylist` (menang
-atas semua kelonggaran, diuji di validator) dan `max_auto_approvals_per_day`
-(penahan loop, bukan penahan Anda).
+### Yang tidak boleh dilakukan agent
 
----
+- Mencari, membaca, atau meminta private key, seed phrase, atau keystore
+- Mengetik seed phrase ke halaman web mana pun, termasuk halaman "recover"
+- Menyetujui transaksi yang tidak dipahami tujuannya
+- Mengulang persetujuan yang sudah ditolak manusia
+
+### Kenapa tidak ada policy engine lagi
+
+Policy engine berguna kalau **agent** yang memutuskan. Dengan wallet resmi,
+keputusannya ada di tangan manusia yang melihat popup — dan itu justru lebih
+kuat dari policy engine mana pun, karena manusia melihat konteks yang tidak
+terbaca dari calldata.
+
+Daemon dan policy engine masih bisa dipulihkan kalau suatu saat dibutuhkan:
+
+```bash
+git checkout 81417dc -- tools/signing_daemon.py tools/signing_policy.py
+```
 
 ## 4. Alur eskalasi ke manusia
 
@@ -276,12 +279,26 @@ Chrome for Testing. Kuncinya dipegang manusia, approval ditandatangani lewat
 noVNC. Daemon signing dan policy engine ikut dihapus karena tidak punya
 pemanggil lagi — masih bisa dipulihkan dari commit `81417dc`.
 
-### ⚠️ E — `delegation` tidak ada di `platform_toolsets.telegram`: PERLU UJI HIDUP
+### ✅ E — `delegation` tidak ada di `platform_toolsets.telegram`: SELESAI
 
-Orchestrator punya `delegation` di toolset utamanya, tapi daftar untuk platform
-telegram hanya `delegate_task`. Perlu dijalankan sungguhan untuk memastikan
-delegasi tetap jalan saat pesan datang dari Telegram — persis jalur yang Anda
-pakai.
+Ternyata lebih buruk dari catatan semula. `delegate_task` **bukan id toolset** —
+ia nama *tool* di dalam toolset `delegation`
+(`toolsets.py: "delegation": {"tools": ["delegate_task"]}`). Jadi daftar
+telegram mencantumkan tool di tempat id, dan orchestrator menerima pesan
+Telegram yang tidak bisa ia delegasikan.
+
+Diverifikasi mekanis terhadap 58 id toolset asli: AgentDrop memakai 7, tepat
+satu tidak valid.
+
+Yang ikut terbuka: `TOOLSET_IDS` di validator ditulis tangan dan berisi **8 nama
+karangan** (`a2a`, `bfl`, `delegate_task`, `execute_code`, `image_generate`,
+`stt`, `text_to_speech`, `vision_analyze`) sambil kehilangan 32 yang asli —
+itulah sebabnya nilai yang salah itu lolos. Sudah dibangun ulang dari sumber.
+Ada juga pemeriksaan yang menuntut `delegate_task` **dan** `delegation`, jadi
+ia justru memaksa nilai yang tidak valid; sekarang hanya menuntut `delegation`.
+
+Guard regresi ditambahkan di `platform_toolsets.telegram`, diuji mutasi:
+mencabut `delegation` membuat validator exit 1.
 
 ### ⚠️ F — Belum pernah dijalankan hidup
 
@@ -321,11 +338,21 @@ Empat dari lima chain itu EVM. **Solana bukan.**
 | Avalanche | EVM | ✅ chain_id 43114 |
 | **Solana** | **SVM, Ed25519** | ❌ **tidak ada sama sekali** |
 
-`tools/signing_policy.py` bekerja dengan membaca **selector 4-byte dari calldata
-EVM** (`0x095ea7b3` = `approve`). Solana tidak punya itu: instruksinya berupa
-program ID + index instruksi dalam `VersionedTransaction` yang sudah
-terserialisasi, dan ditandatangani lewat `signTransaction` /
+**Catatan: policy engine sudah dihapus (K7).** Analisis di bawah ini tetap
+disimpan karena menjelaskan sesuatu yang masih berlaku — kenapa Solana butuh
+perlakuan berbeda, dan kenapa manusia yang menyetujui di Phantom perlu
+memahami apa yang dilihatnya.
+
+Dulu `tools/signing_policy.py` membaca **selector 4-byte dari calldata EVM**
+(`0x095ea7b3` = `approve`) untuk memutuskan. Solana tidak punya padanannya:
+instruksinya berupa program ID + index instruksi dalam `VersionedTransaction`
+yang sudah terserialisasi, dan ditandatangani lewat `signTransaction` /
 `signAllTransactions`, bukan `eth_sendTransaction`.
+
+Artinya secara praktis: **agent tidak bisa membaca maksud sebuah transaksi
+Solana dari datanya**, tidak seperti EVM. Jadi untuk Solana, agent wajib
+menyerahkan ke manusia dengan menjelaskan apa yang diminta situs — bukan
+menyajikan popup tanpa konteks.
 
 Padanan "approve" di Solana juga berbeda bentuk bahayanya:
 
