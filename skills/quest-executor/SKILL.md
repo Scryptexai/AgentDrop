@@ -81,7 +81,20 @@ tahu sejak awal berapa banyak pekerjaan yang tersisa untuk mereka.
 - Kalau sebuah task gagal: retry sekali, lalu lewati dan catat. Jangan biarkan
   satu task macet menghentikan seluruh campaign.
 
-## Langkah 3 — Berhenti di task `human`
+## Langkah 3 — Siapkan task `siapkan`, berhenti di popup
+
+Untuk setiap task `siapkan` (connect/sign wallet, bridging, deposit, swap,
+mint, claim):
+
+1. Buka halaman, isi form, pilih jaringan dan jumlah.
+2. Klik tombol yang **memunculkan** popup wallet — **lalu berhenti di situ.**
+3. Tandai `needs_human` dan serahkan ke operator lewat noVNC.
+4. **Jangan pernah** menekan `Confirm`/`Sign`/`Approve` di dalam popup itu.
+
+Kalau popup tidak muncul, itu kegagalan untuk dilaporkan — bukan sesuatu yang
+diakali dengan cara lain.
+
+## Langkah 4 — Lewati task `human` dan `blocked`
 
 Catat task itu, jelaskan **persis** apa yang harus dilakukan operator (halaman
 mana, tombol mana, kenapa agent tidak boleh), lalu lanjut ke task berikutnya.
