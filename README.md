@@ -118,7 +118,7 @@ Dua jebakan nyata dari format yang biasa dikirim:
 
 | Teks di pengumuman | Kelas | Kenapa |
 |---|---|---|
-| `Connect EVM Wallet` | `human:wallet` | butuh **signature** — wajib operator |
+| `Connect EVM Wallet` | `human:wallet` | butuh **signature** — agent menyiapkan, operator yang menandatangani |
 | `Submit EVM Address` | `auto` | cuma **alamat publik** — agent boleh |
 | `Connect Twitter` | `human:oauth` | OAuth di domain pihak ketiga |
 | `Complete Easy Task` | `unknown` | namanya tidak memberi informasi apa pun |
