@@ -1,6 +1,6 @@
 ---
 name: quest-executor
-description: "Kerjakan campaign airdrop multi-langkah di platform quest (Galxe, Layer3, Zealy, Instruct), memisahkan task otomatis dari task yang butuh manusia."
+description: "Kerjakan campaign airdrop multi-langkah di platform quest (Galxe, Layer3, Zealy, Intract), memisahkan task otomatis dari task yang butuh manusia."
 version: 1.0.0
 author: AgentDrop
 license: MIT
