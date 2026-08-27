@@ -327,16 +327,23 @@ versi yang diperjelas ini konsisten dengan apa yang saya temukan:
 
 Empat dari lima chain itu EVM. **Solana bukan.**
 
-| Chain | Model | Dicakup policy engine? |
-|---|---|---|
-| Ethereum | EVM | ✅ chain_id 1 |
-| Base | EVM | ✅ chain_id 8453 |
-| BNB Chain | EVM | ✅ chain_id 56 |
-| Arbitrum | EVM | ✅ chain_id 42161 |
-| Optimism | EVM | ✅ chain_id 10 |
-| Polygon | EVM | ✅ chain_id 137 |
-| Avalanche | EVM | ✅ chain_id 43114 |
-| **Solana** | **SVM, Ed25519** | ❌ **tidak ada sama sekali** |
+| Chain | Model | `chain_id` | Bisa dibaca agent? |
+|---|---|---|---|
+| Ethereum | EVM | 1 | selector calldata terbaca |
+| Base | EVM | 8453 | selector calldata terbaca |
+| BNB Chain | EVM | 56 | selector calldata terbaca |
+| Arbitrum One | EVM | 42161 | selector calldata terbaca |
+| Optimism | EVM | 10 | selector calldata terbaca |
+| Polygon | EVM | 137 | selector calldata terbaca |
+| Avalanche | EVM | 43114 | selector calldata terbaca |
+| **Solana** | **SVM, Ed25519** | **tidak ada** | **tidak — butuh deserialisasi `VersionedTransaction`** |
+
+Fakta per chain ada di `knowledge/chains/`. Kolom terakhir yang penting: untuk
+EVM agent bisa menjelaskan apa yang diminta sebuah transaksi dari calldata-nya;
+untuk Solana tidak bisa, jadi agent wajib menyerahkan ke manusia **dengan
+penjelasan dari situs**, bukan popup tanpa konteks.
+
+Angka di atas diverifikasi terhadap chainlist / evmchainlist pada 2026-08-27.
 
 **Catatan: policy engine sudah dihapus (K7).** Analisis di bawah ini tetap
 disimpan karena menjelaskan sesuatu yang masih berlaku — kenapa Solana butuh
