@@ -56,11 +56,21 @@ agentdrop browser
 Lalu **login manual sekali per platform** lewat noVNC: Google, Discord, X.
 Agent tidak bisa dan tidak boleh melakukan itu sendiri.
 
-## 3. Nyalakan daemon signing
+## 3. Siapkan wallet
 
-```bash
-python3 tools/signing_daemon.py &
-```
+Tidak ada daemon signing yang perlu dinyalakan. Wallet yang dipakai adalah
+**MetaMask / OKX / Phantom yang dipasang di browser**, dan kuncinya dipegang
+manusia di dalam wallet itu.
+
+Yang perlu dipastikan sebelum lanjut:
+
+1. Tiap ekstensi wallet sudah dibuat atau diimpor **sekali** lewat noVNC
+2. Wallet punya gas yang cukup di chain yang akan dipakai — BNB Smart Chain
+   butuh BNB, bukan ETH (lihat `knowledge/chains/`)
+3. Chain yang benar sudah terpilih di dalam wallet
+
+Approval dan signature ditandatangani **manusia** lewat noVNC. Agent menyiapkan
+transaksi sampai popup muncul, lalu berhenti dan menyerahkan.
 
 ## 4. Jalankan uji
 
