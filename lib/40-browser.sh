@@ -316,12 +316,73 @@ browser_start() {
   # --load-extension hanya kalau ada ekstensi valid: Chrome gagal start kalau
   # path-nya tidak ada, dan pesannya tidak menjelaskan apa-apa.
   [[ -n "$list" ]] && args+=(--load-extension="${list}")
+
+  # -------------------------------------------------------------------------
+  # MATIKAN CHROME LAMA DULU. Ini bukan kebersihan, ini syarat.
+  #
+  # Chrome memakai ProcessSingleton pada --user-data-dir. Kalau sudah ada
+  # instance dengan profil yang sama, peluncuran kedua hanya memberi sinyal ke
+  # proses lama lalu KELUAR SENDIRI — tanpa jendela baru dan tanpa pesan error.
+  # Port CDP tetap dijawab oleh proses LAMA, jadi `browser_ws` melihat "CDP
+  # siap" dan kita percaya Chrome baru sudah jalan padahal tidak.
+  #
+  # Akibatnya nyata: operator menjalankan ulang `agentdrop browser` sesudah
+  # perbaikan flag, tapi yang menjawab tetap Chrome lama yang tidak punya flag
+  # itu. websocket UUID-nya identik antar-run — itu tanda diagnostiknya.
+  # -------------------------------------------------------------------------
+  local ws_lama=""
+  ws_lama="$(browser_ws || true)"
+  if [[ -n "$ws_lama" ]]; then
+    _warn "Chrome lama masih memegang port CDP ${CDP_PORT} — menghentikannya dulu"
+    _warn "(tanpa ini, peluncuran baru keluar sendiri dan flag baru tidak terpakai)"
+    browser_stop
+    # browser_stop hanya membunuh PID yang tercatut. Chrome yang dimulai di luar
+    # agentdrop, atau yang PID-nya hilang, tetap hidup dan tetap memegang profil.
+    pkill -f -- "--user-data-dir=${PROFILE_DIR}" >/dev/null 2>&1 || true
+    # Yang ditunggu adalah PROSESNYA mati, bukan portnya berhenti menjawab.
+    # Menunggu port itu salah dua kali: port bisa tetap dijawab sebentar oleh
+    # socket yang belum dilepas, dan yang lebih penting — kalau ada proses lain
+    # yang kebetulan memegang port itu, kita akan menunggu selamanya padahal
+    # Chrome lama sudah benar-benar berhenti. Uji dengan Chrome tiruan
+    # menunjukkan kegagalan ini: prosesnya mati, tapi kodenya tetap _die.
+    local k sisa=""
+    for k in $(seq 1 20); do
+      sisa="$(pgrep -f -- "--user-data-dir=${PROFILE_DIR}" 2>/dev/null | tr '\n' ' ')"
+      [[ -z "${sisa// /}" ]] && break
+      sleep 1
+    done
+    if [[ -n "${sisa// /}" ]]; then
+      _err "Chrome lama masih hidup: pid ${sisa}"
+      _die "Hentikan manual: pkill -f 'user-data-dir=${PROFILE_DIR}', lalu ulangi."
+    fi
+    _ok "Chrome lama berhenti"
+  fi
+  # SingletonLock yang tertinggal (Chrome crash / mesin mati paksa) membuat
+  # peluncuran baru gagal dengan "Failed to create a ProcessSingleton".
+  rm -f "${PROFILE_DIR}/SingletonLock" "${PROFILE_DIR}/SingletonCookie" \
+        "${PROFILE_DIR}/SingletonSocket" 2>/dev/null || true
+
   DISPLAY="$CHROME_DISPLAY" "$CHROME" "${args[@]}" >/dev/null 2>&1 &
-  echo $! > "$STATE_DIR/run/chrome.pid"
+  local chrome_pid=$!
+  echo "$chrome_pid" > "$STATE_DIR/run/chrome.pid"
+
+  # Proses yang keluar sendiri adalah gejala ProcessSingleton, dan kalau tidak
+  # diperiksa yang terlihat hanyalah "CDP siap" dari Chrome lama.
+  sleep 1
+  if ! kill -0 "$chrome_pid" 2>/dev/null; then
+    _err "Chrome keluar segera setelah dinyalakan (pid $chrome_pid)."
+    _die "Kemungkinan besar masih ada instance lain dengan profil ${PROFILE_DIR}.\n       Jalankan: agentdrop browser-stop, lalu ulangi."
+  fi
 
   local ws="" i
-  for i in $(seq 1 20); do ws="$(browser_ws)"; [[ -n "$ws" ]] && break; sleep 1; done
+  for i in $(seq 1 20); do ws="$(browser_ws || true)"; [[ -n "$ws" ]] && break; sleep 1; done
   [[ -n "$ws" ]] || _die "Chrome tidak membuka port CDP ${CDP_PORT} dalam 20 detik"
+
+  # Bukti bahwa yang menjawab adalah Chrome BARU, bukan sisa yang lama.
+  if [[ -n "$ws_lama" && "$ws" == "$ws_lama" ]]; then
+    _err "websocket CDP tidak berubah — yang menjawab masih Chrome lama."
+    _die "Hentikan manual: pkill -f 'user-data-dir=${PROFILE_DIR}', lalu ulangi."
+  fi
   _ok "CDP siap: $ws"
 
   if [[ "$count" -gt 0 ]]; then

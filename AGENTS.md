@@ -413,6 +413,45 @@ penyebabnya ada di tempat lain (flag Chrome). Keduanya lolos validator karena
 validator tidak menjalankan Chrome. **Klaim "ini akan bekerja" yang tidak pernah
 dieksekusi adalah klaim, bukan hasil.**
 
+### Penyebab sebenarnya Chrome tidak pernah di-restart
+
+Operator melaporkan browser tetap tidak terbuka sesudah perbaikan flag. Bukti
+kuncinya ada di keluaran mereka sendiri dan saya lewatkan dua kali:
+**websocket UUID-nya identik di tiga run** —
+`eb9fea55-5005-4915-aef3-e96ee5a535f6`. UUID itu dihasilkan sekali per proses
+browser. Sama berarti **Chrome tidak pernah di-restart**, jadi tidak satu pun
+perbaikan flag pernah dipakai.
+
+Mekanismenya: Chrome memakai **ProcessSingleton** pada `--user-data-dir`. Kalau
+sudah ada instance dengan profil yang sama, peluncuran kedua hanya memberi
+sinyal ke proses lama lalu **keluar sendiri** — tanpa jendela baru, tanpa pesan
+error. Port CDP tetap dijawab proses LAMA, dan `browser_ws` hanya memeriksa
+port, bukan proses, jadi ia melaporkan "CDP siap" dan kita percaya.
+
+Tiga hal yang hilang di `browser_start`:
+
+1. Tidak ada pemanggilan `browser_stop` sebelum launch (`grep -c kill` = 0).
+2. Tidak ada `pkill` untuk Chrome yang dimulai di luar agentdrop.
+3. Tidak ada pembersihan `SingletonLock`/`SingletonCookie`/`SingletonSocket`.
+
+Perbaikan: hentikan Chrome lama, tunggu **prosesnya** mati, bersihkan singleton,
+lalu verifikasi dua hal sesudah launch — proses baru masih hidup (`kill -0`),
+dan **UUID websocket berubah**. UUID yang tidak berubah berarti yang menjawab
+masih Chrome lama.
+
+**Uji dengan Chrome tiruan menemukan cacat di perbaikan saya sendiri.** Versi
+pertama menunggu *port* berhenti menjawab, bukan *prosesnya* mati. Chrome lama
+terbukti sudah mati, tapi kodenya tetap `_die` — karena port masih dijawab
+sebentar. Logikanya sama kelirunya dengan bug aslinya. Diganti menunggu
+`pgrep -f -- "--user-data-dir=..."` kosong.
+
+**Kesalahan harness yang berulang tiga kali:** pola `pkill -f`/`pgrep -f`
+mencocokkan **baris perintah shell saya sendiri**, jadi `kill` membunuh shell
+yang sedang menjalankan uji. Gejalanya: perintah selesai dengan keluaran kosong
+dan exit -1. Solusinya kelas karakter — `user-data-di[r]=...` — supaya pola
+tidak cocok dengan dirinya sendiri. Ini contoh keempat dari pola lama: **kalau
+pemeriksaan saya bertingkah aneh, yang dicurigai pemeriksaannya.**
+
 ### Kelas bug yang berulang — dan cara menangkapnya
 
 **Memberi tahu agent memakai sesuatu yang tidak ada — atau melarang/mewajibkan
