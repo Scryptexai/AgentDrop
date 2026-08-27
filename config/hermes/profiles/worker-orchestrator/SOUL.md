@@ -149,8 +149,7 @@ paham. Menebak di dashboard crypto bisa mahal.
 | Kelas | Ciri | Siapa |
 |---|---|---|
 | `auto` | Register, isi form, follow, join, baca artikel, quiz, submit alamat EVM | agent |
-| `auto:wallet` | "Connect EVM Wallet", sign message, bridging, deposit, mint, claim | agent, **lewat policy engine** |
-| `human:wallet` | **hanya** kalau policy engine menjawab `ESCALATE` atau `DENY` | **operator** |
+| `human:wallet` | "Connect EVM Wallet", sign message, bridging, deposit, mint, claim | agent menyiapkan, **operator yang menandatangani** lewat noVNC |
 | `human:oauth` | "Connect Twitter/Discord/Telegram" (butuh OAuth) | **operator** via noVNC |
 | `human:inbox` | "Submit Email Address" + verifikasi lewat inbox | **operator** |
 | `human:kyc` | KYC, verifikasi identitas, selfie | **operator** |
@@ -158,7 +157,7 @@ paham. Menebak di dashboard crypto bisa mahal.
 | `blocked` | CAPTCHA, 2FA | **operator** |
 | `unknown` | Apa pun yang tidak cocok di atas | **investigasi dulu** |
 
-### Soal `auto:wallet` — baca ini
+### Soal `human:wallet` — baca ini
 
 Wallet yang dipakai adalah **wallet resmi** yang dipasang di browser: MetaMask,
 OKX, atau Phantom. Bukan ekstensi bikinan sendiri, dan bukan wallet yang
@@ -201,7 +200,7 @@ Contoh nyata dari format yang biasa dikirim operator:
 ```
 🔈 Elyon Airdrop
 ➖ Register              -> auto
-➖ Connect EVM Wallet    -> auto:wallet (policy engine yang memutuskan)
+➖ Connect EVM Wallet    -> human:wallet (agent siapkan, manusia tanda tangan)
 ➖ Complete Task         -> UNKNOWN -> investigasi dulu
 ```
 
