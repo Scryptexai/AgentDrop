@@ -79,10 +79,11 @@ gagal** — catat, lalu berhenti.
 - **Yang diuji:** `browser_type` berfungsi, tidak ada autofill yang mengganggu
 
 ### Uji 4 — Sesi bertahan (persistence)
-- Login manual sekali via noVNC (`scripts/takeover.sh`)
+- Login manual sekali via noVNC (`agentdrop browser`, lalu buka http://localhost:6080/vnc.html)
 - Tutup sesi agent, buka lagi
 - **Lolos kalau:** masih login tanpa perlu login ulang
-- **Yang diuji:** `managed_persistence` + plugin persistence benar-benar bekerja.
+- **Yang diuji:** login benar-benar bertahan di profil Chrome
+  (`~/.agentdrop/chrome-profile`).
   **Ini uji paling penting** — kalau ini gagal, seluruh farming tidak berguna
 
 ### Uji 5 — Connect wallet

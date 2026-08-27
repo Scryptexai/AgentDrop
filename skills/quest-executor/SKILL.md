@@ -25,9 +25,14 @@ hermes --profile worker-quests chat -q "Kerjakan campaign ini: https://app.galxe
 ## Langkah 0 — verifikasi alamat sebelum bertindak
 
 Jangan pernah berasumsi tab yang Anda tempati menampilkan halaman yang Anda
-kira. Hermes bisa meng-adopsi tab yang sudah terbuka (`adopt_existing_tab`);
-kalau tidak ada tab yang cocok `session_key`, ia mengambil **tab terbaru milik
-userId itu** — bisa jadi tab yang dibuka manusia lewat `scripts/takeover.sh`.
+kira. Di setup AgentDrop, agent dan manusia memakai **satu browser yang sama**
+lewat noVNC — jadi tab yang sedang aktif bisa saja tab yang baru dibuka operator
+untuk login atau menyelesaikan CAPTCHA, bukan tab quest Anda.
+
+(Catatan: penjelasan lama di sini menyebut `adopt_existing_tab` dan
+`session_key`. Keduanya kunci `browser.camofox.*` di Hermes dan **tidak
+berlaku** — AgentDrop memakai CDP, bukan Camofox. Risikonya tetap nyata, hanya
+sebabnya berbeda: berbagi browser dengan manusia.)
 
 Urutan wajib setiap kali mulai atau pindah halaman:
 

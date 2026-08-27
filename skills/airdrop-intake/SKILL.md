@@ -77,9 +77,9 @@ Untuk setiap task `unknown`:
 
 1. `browser_navigate` ke URL campaign (bukan dari tab yang kebetulan terbuka)
 2. `browser_snapshot`
-3. **Cocokkan URL + judul** dengan yang diharapkan — Hermes bisa meng-adopsi tab
-   yang salah (`_adopt_existing_tab` mengambil tab terbaru milik userId, bukan
-   gagal)
+3. **Cocokkan URL + judul** dengan yang diharapkan — agent dan operator memakai
+   **satu browser yang sama** lewat noVNC, jadi tab aktif bisa saja tab yang
+   dibuka operator untuk login, bukan tab campaign Anda
 4. Baca syarat task itu
 5. Klasifikasi ulang berdasarkan apa yang **Anda baca**, bukan apa yang Anda
    duga

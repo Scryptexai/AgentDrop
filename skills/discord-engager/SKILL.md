@@ -28,8 +28,8 @@ diaktifkan** di profil `worker-discord`; semua interaksi lewat browser.
 
 ### 0. Verifikasi alamat sebelum bertindak
 Jangan berasumsi tab yang saya tempati menampilkan server/channel yang saya
-kira. Hermes bisa meng-adopsi tab yang sudah terbuka; kalau tidak ada yang
-cocok `session_key`, ia memakai **tab terbaru milik userId itu**. Selalu
+kira. Agent dan operator memakai **satu browser yang sama** lewat noVNC, jadi
+tab aktif bisa saja tab Discord lain yang dibuka operator. Selalu
 `browser_navigate` eksplisit → `browser_snapshot` → cocokkan URL/judul dengan
 yang diharapkan. Salah server = salah orang diajak bicara.
 

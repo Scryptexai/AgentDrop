@@ -40,9 +40,9 @@ Perhatikan `-q`. `hermes chat` **tidak menerima argumen posisional** — hanya
 
 > **WAJIB SEBELUM APA PUN: navigasi eksplisit, lalu verifikasi alamat.**
 > Jangan pernah berasumsi tab yang Anda tempati menampilkan halaman yang Anda
-> kira. Hermes bisa meng-adopsi tab yang sudah terbuka (`adopt_existing_tab`),
-> dan kalau tidak ada tab yang cocok session_key, ia mengambil **tab terbaru
-> milik userId itu** — bisa jadi tab yang dibuka manusia.
+> kira. Agent dan operator memakai **satu browser yang sama** lewat noVNC, jadi
+> tab yang sedang aktif bisa saja tab yang dibuka operator untuk login atau
+> CAPTCHA, bukan tab dashboard Anda.
 >
 > Urutannya selalu: `browser_navigate(URL_yang_dimaksud)` → `browser_snapshot`
 > → **cocokkan URL/judul di snapshot dengan yang Anda harapkan**. Kalau tidak
@@ -106,9 +106,11 @@ Ringkasan harian → `data/logs/YYYY-MM-DD-daily.md`.
   Cara menyerahkan ke manusia (browser di sini GUI, bukan headless):
   beri tahu operator untuk membuka **`http://localhost:6080/vnc.html`** dan
   menyelesaikan verifikasinya langsung di sana. Sesi itu sesi yang sama dengan
-  yang Anda pakai — plugin persistence menyimpan state-nya, jadi setelah
-  operator selesai Anda bisa lanjut tanpa perlu login ulang.
-  Kalau sesi login mati total, jalannya lewat `scripts/takeover.sh`.
+  yang Anda pakai — login tersimpan di profil Chrome
+  (`~/.agentdrop/chrome-profile`), jadi setelah operator selesai Anda bisa
+  lanjut tanpa perlu login ulang.
+  Kalau sesi login mati total, operator login lagi lewat noVNC
+  (`agentdrop browser`, lalu http://localhost:6080/vnc.html) — bukan Anda.
 - **Tidak ada signature wallet, tidak ada transaksi.** Butuh signature →
   `needs_human`.
 - **Tidak ada private key / seed phrase** di prompt, file, log, atau screenshot.
