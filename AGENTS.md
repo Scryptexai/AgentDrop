@@ -688,6 +688,55 @@ apa pun** — diuji dengan menghapus `|| true` dan melihatnya lolos. Diganti
 karena tidak pernah mereproduksi kondisi yang dilaporkan operator. Uji yang
 `.env`-nya berbeda dari `.env` operator bukan uji untuk bug operator.
 
+### Ekstensi dari Chrome Web Store, bukan unduh CRX otomatis
+
+Operator meminta pemasangan ekstensi tidak otomatis — pakai yang ada di Chrome
+Web Store. Permintaan itu benar secara teknis, bukan sekadar selera.
+
+Memasang dari Web Store lebih baik daripada menyuntik CRX:
+
+- ekstensi terdaftar **sungguhan** di profil (Secure Preferences), bukan
+  sementara seperti `--load-extension` — yang sejak Chrome 126 membuat service
+  worker tidak jalan dan popup tidak bisa dibuka
+- ikut diperbarui otomatis oleh Chrome
+- versinya yang ditinjau Google, bukan CRX yang kita ambil sendiri
+- tidak ada mesin ekstraksi CRX3 yang bisa salah
+
+Perubahan:
+
+- `store:` URL ditambahkan untuk 5 wallet di `config/extensions.yaml`
+  (format diverifikasi: `https://chromewebstore.google.com/detail/<id>`)
+- `browser_print_store_links()` mencetak tabel wallet + tautan
+- `stage_browser` tidak lagi mengunduh; hanya mencetak tautan
+- `agentdrop extensions` default mencetak tautan; `--sideload` menghidupkan
+  jalur CRX lama untuk mesin tanpa akses ke Web Store
+
+### Dua ✗ di `agentdrop status` operator
+
+**`scripts/collect-logs.sh tidak ada`.** Ini lebih serius dari keluhan
+validator: `agentdrop:161` memanggil `bash "$ROOT/scripts/collect-logs.sh"`, dan
+`$ROOT` adalah **direktori terpasang**, bukan repo. `scripts` tidak ada di
+daftar salinan `stage_install_code` — jadi **`agentdrop logs` rusak di mesin
+operator**, bukan hanya validatornya yang mengeluh. Ini cacat yang sama
+bentuknya dengan `memory` yang hilang: daftar salinan tidak lengkap.
+
+**5 error CJK di `extensions/installed/okx-wallet/...`.** False positive.
+Direktori itu di-gitignore dan berisi kode pihak ketiga yang kita unduh; OKX
+membawa string CJK di bundle minified-nya dan itu memang milik mereka.
+Menyisirnya menghasilkan 5 error yang tidak bisa diperbaiki siapa pun, dan
+menutupi error yang nyata.
+
+`_own_extension_js()` kini mengecualikan apa pun di bawah `installed/`.
+**Diuji dengan dua berkas CJK** — satu di `extensions/installed/okx-wallet/`,
+satu di `extensions/mine/` — dan hanya milik kita yang tertangkap. Berkas uji
+dihapus sesudahnya.
+
+Uji end-to-end `install.sh` sesudah semua perubahan:
+
+```
+profil 7/7 · memory/lessons 7/7 · skill 10/10 · scripts/collect-logs.sh tersalin
+```
+
 ### Kelas bug yang berulang — dan cara menangkapnya
 
 **Memberi tahu agent memakai sesuatu yang tidak ada — atau melarang/mewajibkan

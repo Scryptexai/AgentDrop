@@ -189,7 +189,7 @@ membuat atau mengimpor wallet di browser, dan login visual sekali per platform.
 ```bash
 agentdrop status          periksa kesiapan — lakukan ini lebih dulu
 agentdrop browser         nyalakan Chrome for Testing (jendela asli, atau noVNC)
-agentdrop extensions      pasang/perbarui wallet resmi
+agentdrop extensions      cetak tautan Chrome Web Store untuk wallet resmi
 agentdrop start           nyalakan gateway Telegram (agent berjalan di atasnya)
 agentdrop stop
 agentdrop audit doctor    diagnosis kalau ada yang rusak
@@ -596,7 +596,7 @@ dikumpulkan dengan `agentdrop logs` supaya bisa dianalisis.
 | Mulai dari mana pun | `agentdrop status` — menyebut komponen mana yang belum siap |
 | `hermes` tidak ketemu | Jalankan `./install.sh` |
 | Ekstensi tidak termuat | `agentdrop browser-status`, lalu pastikan yang dipakai Chrome for Testing, **bukan** Google Chrome branded |
-| `window.ethereum` undefined | Ekstensi tidak termuat — jalankan `agentdrop extensions`, restart browser |
+| `window.ethereum` undefined | Ekstensi belum terpasang dari Web Store — `agentdrop extensions` untuk tautannya, pasang di jendela browser, lalu restart browser |
 | CDP tidak menjawab | `agentdrop browser` |
 | noVNC tidak kebuka | Hanya relevan di mesin tanpa layar. `xvfb`, `x11vnc`, `novnc` terpasang? Di desktop pakai `BROWSER_MODE=native` |
 | Log audit kosong | Hook tidak terdaftar — `agentdrop status` bagian [3] |

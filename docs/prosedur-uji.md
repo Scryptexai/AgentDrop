@@ -33,13 +33,13 @@ Yang paling sering menggagalkan:
 |---|---|---|
 | `hooks_auto_accept bukan true` | hook diabaikan diam-diam pada cron/gateway | jalankan ulang `./install.sh` |
 | `Google Chrome BRANDED` | Chrome 137+ mengabaikan `--load-extension` | pakai Chrome for Testing |
-| `tidak ada ekstensi` | wallet belum dipasang | `agentdrop extensions` |
+| `tidak ada ekstensi` | wallet belum dipasang dari Web Store | `agentdrop extensions` untuk tautannya |
 | `disabled_toolsets hilang` | agent bisa membuka browser sendiri lewat shell | jalankan ulang `./install.sh` |
 
 ## 2. Nyalakan browser
 
 ```bash
-agentdrop extensions        # sekali saja
+agentdrop extensions        # cetak tautan Web Store; pasang sekali di jendela browser
 agentdrop browser
 ```
 

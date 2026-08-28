@@ -125,7 +125,11 @@ stage_install_code() {
   mkdir -p "$INSTALL_DIR"
   # Kode disalin, bukan di-symlink ke repo: repo bisa dipindah atau dihapus,
   # dan instalasi sistem tidak boleh ikut rusak.
-  for item in lib tools skills config hooks agent-hooks knowledge memory AGENTS.md; do
+  # `scripts` WAJIB ikut. agentdrop:cmd_logs memanggil
+  # "$ROOT/scripts/collect-logs.sh", dan $ROOT adalah direktori terpasang —
+  # bukan repo. Tanpa ini `agentdrop logs` mati dengan "No such file", dan
+  # validator yang dijalankan dari lokasi terpasang melaporkan berkasnya hilang.
+  for item in lib tools scripts skills config hooks agent-hooks knowledge memory AGENTS.md; do
     [[ -e "$REPO_ROOT/$item" ]] || continue
     rm -rf "${INSTALL_DIR:?}/$item"
     cp -r "$REPO_ROOT/$item" "$INSTALL_DIR/"
@@ -208,24 +212,27 @@ stage_browser() {
 
   [[ "$SKIP_EXTENSIONS" == true ]] && { _warn "ekstensi dilewati (--skip-extensions)"; return 0; }
   echo
-  _log "Ekstensi wallet"
-  echo "  AgentDrop memasang wallet RESMI (MetaMask, OKX, Phantom), bukan"
-  echo "  ekstensi bikinan sendiri. Ekstensi non-official terdeteksi sebagai"
-  echo "  klien asing, berisiko di-ban proyek, dan ditolak sebagian dApp."
+  _log "Ekstensi wallet — pasang dari Chrome Web Store"
+  # SENGAJA TIDAK MENGUNDUH OTOMATIS.
+  #
+  # Memasang lewat Web Store lebih baik daripada menyuntik CRX:
+  #   - ekstensi terdaftar sungguhan di profil (Secure Preferences), bukan
+  #     sementara seperti --load-extension, yang sejak Chrome 126 membuat
+  #     service worker tidak jalan dan popup tidak bisa dibuka
+  #   - ikut diperbarui otomatis oleh Chrome
+  #   - versinya yang ditinjau Google, bukan CRX yang kita ambil sendiri
+  #   - tidak ada mesin ekstraksi CRX3 yang bisa salah
+  #
+  # Jadi installer hanya mencetak tautannya. Manusia yang menekan "Add to
+  # Chrome" di jendela browser — satu klik per wallet, sekali saja.
+  browser_print_store_links
   echo
-  echo "  Yang akan diunduh adalah kode pihak ketiga ke dalam browser yang"
-  echo "  akan memegang dana Anda. Cocokkan ID di config/extensions.yaml"
-  echo "  dengan halaman Chrome Web Store resmi proyeknya sebelum lanjut."
-  if [[ "$IS_INTERACTIVE" == true ]]; then
-    local j
-    read -r -p "  Unduh sekarang? [y/N]: " j
-    case "$j" in
-      y|Y) browser_install_extensions || _warn "sebagian ekstensi gagal" ;;
-      *)   _warn "dilewati — jalankan nanti: agentdrop extensions" ;;
-    esac
-  else
-    _warn "mode non-interaktif: jalankan nanti: agentdrop extensions"
-  fi
+  echo "  Buka tiap tautan di jendela Chrome for Testing (agentdrop browser),"
+  echo "  lalu tekan 'Add to Chrome'. Sesudah terpasang, buat atau impor"
+  echo "  wallet-nya di sana. Agent tidak boleh dan tidak bisa melakukannya."
+  echo
+  echo "  Jalur lama (unduh CRX otomatis) masih ada kalau Anda memang butuh:"
+  echo "      agentdrop extensions --sideload"
 }
 
 # ---------------------------------------------------------------------------
@@ -301,7 +308,7 @@ cat <<'EOF'
 
   Perintah lain:
 
-    agentdrop extensions       pasang/perbarui wallet
+    agentdrop extensions       tautan Chrome Web Store untuk wallet
     agentdrop logs             kumpulkan log untuk dianalisis
     agentdrop audit doctor     diagnosis kalau ada yang rusak
     agentdrop cron             pasang jadwal otomatis

@@ -831,6 +831,22 @@ def check_telegram_env() -> None:
 
 
 
+def _own_extension_js() -> list:
+    """JS ekstensi MILIK KITA, bukan yang diunduh dari toko.
+
+    `extensions/installed/` di-gitignore dan berisi kode pihak ketiga: wallet
+    resmi (MetaMask/OKX/Phantom) yang diunduh `agentdrop extensions`. OKX
+    misalnya membawa string CJK di bundle minified-nya, dan itu memang milik
+    mereka -- bukan cacat kita. Menyisirnya membuat validator melaporkan 5
+    error yang tidak bisa diperbaiki siapa pun, dan menutupi error yang nyata.
+    """
+    akar = REPO / "extensions"
+    if not akar.exists():
+        return []
+    return [f for f in akar.rglob("*.js")
+            if "installed" not in f.relative_to(akar).parts]
+
+
 def check_no_stray_cjk() -> None:
     """Karakter CJK yang terselip di tengah kalimat Indonesia.
 
@@ -844,7 +860,7 @@ def check_no_stray_cjk() -> None:
               list((REPO / "config").rglob("*.yaml")) + \
               list((REPO / "skills").rglob("*.md")) + \
               list((REPO / "scripts").glob("*.sh")) + \
-              list((REPO / "extensions").rglob("*.js")) + \
+              list(_own_extension_js()) + \
               [REPO / "README.md", REPO / "install.sh"]
     cjk = re.compile(r"[\u4e00-\u9fff\u3040-\u30ff]")
     hits = []

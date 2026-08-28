@@ -56,6 +56,36 @@ print(f"OK\t{m.get('name','?')}\t{m.get('version','?')}\tMV{m.get('manifest_vers
 PY
 }
 
+# Cetak tautan Chrome Web Store untuk tiap wallet.
+#
+# Ini jalur pemasangan yang DIPILIH, bukan jalur CRX. Alasannya ada di
+# stage_browser (install.sh): ekstensi dari Web Store terdaftar sungguhan di
+# profil, ikut diperbarui Chrome, dan versinya yang ditinjau Google.
+#
+# Memakai _pyu, bukan python3 polos: PyYAML ada di venv proyek, dan python3
+# sistem sering tidak punya (PEP 668 memblokir pip system).
+browser_print_store_links() {
+  "$(_pyu)" - "$REPO_ROOT/config/extensions.yaml" "$EXT_ROOT" <<'PY'
+import yaml, sys, os
+cfg, dest = sys.argv[1], sys.argv[2]
+try:
+    m = yaml.safe_load(open(cfg)) or {}
+except FileNotFoundError:
+    print("  ! " + cfg + " tidak ada")
+    sys.exit(1)
+items = (m.get('extensions') or []) + (m.get('extra') or [])
+print("  %-12s %-6s %-11s %s" % ("WALLET", "WAJIB", "STATUS", "TAUTAN"))
+print("  " + "-" * 74)
+for e in items:
+    url = e.get('store') or (
+        "https://chromewebstore.google.com/detail/" + e['id'] if e.get('id') else "-")
+    ada = 'terpasang' if os.path.exists(
+        os.path.join(dest, e.get('folder', ''), 'manifest.json')) else 'BELUM'
+    wajib = 'ya' if e.get('required') else '-'
+    print("  %-12s %-6s %-11s %s" % (e['name'], wajib, ada, url))
+PY
+}
+
 browser_list_extensions() {
   python3 - "$REPO_ROOT/config/extensions.yaml" "$EXT_ROOT" <<'PY'
 import yaml, sys, os
@@ -70,15 +100,37 @@ for e in (m.get('extensions') or []) + (m.get('extra') or []):
 PY
 }
 
-browser_install_extensions() {  # [--all | --only a,b]
-  local mode="required" only=""
+browser_install_extensions() {  # [--sideload] [--all | --only a,b]
+  # TANPA --sideload, perintah ini hanya MENCETAK tautan Chrome Web Store.
+  #
+  # Itu jalur yang dipilih. Memasang dari Web Store membuat ekstensi terdaftar
+  # sungguhan di profil (bukan sementara seperti --load-extension, yang sejak
+  # Chrome 126 membuat service worker mati dan popup tidak bisa dibuka), ikut
+  # diperbarui Chrome, dan versinya yang ditinjau Google.
+  #
+  # --sideload menghidupkan jalur lama: unduh CRX lalu ekstrak sendiri. Masih
+  # ada untuk mesin tanpa akses ke Web Store, tapi bukan default.
+  local mode="required" only="" sideload=false
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --sideload) sideload=true ;;
       --all) mode="all" ;;
       --only) mode="only"; only="${2:-}"; shift ;;
       *) _die "argumen tidak dikenal: $1" ;;
     esac; shift
   done
+
+  if [[ "$sideload" == false ]]; then
+    _log "Ekstensi wallet — pasang dari Chrome Web Store"
+    browser_print_store_links
+    echo
+    _warn "Buka tiap tautan di jendela Chrome for Testing, lalu tekan 'Add to Chrome'."
+    _warn "Sesudah terpasang, buat atau impor wallet-nya di sana."
+    _warn "Jalur lama (unduh CRX otomatis): agentdrop extensions --sideload"
+    return 0
+  fi
+  _warn "Mode --sideload: mengunduh CRX pihak ketiga dan mengekstraknya sendiri."
+  _warn "Ekstensi semacam ini TIDAK terdaftar di profil dan tidak diperbarui Chrome."
   [[ -f "$REPO_ROOT/config/extensions.yaml" ]] || _die "config/extensions.yaml tidak ada"
   command -v curl >/dev/null 2>&1 || _die "butuh curl"
   python3 -c 'import yaml' 2>/dev/null || _die "butuh PyYAML"

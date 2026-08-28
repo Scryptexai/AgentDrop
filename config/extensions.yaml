@@ -38,6 +38,7 @@ extensions:
 
   # --- EVM ---------------------------------------------------------------
   - name: metamask
+    store: "https://chromewebstore.google.com/detail/nkbihfbeogaeaoehlefnkodbefgpgknn"
     label: "MetaMask"
     id: "nkbihfbeogaeaoehlefnkodbefgpgknn"
     folder: "metamask"
@@ -46,6 +47,7 @@ extensions:
     why: "Standar de facto. Mayoritas dApp mendesain UI-nya untuk MetaMask lebih dulu."
 
   - name: okx
+    store: "https://chromewebstore.google.com/detail/mcohilncbfahbmgdjkbpemcciiolgcge"
     label: "OKX Wallet"
     id: "mcohilncbfahbmgdjkbpemcciiolgcge"
     folder: "okx-wallet"
@@ -54,6 +56,7 @@ extensions:
     why: "Banyak chain baru menyediakan opsi OKX; juga multi-chain termasuk Solana."
 
   - name: rabby
+    store: "https://chromewebstore.google.com/detail/acmacodkjbdgmoleebolmdjonilkdbch"
     label: "Rabby Wallet"
     id: "acmacodkjbdgmoleebolmdjonilkdbch"
     folder: "rabby"
@@ -63,6 +66,7 @@ extensions:
 
   # --- Solana / non-EVM --------------------------------------------------
   - name: phantom
+    store: "https://chromewebstore.google.com/detail/bfnaelmomeimhlpmgjnjophhpkkoljpa"
     label: "Phantom"
     id: "bfnaelmomeimhlpmgjnjophhpkkoljpa"
     folder: "phantom"
@@ -72,6 +76,7 @@ extensions:
 
   # --- Kategori lain ------------------------------------------------------
   - name: coinbase
+    store: "https://chromewebstore.google.com/detail/hnfanknocfeofbddgcijnmhnfnkdnaad"
     label: "Coinbase Wallet"
     id: "hnfanknocfeofbddgcijnmhnfnkdnaad"
     folder: "coinbase-wallet"
