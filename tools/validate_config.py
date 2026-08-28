@@ -969,6 +969,51 @@ MODEL_PROVIDER_DILARANG = {"auto"}
 BROWSER_BACKEND_WAJIB = "off"
 
 
+# Pola `hermes --profile <p> gateway <verb>` DILARANG di seluruh kode shell.
+#
+# config/hermes/config.yaml menyalakan gateway.multiplex_profiles: true, jadi
+# gateway DEFAULT adalah satu-satunya proses inbound untuk semua profil.
+# hermes_cli/gateway.py:6131 menolak gateway per profil dengan
+#   "The default gateway is running as a profile multiplexer and already
+#    serves profile '<p>'."
+# dan komentar di modul itu menyebutnya "always a misconfiguration".
+#
+# Hermes' own dashboard membuat kesalahan ini (web_server.py:4815
+# _gateway_subcommand menyusun _profile_cli_args(profile) + ["gateway", verb]),
+# jadi kode kita tidak boleh mengulanginya.
+_GATEWAY_PER_PROFIL = re.compile(
+    r"hermes\b[^|;&\n]*--profile[^|;&\n]*\bgateway\b"
+    r"|\bgateway\b[^|;&\n]*--profile",
+)
+
+
+def check_no_profile_gateway() -> None:
+    """Tidak boleh ada `hermes --profile X gateway ...` di kode shell."""
+    global checks
+    print("\n[25] Gateway per profil")
+    shell = sorted(REPO.glob("scripts/*.sh")) + sorted(REPO.glob("lib/*.sh"))
+    for extra in ("install.sh", "agentdrop"):
+        f = REPO / extra
+        if f.exists():
+            shell.append(f)
+    kena = 0
+    for f in shell:
+        checks += 1
+        for i, line in enumerate(f.read_text().splitlines(), 1):
+            s = line.strip()
+            if s.startswith("#"):
+                continue          # komentar yang MELARANG pola ini justru bagus
+            if _GATEWAY_PER_PROFIL.search(line):
+                err(f"{f.relative_to(REPO)}:{i}: menjalankan gateway dengan "
+                    f"--profile. gateway.multiplex_profiles: true membuat "
+                    f"gateway default satu-satunya proses inbound; Hermes "
+                    f"menolak gateway per profil (gateway.py:6131). Pakai "
+                    f"`hermes gateway restart` tanpa --profile. Baris: {s}")
+                kena += 1
+    if kena == 0:
+        print("  · tidak ada pemanggilan gateway per profil")
+
+
 def check_browser_backend(configs: list[Path]) -> None:
     """browser.backend harus 'off' eksplisit, bukan kosong."""
     global checks
@@ -1511,6 +1556,7 @@ def main() -> int:
     check_skills_disabled(configs)
     check_model_provider(configs)
     check_browser_backend(configs)
+    check_no_profile_gateway()
 
     print("\n[18] Memory loop + aturan anti prompt-injection")
     check_memory_loop(configs)

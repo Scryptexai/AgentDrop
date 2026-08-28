@@ -485,6 +485,36 @@ ini menyalakan `gateway.multiplex_profiles: true`, jadi gateway default yang
 melayani semua profil dan yang menjalankan cron job tiap profil. Docs Hermes
 melarang secondary profile menyalakan gateway sendiri saat multiplex aktif.
 
+**Yang sama berlakunya di dashboard web Hermes.** Kalau Anda membuka dashboard
+saat profil yang aktif adalah salah satu worker (mis. `worker-x`) lalu menekan
+Restart Gateway, dashboard menjalankan `hermes --profile worker-x gateway
+restart` — bukan restart multiplexer. Hermes menolak dengan:
+
+```
+✗ The default gateway is running as a profile multiplexer and already serves
+  profile 'worker-x'.
+```
+
+Itu **penolakan yang benar, bukan kerusakan**. Rantainya:
+`hermes_cli/web_server.py:4815` `_gateway_subcommand()` menyusun
+`_profile_cli_args(profile) + ["gateway", verb]`, lalu `hermes_cli/gateway.py:6131`
+menolaknya — komentarnya sendiri menyebut *"named-profile `hermes gateway run`
+is always a misconfiguration"*.
+
+Pesan itu muncul **dua kali** di log Anda karena dashboard memanggil aksi
+restart dari dua tempat (satu untuk restart, satu untuk status sesudahnya).
+
+Cara yang benar:
+
+```bash
+agentdrop start          # atau, lewat hermes langsung:
+hermes gateway restart   # TANPA --profile, dari profil default
+```
+
+Jangan pakai `--force`. Flag itu menyalakan gateway kedua untuk profil yang
+sudah dilayani multiplexer — dua poller pada satu bot token, dan itu persis
+yang ditolak Hermes.
+
 ---
 
 ## 🛡️ Keamanan

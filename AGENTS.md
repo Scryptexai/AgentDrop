@@ -1072,3 +1072,65 @@ berarti "sistem yang memilih", bukan "pakai default yang saya bayangkan". Kalau
 sebuah config punya field semacam itu, nilai kosongnya harus dibaca dari kode
 yang memutuskannya — dan kalau kita ingin perilaku tertentu, field itu harus
 diisi eksplisit di **setiap** berkas config, bukan hanya di yang utama.
+
+---
+
+## Arc 15 — Penolakan gateway multiplexer: ini benar, tapi jalurnya lewat dashboard web
+
+Operator menempel keluaran yang muncul **dua kali**:
+
+```
+✗ The default gateway is running as a profile multiplexer and already serves
+  profile 'worker-x'.
+```
+
+**Ini bukan cacat AgentDrop.** Tidak ada satu pun berkas kita yang memanggil
+`gateway` dengan `--profile` — diverifikasi dengan grep di `agentdrop`,
+`lib/*.sh`, dan `scripts/*.sh`. `agentdrop start` memanggil
+`hermes gateway start` polos.
+
+Rantainya ada di sisi Hermes, dan saya telusuri sampai ujung:
+
+1. `hermes_cli/web_server.py:4815`
+   ```python
+   def _gateway_subcommand(profile, verb):
+       return _profile_cli_args(profile) + ["gateway", verb]
+   ```
+   Dashboard web menyusun perintah gateway **dengan profil yang sedang aktif di
+   UI**. Kalau Anda membuka dashboard sebagai `worker-x` lalu menekan Restart
+   Gateway, yang dijalankan adalah `hermes --profile worker-x gateway restart`.
+
+2. `hermes_cli/gateway.py:6131` menolaknya. Komentarnya sendiri:
+   *"named-profile `hermes gateway run` is always a misconfiguration"*.
+
+3. Label `=== gateway-restart started ===` di log operator juga dari
+   `web_server.py:4545` (`"gateway-restart": "gateway-restart.log"`), yang
+   memastikan sumbernya dashboard, bukan CLI.
+
+**Muncul dua kali** karena dashboard memanggil aksi restart dari dua tempat —
+satu untuk restart, satu untuk memeriksa status sesudahnya
+(`web_server.py:4912` dan `4933`).
+
+Alasan penolakannya masuk akal dan bukan sekadar aturan: dua gateway pada satu
+profil berarti **dua poller pada satu bot token** dan bentrok port.
+
+### Yang diperbaiki di sisi kita
+
+Bukan kodenya — kodenya sudah benar. Yang diperbaiki adalah **pengetahuan yang
+hilang**:
+
+- README sudah melarang `hermes --profile <worker> gateway run`, tapi tidak
+  menyebut jalur dashboard. Padahal justru itu yang kena. Ditambahkan, lengkap
+  dengan rantai file:barisnya dan alasan pesannya muncul dua kali.
+- `agentdrop cmd_start` diberi komentar yang menjelaskan kenapa ia sengaja
+  tidak meneruskan `--profile`, supaya orang berikutnya tidak "merapikannya"
+  dengan menambahkan flag itu.
+- Pemeriksaan `[25]` mengunci polanya di semua shell: `hermes ... --profile ...
+  gateway` dalam urutan argumen mana pun. Diuji tiga suntikan — dua urutan
+  argumen di `agentdrop`, dan satu di `scripts/burn-in.sh`. Ketiganya tertangkap.
+
+**Pelajaran:** ketika sebuah pesan error menyebut konfigurasi kita sebagai
+penyebab, periksa dulu apakah kode kita benar-benar melakukannya. Di sini
+tuduhannya mengarah ke `multiplex_profiles`, dan config itu memang kita set — tapi
+pemanggil yang salah adalah dashboard Hermes, bukan kita. Memperbaiki config
+untuk memuaskan pesan itu justru akan merusak cron.

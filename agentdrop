@@ -56,6 +56,20 @@ cmd_start() {
   echo "  Agent berjalan DI ATAS gateway, jadi ini menyalakan keduanya."
   echo "  Kirim task ke bot Telegram Anda untuk memulai."
   echo
+  # TANPA --profile, dan itu disengaja.
+  #
+  # config/hermes/config.yaml menyalakan gateway.multiplex_profiles: true, jadi
+  # gateway DEFAULT adalah satu-satunya proses inbound untuk SEMUA profil.
+  # `hermes --profile <worker> gateway start` ditolak Hermes
+  # (hermes_cli/gateway.py:6131) dengan "The default gateway is running as a
+  # profile multiplexer and already serves profile ...".
+  #
+  # Dashboard web Hermes justru melakukan hal yang salah itu: web_server.py:4815
+  # _gateway_subcommand() menyusun _profile_cli_args(profile) + ["gateway", verb],
+  # jadi menekan Restart Gateway saat profil aktif adalah seorang worker akan
+  # mencoba menyalakan gateway worker itu dan ditolak. Di sini kita tidak pernah
+  # meneruskan --profile, jadi `agentdrop start` selalu menyalakan multiplexer.
+  echo "  multiplex_profiles aktif -> gateway default melayani semua profil."
   # Log gateway juga masuk ke log audit, supaya kegagalan startup terlihat.
   local glog="$LOG_DIR/gateway.log"
   HERMES_HOME="$HERMES_HOME_DIR" \
