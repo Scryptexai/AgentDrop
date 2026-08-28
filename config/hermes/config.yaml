@@ -132,8 +132,28 @@ agent:
 # JANGAN set BROWSER_CDP_URL bersama --session: agent-browser >=0.13 membuat
 # browser lokal sendiri dan mengabaikan --cdp tanpa error apa pun.
 browser:
-  # Kosong = built-in browser tools. Jangan diisi "browser-use".
-  backend: ""
+  # "off" = PAKSA built-in browser tools (browser_navigate, browser_click, ...).
+  #
+  # JANGAN biarkan kosong. Kosong adalah nilai paling berbahaya di field ini.
+  #
+  # tools/browser_use_cli.py:216 is_browser_use_cli_mode() memutuskan:
+  #   backend terisi -> mode = (backend == "browser-use")
+  #   backend KOSONG -> mode = (_find_cli() is not None)
+  #                            ^^^ kalau CLI browser-use ATAU uvx ada di mesin,
+  #                                mode Browser Use AKTIF SENDIRI
+  # Docstring modul itu (baris 3) menulis akibatnya:
+  #   "When browser.backend is 'browser-use', the model gets browser_exec tool
+  #    INSTEAD OF default browser tools"
+  #
+  # Jadi dengan backend kosong, satu `uvx` yang kebetulan terpasang sudah cukup
+  # untuk mencabut browser_navigate/browser_click/browser_type/browser_scroll
+  # dari agent dan menggantinya dengan SATU tool browser_exec. Semua SKILL.md
+  # dan SOUL.md kita menyebut browser_* — semuanya jadi merujuk tool yang tidak
+  # ada. Itu persis laporan operator: "browser_navigate tidak tersedia di sesi".
+  #
+  # Komentar lama di sini ("Kosong = built-in browser tools") TERBALIK, dan
+  # karena dipercaya, ketujuh profil tidak pernah menyetel field ini.
+  backend: "off"
 
   # ATTACH ke Chrome yang sudah jalan, bukan meluncurkan browser sendiri.
   # Harus loopback: CDP adalah remote control penuh atas browser, dan browser

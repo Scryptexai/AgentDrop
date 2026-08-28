@@ -1010,3 +1010,65 @@ sistem memilih". Di sini ia justru berarti *"tidak memilih apa pun"* — dan
 kegagalannya tidak bersuara, hanya diam-diam memakai provider lain. Kalau sebuah
 config punya field yang menentukan sumber data, nilai `auto` di field itu
 harus diverifikasi ke kode yang membacanya, bukan diasumsikan.
+
+---
+
+## Arc 14 — `browser_navigate` tidak ada di sesi: `browser.backend` kosong berarti Hermes memilih sendiri
+
+Laporan operator: skill `x-engager` dan `browser-operation` termuat, tapi
+`browser_navigate` **tidak tersedia di sesi**, dan tidak ada tool browser sama
+sekali. Padahal `browser` ada di `toolsets:` worker-x.
+
+Bukan toolset yang salah. Yang mengganti daftar tool adalah field lain.
+
+`tools/browser_use_cli.py:216` `is_browser_use_cli_mode()`:
+
+```
+backend terisi -> mode = (backend == "browser-use")
+backend KOSONG -> mode = (_find_cli() is not None)
+```
+
+Dan docstring modul yang sama, baris 3:
+
+> When `browser.backend` is `"browser-use"`, the model gets `browser_exec` tool
+> **instead of** default browser tools
+
+Jadi `backend: ""` bukan berarti "pakai tool bawaan". Ia berarti **"aktifkan
+Browser Use kalau CLI-nya atau `uvx` kebetulan terpasang di mesin."** Satu paket
+`uvx` yang tidak berhubungan sudah cukup untuk mencabut `browser_navigate`,
+`browser_click`, `browser_type`, `browser_scroll` dari agent dan menggantinya
+dengan **satu** tool `browser_exec`.
+
+Semua SKILL.md dan SOUL.md AgentDrop menyebut `browser_*`. Kalau mode itu aktif,
+seluruh prosedur merujuk tool yang tidak ada — persis yang dilaporkan operator.
+
+**Yang membuat cacat ini bertahan:** komentar kita sendiri di
+`config/hermes/config.yaml` menulis
+
+```
+# Kosong = built-in browser tools. Jangan diisi "browser-use".
+```
+
+Itu **terbalik**. Kosong justru membiarkan Hermes memilih, dan pilihannya bisa
+Browser Use. Karena komentarnya dipercaya, ketujuh profil tidak pernah menyetel
+field ini sama sekali — jadi tidak ada satu pun yang terlindungi.
+
+Ini instance ke-sekian dari kelas yang sama: komentar yang salah lebih berbahaya
+daripada tidak ada komentar, karena orang berikutnya mempercayainya dan tidak
+pernah memeriksa ulang.
+
+**Perbaikan:** `browser.backend: "off"` eksplisit di **8 berkas**. `"off"` adalah
+`BACKEND_DISABLED` di `browser_use_cli.py:181` dan memaksa built-in tools.
+Perhatikan YAML 1.1 mem-parse `off` tanpa kutip sebagai `False` — Hermes justru
+mengharapkan itu (`get_browser_backend()` memetakan `False` -> `BACKEND_DISABLED`),
+tapi kita tulis `"off"` berkutip supaya tidak ambigu bagi pembaca.
+
+Dikunci pemeriksaan `[24]` (sekaligus memaksa `cdp_url` tetap loopback), diuji
+tiga suntikan: hapus `backend` dari satu profil (cacat asli operator), kosongkan
+di config utama, dan set `"browser-use"`. Ketiganya tertangkap.
+
+**Pelajaran:** nilai kosong pada field yang memilih *implementasi* hampir selalu
+berarti "sistem yang memilih", bukan "pakai default yang saya bayangkan". Kalau
+sebuah config punya field semacam itu, nilai kosongnya harus dibaca dari kode
+yang memutuskannya — dan kalau kita ingin perilaku tertentu, field itu harus
+diisi eksplisit di **setiap** berkas config, bukan hanya di yang utama.

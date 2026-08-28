@@ -952,6 +952,69 @@ MODEL_PROVIDER_WAJIB = "openrouter"
 MODEL_PROVIDER_DILARANG = {"auto"}
 
 
+# browser.backend WAJIB "off" di setiap config.
+#
+# tools/browser_use_cli.py:216 is_browser_use_cli_mode():
+#   backend terisi -> mode = (backend == "browser-use")
+#   backend KOSONG -> mode = (_find_cli() is not None)
+# Jadi backend kosong berarti "aktifkan Browser Use kalau CLI-nya atau uvx ada
+# di mesin". Docstring modul yang sama (baris 3) menulis akibatnya:
+#   "When browser.backend is 'browser-use', the model gets browser_exec tool
+#    INSTEAD OF default browser tools"
+#
+# Semua SKILL.md dan SOUL.md AgentDrop menyebut browser_navigate, browser_click,
+# browser_type, browser_scroll. Kalau mode Browser Use aktif, tool-tool itu
+# tidak terdaftar dan digantikan satu browser_exec -- seluruh prosedur agent
+# merujuk tool yang tidak ada.
+BROWSER_BACKEND_WAJIB = "off"
+
+
+def check_browser_backend(configs: list[Path]) -> None:
+    """browser.backend harus 'off' eksplisit, bukan kosong."""
+    global checks
+    print("\n[24] Backend browser")
+    for cfg in configs:
+        if not cfg.exists():
+            continue
+        checks += 1
+        try:
+            data = yaml.safe_load(cfg.read_text()) or {}
+        except Exception as exc:
+            err(f"{cfg.relative_to(REPO)}: YAML tidak bisa dibaca: {exc}")
+            continue
+        br = data.get("browser")
+        nama = ("config.yaml utama" if cfg.parent.name == "hermes"
+                else cfg.parent.name)
+        if not isinstance(br, dict):
+            err(f"{nama}: tidak ada blok `browser:` -- worker tidak punya "
+                f"akses browser sama sekali.")
+            continue
+        if "backend" not in br:
+            err(f"{nama}: browser.backend tidak diset. Kosong berarti Hermes "
+                f"memutuskan sendiri (tools/browser_use_cli.py:216): kalau CLI "
+                f"browser-use atau uvx terpasang, browser_* digantikan satu "
+                f"browser_exec dan semua SKILL.md kita merujuk tool yang tidak "
+                f"ada. Set backend: \"{BROWSER_BACKEND_WAJIB}\".")
+            continue
+        be = br["backend"]
+        # YAML 1.1 mem-parse `off` tanpa kutip sebagai False -- justru itu yang
+        # dimaksud BACKEND_DISABLED di browser_use_cli.py:181, jadi False sah.
+        if be is False:
+            be = "off"
+        if str(be).strip().lower() != BROWSER_BACKEND_WAJIB:
+            err(f"{nama}: browser.backend = {be!r}, diharapkan "
+                f"\"{BROWSER_BACKEND_WAJIB}\". Nilai lain mengganti tool "
+                f"browser_* yang dipakai semua SKILL.md kita.")
+        else:
+            cdp = str(br.get("cdp_url") or "")
+            if not cdp.startswith("http://127.0.0.1"):
+                err(f"{nama}: browser.cdp_url = {cdp!r} bukan loopback. CDP "
+                    f"adalah remote control penuh atas browser yang memegang "
+                    f"wallet.")
+            else:
+                print(f"  · {nama}: backend=off, cdp_url={cdp}")
+
+
 def check_model_provider(configs: list[Path]) -> None:
     """model.provider harus eksplisit, bukan 'auto', di setiap config."""
     global checks
@@ -1447,6 +1510,7 @@ def main() -> int:
     check_shell_disabled(configs)
     check_skills_disabled(configs)
     check_model_provider(configs)
+    check_browser_backend(configs)
 
     print("\n[18] Memory loop + aturan anti prompt-injection")
     check_memory_loop(configs)

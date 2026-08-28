@@ -90,6 +90,14 @@ browser:
   #
   # `headed` di atas tidak berlaku di mode CDP — hanya dipakai mode lokal.
   # ------------------------------------------------------------------------
+  # "off" = paksa built-in browser tools. WAJIB eksplisit: kalau dibiarkan
+  # kosong, Hermes mengaktifkan mode Browser Use sendiri bila CLI browser-use
+  # atau uvx terpasang, lalu browser_navigate/browser_click digantikan SATU tool
+  # browser_exec (tools/browser_use_cli.py:216 + docstring baris 3). Semua
+  # SKILL.md kita menyebut browser_*, jadi mode itu membuat seluruh prosedur
+  # merujuk tool yang tidak ada. Panjangnya di config/hermes/config.yaml.
+  backend: "off"
+
   cdp_url: "http://127.0.0.1:9222"
 
 
