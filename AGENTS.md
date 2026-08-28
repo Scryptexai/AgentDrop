@@ -1266,3 +1266,95 @@ terasa seperti biaya. Untuk angka yang masuk ke konteks model, kenaikannya
 dibayar **di setiap putaran**, bukan sekali. Ukur dulu; dan kalau sebuah angka
 punya default dari upstream, default itu adalah posisi awal yang sudah
 dipikirkan orang lain.
+
+---
+
+## Arc 18 — Bedah klaim arsitektur Manus/OpenManus: mana yang sudah ada, mana yang tidak bisa
+
+Operator membawa analisis teknis mendalam soal arsitektur Manus/OpenManus dan
+usulan upgrade. Sebelum menulis kode apa pun, setiap klaim diverifikasi ke
+sumber — `hermes-agent` di GitHub dan repo kita sendiri. Hasilnya: **sebagian
+besar sudah kita miliki**, satu bertentangan dengan keputusan terkunci, dan
+satu klaim kecepatan keliru secara aritmetika.
+
+### Yang SUDAH ada (tidak perlu dibangun ulang)
+
+| klaim analisis | kenyataan di stack kita | bukti |
+|---|---|---|
+| "Pakai DOM extraction, bukan screenshot tiap step" | `browser_snapshot` memakai **accessibility tree** (ariaSnapshot), teks murni. `browser_vision` adalah tool **terpisah** yang dipanggil hanya saat perlu | `tools/browser_tool.py:11,22`; `browser_snapshot` :4127 vs `browser_vision` :5130 |
+| "Gunakan file system sebagai extended context" | Sudah: **truncate-and-store**. Snapshot di atas threshold disimpan utuh ke `cache/web` dan agent membacanya lewat `read_file` | `browser_tool.py:287,297,3741`; deskripsi tool :2556 |
+| "Implementasikan KV-cache optimization" | Hermes sudah mengirim `prompt_cache_key` dan melacak `cached_tokens`/`creation_tokens`. Bahkan punya **cache scope yang stabil melintasi rotasi kompresi** (`resolve_prompt_cache_scope` memetakan session id ke akar lineage-nya) | `agent/transports/chat_completions.py:53`, `anthropic.py:230`, `agent/prompt_cache_scope.py:1-13` |
+| "Implementasikan recitation (todo.md)" | Toolset `todo` sudah ada dan sudah diaktifkan di 5 dari 7 profil | `tools/todo_tool.py`; `toolsets:` di config profil |
+| "Multi-agent dengan Orchestrator" | Sudah: `worker-orchestrator` dengan toolset `delegation` | `config/hermes/profiles/worker-orchestrator/` |
+
+Menulis ulang salah satu dari ini berarti membangun yang sudah ada, dengan
+risiko regresi.
+
+### Yang keliru
+
+**"Adopsi Playwright (bukan CDP raw) — lebih cepat."** Ini membalik sebab-akibat.
+Hermes menggerakkan browser lewat `agent-browser`, dan mode CDP kita **adalah**
+cara Hermes menempel ke Chromium yang sudah jalan. Playwright bukan alternatif
+untuk CDP; Playwright sendiri berbicara CDP ke Chromium. Kita memakai CDP bukan
+karena tidak tahu ada Playwright, tapi karena **Chrome for Testing harus tetap
+satu proses yang memegang ekstensi wallet dan sesi login** — meluncurkan browser
+kedua berarti kehilangan keduanya, dan `--load-extension` diabaikan di build
+branded sejak Chrome 137.
+
+**"Tool masking (logit masking), bukan removal."** Hermes **tidak punya** logit
+masking — `git grep logit_bias|logit_mask` di seluruh repo Hermes: nol
+kemunculan. Yang ada adalah `agent.disabled_toolsets`, yaitu **removal**,
+dikurangkan paling akhir (`tools_config.py:2600,2899`). Jadi teknik spesifik itu
+tidak tersedia bagi kita tanpa memfork Hermes.
+
+**"Bisa bergerak dari 5-15 menit ke hitungan detik."** Ini yang paling perlu
+diluruskan, karena bisa mengarahkan seluruh usaha ke tempat yang salah.
+
+Task post X yang berhasil kemarin melakukan 7 langkah. Setiap aksi browser
+adalah **satu putaran LLM penuh** (snapshot → putuskan → aksi → verifikasi).
+Jadi lantainya:
+
+```
+waktu_minimum = jumlah_aksi × latensi_provider
+              = 7 × 3..12 detik
+              = 21..84 detik
+```
+
+"Hitungan detik" hanya tercapai kalau **jumlah putaran** yang dipangkas, bukan
+kalau tiap putaran dipercepat. Dan memangkas putaran berarti mengurangi
+verifikasi — yang justru alasan agent ini bisa dipercaya. Tidak ada optimasi
+arsitektur yang menghapus lantai itu selama satu aksi = satu putaran.
+
+### Yang bertentangan dengan keputusan terkunci
+
+**"CodeAct — agent menulis dan mengeksekusi Python on-the-fly."** Ini
+bertentangan langsung dengan:
+
+- `agent.disabled_toolsets: [terminal, code_execution]` di **ketujuh** profil
+- K7 (tidak ada tooling bikinan sendiri di jalur wallet)
+- guardrail "agent memanggil tool native, tidak pernah mengetik CLI"
+
+Alasannya bukan estetika. Agent ini menggerakkan browser yang **memegang
+wallet**. Memberinya kemampuan menjalankan Python arbitrer berarti satu prompt
+injection di halaman airdrop — dan halaman airdrop justru permukaan yang
+paling sering menyuntik instruksi — bisa berubah menjadi eksekusi kode di mesin
+operator, dengan akses ke profil Chrome yang berisi sesi login. Kecepatan yang
+ditawarkan CodeAct tidak sebanding dengan itu.
+
+**Kalau operator tetap menginginkan CodeAct, itu keputusan sadar yang harus
+diambil eksplisit, bukan diselipkan sebagai "optimasi".**
+
+### Satu hal yang genuinely layak dikerjakan
+
+Dari seluruh analisis, hanya satu yang belum kita punya dan tidak melanggar apa
+pun: **memangkas jumlah putaran**, bukan kecepatannya. Konkret:
+
+- `browser_navigate` **sudah** mengembalikan snapshot ringkas (`browser_tool.py:2556`).
+  Jadi `browser_snapshot` segera sesudah `navigate` adalah satu putaran yang
+  terbuang.
+- Skill kita menyuruh verifikasi state sesudah tiap aksi. Untuk aksi yang
+  hasilnya terlihat di snapshot berikutnya (mis. mengetik lalu mengirim),
+  verifikasinya bisa digabung, bukan dipisah jadi putaran sendiri.
+
+Itu perubahan di **SKILL.md**, bukan di arsitektur. Murah, bisa diukur, dan
+tidak menyentuh batas keamanan mana pun.
