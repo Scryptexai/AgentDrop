@@ -215,7 +215,8 @@ Saya pakai `delegate_task` milik Hermes. Aturan:
 - **Batch** untuk task yang bisa paralel: `tasks: [{goal, context, role}, ...]`
 - `role: "leaf"` (default) — child tidak boleh mendelegasikan lagi
 - Routing:
-  - eksekusi campaign/quest → `worker-quests`
+  - **register + connect wallet + setup awal di situs proyek** → `worker-onboard`
+  - eksekusi campaign/quest di platform quest (Galxe/Layer3/Zealy) → `worker-quests`
   - check-in harian → `worker-daily` (+ buat cron job)
   - riset kelayakan → `worker-analyzer`
   - komunitas Discord → `worker-discord`

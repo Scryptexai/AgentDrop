@@ -151,7 +151,7 @@ credentials_ensure_model_vars() {
 
   # 2) PER WORKER — mewarisi nilai global yang baru saja dijamin ada.
   for _prof in worker-analyzer worker-daily worker-discord worker-monitor \
-               worker-orchestrator worker-quests worker-x; do
+               worker-onboard worker-orchestrator worker-quests worker-x; do
     _kunci="${_prof//-/_}"          # worker-x -> WORKER_X
     _kunci="${_kunci^^}"
     for _k in MODEL PROVIDER BASE_URL MAX_TOKENS; do

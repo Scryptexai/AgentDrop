@@ -1,8 +1,8 @@
 # lib/30-hermes.sh — config utama, profil, skill, dan hook audit.
 # Di-source oleh install.sh.
 
-PROFILES=(worker-orchestrator worker-analyzer worker-daily worker-quests
-          worker-discord worker-monitor worker-x)
+PROFILES=(worker-orchestrator worker-analyzer worker-daily worker-onboard
+          worker-quests worker-discord worker-monitor worker-x)
 
 SKILLS=(browser-operation browser-burn-in airdrop-intake airdrop-analyzer
         daily-executor quest-executor discord-engager portfolio-tracker
@@ -15,6 +15,10 @@ declare -A PROFILE_SKILLS=(
   [worker-orchestrator]="browser-operation browser-burn-in airdrop-intake airdrop-analyzer self-improvement"
   [worker-analyzer]="browser-operation browser-burn-in airdrop-analyzer self-improvement"
   [worker-daily]="browser-operation browser-burn-in daily-executor self-improvement"
+  # onboard = register + connect wallet di SITUS PROYEK (bukan platform quest).
+  # quest-executor tidak dipetakan ke sini: alurnya berbeda dan mencampurnya
+  # membuat worker-onboard mengerjakan campaign yang bukan urusannya.
+  [worker-onboard]="browser-operation browser-burn-in airdrop-intake self-improvement"
   [worker-quests]="browser-operation browser-burn-in quest-executor self-improvement"
   [worker-discord]="browser-operation browser-burn-in discord-engager self-improvement"
   [worker-monitor]="browser-operation browser-burn-in portfolio-tracker self-improvement"

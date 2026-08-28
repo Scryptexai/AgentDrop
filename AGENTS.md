@@ -1676,3 +1676,81 @@ kedua suntikan diuji ulang dan keduanya tertangkap.
 **Pelajaran:** mencari nama sebuah variabel di dalam berkas tidak membuktikan
 ada kode yang memakainya. Komentar mengandung nama variabel sama seringnya
 dengan kode.
+
+---
+
+## Arc 23 — `worker-onboard`, dan pembalikan sebagian batas signing
+
+### Worker yang hilang
+
+Operator benar: tidak ada worker untuk **onboarding awal**. `worker-quests`
+dibatasi platform quest — SOUL.md-nya menyebut Galxe, Layer3, Zealy, Intract —
+sedangkan task nGRND yang ia jalankan ada di **situs proyek sendiri**
+(`digitsbt.ngrndrewards.com`) dengan alur register → connect wallet → SBT →
+earn. Tidak ada profil yang mengakuinya.
+
+Ditambahkan `worker-onboard`:
+
+- `config/hermes/profiles/worker-onboard/{config.yaml,SOUL.md}`
+- variabel model sendiri: `AGENTDROP_*_WORKER_ONBOARD`
+- `max_turns: 40` (onboarding lebih pendek dari campaign quest)
+- terdaftar di `PROFILES` dan `PROFILE_SKILLS` (`lib/30-hermes.sh`), di daftar
+  variabel `.env` (`lib/20-credentials.sh`), dan di rute delegasi
+  `worker-orchestrator`
+- skill: `browser-operation browser-burn-in airdrop-intake self-improvement` —
+  **`quest-executor` sengaja tidak dipetakan**, karena mencampurnya membuat
+  worker ini mengerjakan campaign yang bukan urusannya
+
+Diverifikasi dengan kode Hermes sendiri, bukan dengan membaca berkas:
+
+```
+from hermes_cli import profiles
+  default          model='anthropic/claude-sonnet-4'  skill=10
+  worker-onboard   model='anthropic/claude-sonnet-4'  skill=4
+  ... (8 profil)
+```
+
+`agentdrop run --list` membaca direktori terpasang, jadi otomatis menampilkan
+8 profil.
+
+Validator menolak SOUL.md pertama saya karena dua hal yang benar: tidak ada
+blok Protokol Browser dan tidak ada aturan anti prompt-injection. Keduanya
+disyaratkan untuk profil beralat browser (`validate_config.py:647-651,1583`).
+Keduanya disisipkan dari pola profil yang sudah lolos, dengan penguatan khusus
+— lihat di bawah.
+
+### Pembalikan sebagian batas signing (keputusan operator)
+
+**Keputusan lama (K7 + WALLET BOUNDARY):** agent menyiapkan sampai popup
+wallet muncul, **manusia yang menekan Confirm/Sign/Approve**. Berlaku di semua
+profil.
+
+**Keputusan operator sekarang:** `worker-onboard` **boleh** menekan
+`Confirm`/`Sign`/`Approve` di dalam popup wallet.
+
+Ini penyimpangan sadar, bukan kelalaian. Karena itu aturan penggantinya
+dibuat **lebih ketat**, bukan lebih longgar:
+
+Tetap dilarang dan tidak bisa ditawar:
+- `approve` unlimited (`uint256 max`) pada token apa pun → `blocked`
+- mengirim private key / seed phrase ke halaman mana pun
+- transaksi yang mengirim dana keluar, kecuali disebut eksplisit dalam tugas
+- menandatangani `permit` / `permit2` / `setApprovalForAll` tanpa membaca
+  isinya lebih dulu
+
+Dan dua aturan yang hanya ada karena signing-nya otomatis:
+
+- **Sebelum menekan Confirm, agent menyebutkan di log apa yang disetujui** —
+  kontrak, jumlah, jaringan, wallet. Kalau tidak bisa menjelaskannya, ia tidak
+  menekannya.
+- **Kalau teks halaman dan isi popup wallet tidak cocok, agent berhenti.**
+
+Alasan aturan kedua perlu ditulis eksplisit: worker lain punya lapisan kedua
+berupa manusia yang membaca popup. `worker-onboard` tidak. Kalau sebuah
+halaman berhasil mengubah apa yang agent siapkan, **tidak ada yang
+menangkapnya**. Blok anti-injection di SOUL.md-nya menyatakan itu dengan
+kalimat sendiri, bukan menyalin alasan worker lain — karena alasannya memang
+berbeda.
+
+**Batas lama tetap berlaku di enam profil lain.** Ini pengecualian untuk satu
+worker, bukan perubahan yang berlaku umum.
