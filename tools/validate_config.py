@@ -1199,23 +1199,38 @@ def check_model_provider(configs: list[Path]) -> None:
         # "provider-nya openrouter", tapi "rujukannya benar dan .env mengisinya".
         # Memaksa literal di sini akan mengunci operator ke satu provider dan
         # mengembalikan cacat lama: install ulang menghapus setelan custom.
-        if prov == "${AGENTDROP_PROVIDER}":
+        # Rujukan per worker: ${AGENTDROP_PROVIDER_WORKER_X}. Bentuk umumnya
+        # ${AGENTDROP_PROVIDER} atau ${AGENTDROP_PROVIDER_<WORKER>}.
+        _m_prov = re.fullmatch(r"\$\{AGENTDROP_PROVIDER(?:_([A-Z0-9_]+))?\}", prov)
+        if _m_prov:
+            _suf = f"_{_m_prov.group(1)}" if _m_prov.group(1) else ""
+            _label = _m_prov.group(1) or "global"
             dflt = str(model.get("default") or "").strip()
             base = str(model.get("base_url") or "").strip()
-            if dflt != "${AGENTDROP_MODEL}":
-                err(f"{nama}: model.provider merujuk ${{AGENTDROP_PROVIDER}} "
-                    f"tapi model.default = {dflt!r}, bukan ${{AGENTDROP_MODEL}}. "
-                    f"Campuran literal dan rujukan membuat sebagian worker "
-                    f"memakai provider yang berbeda dari yang lain.")
-            elif base != "${AGENTDROP_BASE_URL}":
+            mtok = str(model.get("max_tokens") or "").strip()
+            if dflt != "${AGENTDROP_MODEL" + _suf + "}":
+                err(f"{nama}: model.provider merujuk "
+                    f"${{AGENTDROP_PROVIDER{_suf}}} tapi model.default = "
+                    f"{dflt!r}, bukan ${{AGENTDROP_MODEL{_suf}}}. Provider dan "
+                    f"model harus berasal dari tingkat yang sama (global atau "
+                    f"worker ini), kalau tidak worker memakai provider lain "
+                    f"dari yang dikonfigurasi untuknya.")
+            elif base != "${AGENTDROP_BASE_URL" + _suf + "}":
                 err(f"{nama}: model.provider merujuk ${{AGENTDROP_PROVIDER}} "
                     f"tapi model.base_url = {base!r}, bukan "
-                    f"${{AGENTDROP_BASE_URL}}. base_url yang di-hardcode akan "
-                    f"mengarahkan provider custom ke endpoint yang salah.")
+                    f"${{AGENTDROP_BASE_URL{_suf}}}. base_url yang di-hardcode "
+                    f"akan mengarahkan provider custom ke endpoint yang salah.")
+            elif mtok != "${AGENTDROP_MAX_TOKENS" + _suf + "}":
+                err(f"{nama}: model.max_tokens = {mtok!r}, bukan "
+                    f"${{AGENTDROP_MAX_TOKENS{_suf}}}. Tanpa nilai ini Hermes "
+                    f"memakai ceiling native model -- claude-sonnet-4 bernilai "
+                    f"64.000 (agent/anthropic_adapter.py:175) -- dan OpenRouter "
+                    f"menolaknya dengan HTTP 402 pada akun ber-kredit terbatas. "
+                    f"Agent gagal di panggilan PERTAMA, bukan lambat.")
             else:
                 envx = (REPO / ".env.example").read_text()
                 kurang = [v for v in ("AGENTDROP_MODEL", "AGENTDROP_PROVIDER",
-                                      "AGENTDROP_BASE_URL")
+                                      "AGENTDROP_BASE_URL", "AGENTDROP_MAX_TOKENS")
                           if not re.search(rf"^{v}=.+", envx, re.M)]
                 if kurang:
                     err(f".env.example tidak memberi default untuk {kurang}. "
@@ -1225,7 +1240,8 @@ def check_model_provider(configs: list[Path]) -> None:
                         f"setiap worker gagal.")
                 else:
                     print(f"  · {nama}: model dari .env "
-                          f"(${{AGENTDROP_MODEL}} / ${{AGENTDROP_PROVIDER}})")
+                          f"(${{AGENTDROP_MODEL{_suf}}} / "
+                          f"${{AGENTDROP_MAX_TOKENS{_suf}}}) [{_label}]")
             continue
         if prov in MODEL_PROVIDER_DILARANG:
             err(f"{nama}: model.provider = \"{prov}\". Nilai itu tidak pernah "

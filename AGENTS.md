@@ -1530,3 +1530,75 @@ operator soal paralelisme antar-agent tidak didukung kode OpenManus — yang
 membuat cepat adalah banyak tool per giliran. Dan jawaban saya sebelumnya
 ("tidak ada optimasi yang menghapus lantai itu") juga salah: lantainya bisa
 diturunkan dengan memangkas putaran, persis seperti yang OpenManus lakukan.
+
+---
+
+## Arc 21 — HTTP 402: ceiling native 64.000 token, dan model per worker
+
+### Kegagalan sebenarnya bukan "kehabisan kredit"
+
+Pesan OpenRouter menyebutkan dua hal sekaligus, dan hanya satu yang benar:
+
+```
+HTTP 402: You requested up to 64000 tokens, but can only afford 2666.
+```
+
+Kredit memang tipis. Tapi **yang membuat permintaan ditolak adalah angka
+64.000**, dan angka itu bukan pilihan kita — itu ceiling native model.
+`agent/anthropic_adapter.py:175` memberi `claude-sonnet-4` nilai `64_000`.
+Config kita tidak menyetel `model.max_tokens` karena komentar di
+`config/hermes/config.yaml` berkata:
+
+> "Biarkan tidak diset untuk memakai ceiling native model."
+
+Komentar itu benar secara teknis dan **salah secara praktis**. Dengan ceiling
+native, akun ber-kredit terbatas tidak bisa menjalankan agent sama sekali —
+bukan lambat, tapi gagal di panggilan pertama. Komentar yang terdengar netral
+ternyata adalah konfigurasi yang tidak bisa jalan.
+
+Urutan prioritas dikonfirmasi dari sumber: `agent/agent_init.py:2384` membaca
+`model.max_tokens` dari config, dan `agent/anthropic_adapter.py:263`
+(`_resolve_anthropic_messages_max_tokens`) **lebih memilih `requested` daripada
+`_get_anthropic_max_output(model)`**. Jadi nilai config menang.
+
+Perbaikan: `model.max_tokens: "${AGENTDROP_MAX_TOKENS}"` dengan default 8192 —
+cukup untuk satu aksi browser plus penalaran.
+
+### Model per worker
+
+Operator meminta tiap worker punya config sendiri agar model bisa disesuaikan
+dengan jenis tugas. Itu benar, dan implementasinya punya satu jebakan.
+
+Hermes **tidak punya sintaks default** untuk `${VAR}`. Variabel yang tidak ada
+dibiarkan verbatim (`config.py:2767`), jadi `"${A:-$B}"` akan menjadi string
+harfiah. Fallback tidak bisa ditulis di YAML — ia harus diselesaikan saat
+install dan dituliskan ke `.env` sebagai nilai konkret.
+
+`credentials_ensure_model_vars()` sekarang dua tingkat:
+
+1. **global** — `AGENTDROP_MODEL|PROVIDER|BASE_URL|MAX_TOKENS`, diisi default
+   kalau belum ada
+2. **per worker** — `AGENTDROP_MODEL_WORKER_QUESTS` dst. (7 worker × 4 = 28
+   variabel), mewarisi nilai global yang baru dijamin ada
+
+Urutan itu penting. Versi pertama menulis per worker lebih dulu, jadi variabel
+global belum ada saat fallback dibaca dan **semua worker mendapat nilai
+kosong**. Terlihat dari uji: `AGENTDROP_MODEL_WORKER_QUESTS=` tanpa nilai.
+
+Diuji end-to-end: `.env` kosong → 28 variabel terisi. Lalu `worker-quests`
+diubah ke `claude-opus-4` dan `AGENTDROP_MAX_TOKENS_WORKER_X=4096`, install
+ulang → **keduanya bertahan**, worker lain tetap mengikuti global. 7/7 profil
+terpasang merujuk variabelnya sendiri.
+
+Validator `[23]` diperbarui untuk bentuk per worker dan kini **mewajibkan**
+`max_tokens`. Empat suntikan diuji: hapus `max_tokens`, hardcode 64000, campur
+provider per worker dengan model global, dan hapus default dari `.env.example`.
+Semua tertangkap. Suntikan ketiga sempat menghasilkan pesan yang membandingkan
+dua string identik (`bukan ${AGENTDROP_MODEL}` padahal yang diharapkan
+`${AGENTDROP_MODEL}`) — suffix per worker tidak ikut terbawa ke pesan.
+Diperbaiki dan diuji ulang.
+
+**Pelajaran, ketiga kalinya dalam beberapa arc:** komentar yang menjelaskan
+mengapa sebuah nilai *tidak* diset perlu diuji sama seriusnya dengan nilai itu
+sendiri. "Biarkan default" terdengar aman, padahal default-nya 64.000 dan
+akun operator tidak sanggup.

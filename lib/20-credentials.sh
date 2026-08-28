@@ -99,59 +99,66 @@ credentials_setup() {
 # hanya jalur interaktif yang menjamin, `./install.sh --non-interactive` pada
 # .env yang lama akan menghasilkan config dengan ${AGENTDROP_MODEL} verbatim.
 credentials_ensure_model_vars() {
-  # TIGA VARIABEL MODEL WAJIB ADA, dan ini bukan formalitas.
+  # Variabel model WAJIB ADA, dan ini bukan formalitas.
   #
-  # config.yaml (utama + 7 profil) merujuk ${AGENTDROP_MODEL},
-  # ${AGENTDROP_PROVIDER}, ${AGENTDROP_BASE_URL}. Hermes meng-expand ${VAR}
-  # (hermes_cli/config.py:2723) TAPI variabel yang tidak ada di environment
-  # dibiarkan VERBATIM (config.py:2767: `return os.environ.get(inner, raw)`).
-  # Tanpa default, model.default jadi string "${AGENTDROP_MODEL}" apa adanya
-  # dan SETIAP worker gagal dengan pesan yang tidak menyebut penyebabnya.
+  # config.yaml (utama + 7 profil) merujuk ${AGENTDROP_*}. Hermes meng-expand
+  # ${VAR} (hermes_cli/config.py:2723) TAPI variabel yang tidak ada di
+  # environment dibiarkan VERBATIM (config.py:2767: `return
+  # os.environ.get(inner, raw)`). Tanpa penjaga, model.default jadi string
+  # "${AGENTDROP_MODEL}" apa adanya dan SETIAP worker gagal dengan pesan yang
+  # tidak menyebut penyebabnya.
   #
-  # Di sinilah tempat operator menyetel provider custom-nya. Selama nilainya
-  # di .env, `./install.sh` tidak bisa menghapusnya — installer menyalin
-  # config.yaml dari repo tapi tidak pernah menyentuh .env. Sebelumnya model
-  # di-hardcode di config repo, jadi setiap install ulang membuang setelan
-  # operator; itu sebabnya update tidak bisa di-pull.
+  # Di sinilah tempat operator menyetel provider-nya. Selama nilainya di .env,
+  # `./install.sh` tidak bisa menghapusnya — installer menyalin config.yaml
+  # dari repo tapi tidak pernah menyentuh .env.
+  #
+  # DUA TINGKAT: variabel per worker, jatuh ke variabel global. Fallback tidak
+  # bisa ditulis di YAML karena Hermes tidak punya sintaks default untuk
+  # ${VAR}; "${A:-$B}" akan menjadi string harfiah. Jadi fallback diselesaikan
+  # DI SINI dan dituliskan ke .env sebagai nilai konkret.
   #
   # Hanya diisi kalau belum ada: nilai milik operator tidak pernah ditimpa.
-  local _k _v
-  for _k in AGENTDROP_MODEL AGENTDROP_PROVIDER AGENTDROP_BASE_URL; do
+  local _k _v _prof _kunci _glob _cur
+
+  # 1) GLOBAL dulu — ini sumber fallback untuk setiap worker.
+  for _k in MODEL PROVIDER BASE_URL MAX_TOKENS; do
     case "$_k" in
-      AGENTDROP_MODEL)    _v="anthropic/claude-sonnet-4" ;;
-      AGENTDROP_PROVIDER) _v="openrouter" ;;
-      AGENTDROP_BASE_URL) _v="https://openrouter.ai/api/v1" ;;
+      MODEL)     _v="anthropic/claude-sonnet-4" ;;
+      PROVIDER)  _v="openrouter" ;;
+      BASE_URL)  _v="https://openrouter.ai/api/v1" ;;
+      # Tanpa ini agent GAGAL di panggilan pertama pada akun ber-kredit
+      # terbatas: ceiling native claude-sonnet-4 adalah 64.000
+      # (agent/anthropic_adapter.py:175) dan OpenRouter menolaknya dengan
+      # HTTP 402 "You requested up to 64000 tokens, but can only afford 2666".
+      # Nilai config menang atas default model (agent/agent_init.py:2384).
+      MAX_TOKENS) _v="8192" ;;
     esac
-    if grep -qE "^${_k}=.+" "$ENV_FILE" 2>/dev/null; then
-      _ok "$_k sudah diset"
+    if grep -qE "^AGENTDROP_${_k}=.+" "$ENV_FILE" 2>/dev/null; then
+      _ok "AGENTDROP_${_k} sudah diset"
     else
-      _env_set "$_k" "$_v"
-      _warn "$_k belum ada — diisi default: $_v"
-      _warn "    ganti di $ENV_FILE kalau memakai provider custom"
+      _env_set "AGENTDROP_${_k}" "$_v"
+      _warn "AGENTDROP_${_k} belum ada — diisi default: $_v"
     fi
   done
 
-  _log "Wallet"
-  # Wallet yang dipakai agent adalah MetaMask/OKX/Phantom yang Anda pasang
-  # sendiri lewat ./agentdrop extensions. Berkas key di bawah hanya untuk
-  # tooling CLI (cek saldo, pantau portofolio) — BUKAN untuk signing otomatis.
-  KEYF="$STATE_DIR/wallet.key"
-  if [[ -f "$KEYF" ]]; then
-    _ok "key file sudah ada: $KEYF"
-  elif [[ -t 0 ]]; then
-    printf '  Private key untuk tooling (Enter = lewati): '
-    read -r -s k; echo
-    if [[ -n "$k" ]]; then
-      umask 077; printf '%s\n' "$k" > "$KEYF"; chmod 600 "$KEYF"
-      _ok "key ditulis ke $KEYF (izin 600)"
-    fi
-  fi
-  [[ -f "$KEYF" ]] && _env_set AGENTDROP_KEY_FILE "$KEYF"
+  # 2) PER WORKER — mewarisi nilai global yang baru saja dijamin ada.
+  for _prof in worker-analyzer worker-daily worker-discord worker-monitor \
+               worker-orchestrator worker-quests worker-x; do
+    _kunci="${_prof//-/_}"          # worker-x -> WORKER_X
+    _kunci="${_kunci^^}"
+    for _k in MODEL PROVIDER BASE_URL MAX_TOKENS; do
+      _glob="AGENTDROP_${_k}"
+      _cur="AGENTDROP_${_k}_${_kunci}"
+      _v="$(grep -E "^${_glob}=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+      if grep -qE "^${_cur}=.+" "$ENV_FILE" 2>/dev/null; then
+        _ok "$_cur sudah diset"
+      else
+        _env_set "$_cur" "$_v"
+        _ok "$_cur = $_v  (mengikuti global)"
+      fi
+    done
+  done
 
-  # Kunci izinnya. Penyalinan ke tiap profil terjadi nanti di tahap setup
-  # (lib/30-hermes.sh, `install -m 600 ... "$dst/.env"`), karena tiap profil
-  # adalah HERMES_HOME terpisah dan --profile menyetel HERMES_HOME sebelum
-  # env_loader membaca .env (override=True, hermes_cli/env_loader.py:470-504).
-  chmod 600 "$ENV_FILE"
-  _ok "~/.hermes/.env (mode 600)"
+  _log "Model berbeda per worker: ubah AGENTDROP_*_<WORKER> di $ENV_FILE,"
+  _log "  mis. AGENTDROP_MODEL_WORKER_QUESTS=anthropic/claude-opus-4"
 }

@@ -6,16 +6,22 @@
 # ============================================================================
 
 model:
+  # Variabel model worker INI, bukan global. menavigasi dApp dengan wallet; keandalan paling mahal di sini.
+  # Kosongkan salah satu di .env untuk memakai nilai global
+  # (AGENTDROP_MODEL dst.) — install.sh yang menyelesaikan
+  # fallback-nya, karena Hermes tidak punya sintaks default
+  # untuk ${VAR} (config.py:2767 membiarkannya verbatim).
   # Eksekusi campaign = banyak keputusan navigasi. Butuh model kuat.
-  default: "${AGENTDROP_MODEL}"
+  default: "${AGENTDROP_MODEL_WORKER_QUESTS}"
   # "openrouter", BUKAN "auto". "auto" tidak pernah menyelesaikan ke OpenRouter
   # (hermes_cli/auth.py:2268 memeriksa PROVIDER_REGISTRY, dan "auto" tidak ada
   # di sana; config.py:2990 memperingatkan "auto" justru membuat model dirutekan
   # lewat provider yang salah). Gejalanya: model custom tidak termuat dan UI
   # hanya menampilkan model/provider bawaan Hermes. Penjelasan panjang ada di
   # config/hermes/config.yaml.
-  provider: "${AGENTDROP_PROVIDER}"
-  base_url: "${AGENTDROP_BASE_URL}"
+  provider: "${AGENTDROP_PROVIDER_WORKER_QUESTS}"
+  base_url: "${AGENTDROP_BASE_URL_WORKER_QUESTS}"
+  max_tokens: "${AGENTDROP_MAX_TOKENS_WORKER_QUESTS}"
 
 toolsets:
   - hermes-cli

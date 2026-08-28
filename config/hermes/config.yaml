@@ -72,9 +72,24 @@ model:
   # salah (mis. server lokal dengan num_ctx sendiri).
   # context_length: 131072
 
-  # max_tokens = cap OUTPUT per respons. Tidak berhubungan dengan panjang
-  # history. Biarkan tidak diset untuk memakai ceiling native model.
-  # max_tokens: 8192
+  # max_tokens = cap OUTPUT per respons. WAJIB diset, dan ini bukan selera.
+  #
+  # Kalau tidak diset, Hermes memakai ceiling native model:
+  # agent/anthropic_adapter.py:175 memberi claude-sonnet-4 nilai 64.000.
+  # OpenRouter menolak permintaan yang max_tokens-nya melebihi sisa kredit:
+  #
+  #   HTTP 402: You requested up to 64000 tokens, but can only afford 2666.
+  #
+  # Jadi akun dengan kredit terbatas TIDAK BISA menjalankan agent sama sekali
+  # dengan ceiling native — bukan lambat, tapi gagal di panggilan pertama.
+  # Nilai config menang atas default model (agent_init.py:2384 membaca
+  # model.max_tokens, dan anthropic_adapter.py:263 lebih memilih `requested`
+  # daripada `_get_anthropic_max_output(model)`).
+  #
+  # 8192 cukup untuk satu aksi browser plus penalaran, dan membuat agent bisa
+  # jalan di akun dengan kredit kecil. Naikkan hanya kalau respons benar-benar
+  # terpotong.
+  max_tokens: "${AGENTDROP_MAX_TOKENS}"
 
 # ----------------------------------------------------------------------------
 # TOOLSETS — id asli dari hermes_cli/tools_config.py
