@@ -1,0 +1,2 @@
+import{E as d,o as a}from"./chunk-DMM54ENI.js";import{d as n,n as l}from"./chunk-UMKDODOO.js";import{z as o}from"./chunk-TRFSSUYO.js";import{h as r}from"./chunk-PPRUN2KR.js";import{a as i,i as s,n as t}from"./chunk-TSHWMJEM.js";s();t();var y=i(()=>{let{data:e}=d(),{data:m}=a({enabled:!!e?.expired}),{data:u=[]}=o("recoverable-only");return{shouldShowVerifyPinPrompt:l(n.SeedlessPinVerification,"enable-seedless-pin-verification-interstitial",()=>!!m&&!!e&&e.expired&&u.length>0&&!r())}},"useShowVerifyPinPrompt");export{y as a};
+//# sourceMappingURL=chunk-GZNR77BH.js.map

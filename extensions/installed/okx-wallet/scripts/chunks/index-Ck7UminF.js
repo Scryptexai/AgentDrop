@@ -1,0 +1,2 @@
+import{L as a,t as s}from"./index-B8r8Wgtu.js";import{w as r}from"../ui/ui.js";import{I as l}from"./stream-utils-CD8gVty8.js";const c="_root_1k0l3_1",n={root:c},h=4,e=({onChange:o,value:t})=>globalThis.React.createElement(a.Box,{className:n.root},globalThis.React.createElement(l.Search,{placeholder:s("extension_wallet_list_input_text_name",{},{useBr:!1}),onChange:o,value:t}));e.showMe=o=>{const{walletCount:t}=o;return t>h};const _=r(e);export{_ as S,h as s};
+//# sourceMappingURL=index-Ck7UminF.js.map
