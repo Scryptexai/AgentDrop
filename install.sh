@@ -125,16 +125,50 @@ stage_install_code() {
   mkdir -p "$INSTALL_DIR"
   # Kode disalin, bukan di-symlink ke repo: repo bisa dipindah atau dihapus,
   # dan instalasi sistem tidak boleh ikut rusak.
-  # `scripts` WAJIB ikut. agentdrop:cmd_logs memanggil
-  # "$ROOT/scripts/collect-logs.sh", dan $ROOT adalah direktori terpasang —
-  # bukan repo. Tanpa ini `agentdrop logs` mati dengan "No such file", dan
-  # validator yang dijalankan dari lokasi terpasang melaporkan berkasnya hilang.
-  for item in lib tools scripts skills config hooks agent-hooks knowledge memory AGENTS.md; do
-    [[ -e "$REPO_ROOT/$item" ]] || continue
-    rm -rf "${INSTALL_DIR:?}/$item"
-    cp -r "$REPO_ROOT/$item" "$INSTALL_DIR/"
-  done
-  _ok "kode terpasang"
+  #
+  # DAFTAR ALLOW DIBALIK MENJADI DAFTAR EXCLUDE — dan ini disengaja.
+  #
+  # Versi lama menyebut satu per satu apa yang disalin:
+  #     for item in lib tools scripts skills config ...
+  # Daftar semacam itu gagal EMPAT KALI, selalu dengan cara yang sama: ada
+  # berkas yang dibaca dari $ROOT oleh sesuatu yang lain, tapi tidak disebut
+  # di sini, dan kerusakannya baru terlihat di mesin operator.
+  #   1. `memory`   -> memory/lessons tidak pernah terbuat (agent kehilangan
+  #                    memory loop, alasan K12 ada)
+  #   2. `lib`      -> tidak pernah tervalidasi, jadi cacat lolos 180 checks
+  #   3. `scripts`  -> `agentdrop logs` mati: cmd_logs memanggil
+  #                    "$ROOT/scripts/collect-logs.sh"
+  #   4. `install.sh` + `README.md` + `.gitignore` + `.env.example`
+  #                -> `agentdrop status` [5] mati dengan traceback
+  #                    FileNotFoundError dari validator
+  #
+  # Akarnya bukan tiap berkas yang kelupaan; akarnya adalah BENTUK daftarnya.
+  # Selama "yang disalin" harus disebut manual, setiap berkas baru adalah
+  # peluang gagal yang baru. Jadi sekarang: salin SEMUA, kecualikan yang
+  # memang tidak boleh ikut. Berkas baru ikut dengan sendirinya.
+  #
+  # tools/validate_config.py memeriksa bahwa tidak ada yang di-exclude di sini
+  # padahal dibaca validator dari $ROOT — jadi daftar ini tidak bisa diam-diam
+  # melubangi dirinya sendiri lagi.
+  local kecualikan=(
+    .git                      # bukan bagian kode
+    .env .env.local           # rahasia operator, tidak pernah dipindah
+    __pycache__ '*.py[cod]'   # sisa build
+    .venv venv                # lingkungan dev
+    .pytest_cache .mypy_cache .ruff_cache
+    node_modules
+    extensions/installed      # biner pihak ketiga hasil unduhan
+    'storage-state*.json' 'storage_state*.json'   # sesi browser hidup
+  )
+  local arg=() e
+  for e in "${kecualikan[@]}"; do arg+=(--exclude="$e"); done
+
+  # Lokasi instal dikosongkan lebih dulu. Tanpa ini, berkas yang sudah
+  # dihapus dari repo tetap tinggal di lokasi instal dan terus dipakai —
+  # instalasi ulang tidak benar-benar memperbarui apa pun.
+  find "${INSTALL_DIR:?}" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true
+  tar -C "$REPO_ROOT" -cf - "${arg[@]}" . | tar -C "$INSTALL_DIR" -xf -
+  _ok "kode terpasang (cermin repo, $(find "$INSTALL_DIR" -type f | wc -l) berkas)"
 
   _log "Memasang perintah agentdrop"
   mkdir -p "$BIN_DIR"

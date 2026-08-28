@@ -365,11 +365,42 @@ def check_shell(path: Path) -> None:
     # ada. Validator tidak bisa menjalankan install.sh, tapi ia bisa memastikan
     # dua janji installer tetap ada di kode.
     if path.name == "install.sh":
-        m = re.search(r"for item in ([^;]+); do", text)
-        if m and "memory" not in m.group(1).split():
-            err(f"{rel}: daftar salinan stage_install_code tidak memuat 'memory', "
-                f"padahal memory/lessons/README.md dibutuhkan di lokasi kerja. "
-                f"Daftar: {m.group(1).strip()}")
+        # Dulu pemeriksaan ini mencari `for item in lib tools ... ; do` dan
+        # memastikan "memory" ada di daftar itu. Sesudah daftar allow dibalik
+        # menjadi daftar exclude, polanya tidak ada lagi -- dan karena
+        # dipagari `if m and ...`, pemeriksaan ini BERHENTI MENYALA tanpa
+        # suara apa pun. Lolos bukan berarti benar.
+        #
+        # Bentuk barunya menguji janji yang sebenarnya: lokasi instal adalah
+        # CERMIN repo. Berkas apa pun yang dibaca dari $ROOT harus ikut, jadi
+        # yang diperiksa adalah daftar exclude-nya -- tidak boleh ada yang
+        # dikecualikan padahal dibutuhkan.
+        checks += 1
+        if not re.search(r"tar -C \"\$REPO_ROOT\" -cf -", text):
+            err(f"{rel}: stage_install_code tidak lagi menyalin repo sebagai "
+                f"cermin (tar -C $REPO_ROOT -cf -). Daftar allow manual sudah "
+                f"gagal empat kali (memory, lib, scripts, lalu "
+                f"install.sh/README/.gitignore/.env.example) -- jangan "
+                f"dikembalikan ke bentuk itu.")
+        else:
+            mexc = re.search(r"kecualikan=\(([^)]*)\)", text, re.S)
+            dikecualikan = set()
+            if mexc:
+                dikecualikan = {x.strip().strip("'\"")
+                                for x in mexc.group(1).split()
+                                if not x.strip().startswith("#")}
+            # Semua entri tingkat atas yang dibaca validator dari REPO. Kalau
+            # salah satunya masuk daftar exclude, `agentdrop status` [5] akan
+            # mati di mesin operator dengan FileNotFoundError -- persis cacat
+            # yang membuat pemeriksaan ini ditulis.
+            dibutuhkan = {".env.example", ".gitignore", "README.md", "install.sh",
+                          "agent-hooks", "config", "hooks", "knowledge", "lib",
+                          "memory", "scripts", "skills", "tools"}
+            bocor = sorted(dibutuhkan & dikecualikan)
+            if bocor:
+                err(f"{rel}: daftar exclude stage_install_code membuang "
+                    f"{bocor}, padahal validator membacanya dari lokasi instal. "
+                    f"`agentdrop status` akan gagal dengan FileNotFoundError.")
     if path.name == "30-hermes.sh":
         # Harus yang PER-PROFIL ($dst/...), bukan sekadar ada mkdir memory/lessons
         # di mana pun. cwd agent adalah HERMES_HOME profil itu, jadi hanya
