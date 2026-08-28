@@ -35,7 +35,14 @@ hermes_install() {
     dst="$HERMES_HOME_DIR/profiles/$p"
     [[ -d "$src" ]] || { _warn "profil $p tidak ada di repo, dilewati"; continue; }
 
-    mkdir -p "$dst/memories" "$dst/logs" "$dst/cron"
+    # memory/lessons/ WAJIB ada sebelum run pertama. Ketujuh SOUL.md menyuruh
+    # agent membaca `memory/lessons/<profil>.md` sebelum mengerjakan task, dan
+    # skill self-improvement menyuruh menulis ke sana. cwd agent adalah
+    # HERMES_HOME profil itu, jadi path relatif tersebut menunjuk ke sini.
+    # Kalau direktorinya tidak ada, langkah pertama setiap agent adalah membaca
+    # berkas yang tidak pernah ada — dan memory loop yang jadi alasan K12
+    # tidak pernah benar-benar berputar.
+    mkdir -p "$dst/memories" "$dst/logs" "$dst/cron" "$dst/memory/lessons"
     cp "$src/config.yaml" "$dst/config.yaml"
     [[ -f "$src/SOUL.md" ]] && cp "$src/SOUL.md" "$dst/SOUL.md"
 
@@ -98,7 +105,17 @@ hermes_install_hooks() {
 
 hermes_install_memory() {
   _log "Memory lessons"
-  mkdir -p "$HERMES_HOME_DIR/../.agentdrop"
-  mkdir -p "$REPO_ROOT/memory/lessons"
-  _ok "memory/lessons/ (append-only, per profil)"
+  mkdir -p "$STATE_DIR/memory/lessons"
+  # README-nya disalin supaya protokolnya terbaca di lokasi kerja, bukan hanya
+  # di repo yang mungkin sudah dipindah atau dihapus sesudah install.
+  [[ -f "$REPO_ROOT/memory/lessons/README.md" ]] && \
+    cp "$REPO_ROOT/memory/lessons/README.md" "$STATE_DIR/memory/lessons/README.md"
+  # Berkas per profil dibuat kosong lebih dulu. Tanpa ini agent harus menebak
+  # apakah "berkas tidak ada" berarti "belum ada pelajaran" atau "salah path".
+  local p n=0
+  for p in "${PROFILES[@]}"; do
+    [[ -f "$STATE_DIR/memory/lessons/$p.md" ]] && continue
+    : > "$STATE_DIR/memory/lessons/$p.md"; n=$((n+1))
+  done
+  _ok "$STATE_DIR/memory/lessons/ (append-only, per profil, $n berkas baru)"
 }

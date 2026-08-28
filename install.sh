@@ -125,7 +125,7 @@ stage_install_code() {
   mkdir -p "$INSTALL_DIR"
   # Kode disalin, bukan di-symlink ke repo: repo bisa dipindah atau dihapus,
   # dan instalasi sistem tidak boleh ikut rusak.
-  for item in lib tools skills config hooks agent-hooks knowledge AGENTS.md; do
+  for item in lib tools skills config hooks agent-hooks knowledge memory AGENTS.md; do
     [[ -e "$REPO_ROOT/$item" ]] || continue
     rm -rf "${INSTALL_DIR:?}/$item"
     cp -r "$REPO_ROOT/$item" "$INSTALL_DIR/"

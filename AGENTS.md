@@ -208,7 +208,7 @@ Isi awalnya hanya kerangka + cara mengisinya. Agent yang menambah isinya lewat
 Terakhir diperbarui: 2026-08-28 · branch `arena/01a037ea-agentdrop`
 Angka diverifikasi dengan perintah, bukan diperkirakan.
 
-**7 profil · 10 skill · 13 berkas knowledge · 180 pemeriksaan validator lolos (exit 0)**
+**7 profil · 10 skill · 13 berkas knowledge · 187 pemeriksaan validator lolos (exit 0)**
 
 Selesai:
 
@@ -498,6 +498,67 @@ me-source `lib/00-common.sh`, yang menimpanya di baris 9
 (`HERMES_HOME_DIR="${HERMES_HOME:-$HOME/.hermes}"`). Berkasnya ada, hanya di
 tempat lain. **Log yang sukses dan disk yang kosong harus diselesaikan dulu
 sebelum menyimpulkan apa pun.**
+
+### Yang kita bangun tidak seluruhnya terpasang — dan validator tidak melihatnya
+
+Operator memperjelas keluhannya: bukan Hermes-nya, melainkan **skill, knowledge,
+profil, memory loop, prompt system** — yang kita bangun — yang tidak terpasang.
+Saya uji dengan menjalankan `install.sh` sungguhan lalu menghitung apa yang
+benar-benar mendarat dibanding inventaris repo. Hasilnya menemukan tiga cacat.
+
+**1. `memory/` tidak pernah disalin.** Daftar di `stage_install_code`
+(`install.sh:128`) adalah `lib tools skills config hooks agent-hooks knowledge
+AGENTS.md` — `memory` tidak ada. Jadi `memory/lessons/README.md` tidak pernah
+sampai ke lokasi kerja.
+
+**2. `memory/lessons/` tidak pernah dibuat per profil.** `hermes_install`
+membuat `$dst/memories`, `$dst/logs`, `$dst/cron` — bukan
+`$dst/memory/lessons`. Padahal **ketujuh SOUL.md** menyuruh agent membaca
+`memory/lessons/<profil-anda>.md` sebelum mengerjakan task, dan skill
+`self-improvement` menyuruh menulis ke sana. cwd agent adalah HERMES_HOME
+profil itu, jadi path relatif tersebut menunjuk ke direktori yang tidak pernah
+ada. Langkah pertama setiap agent adalah membaca berkas yang tidak ada — dan
+memory loop yang jadi alasan K12 tidak pernah benar-benar berputar.
+
+**3. `hermes_install_memory()` hanya `mkdir`, tidak menyalin apa pun**, dan
+mkdir-nya ke `$REPO_ROOT/memory/lessons` — lokasi yang tidak dibaca agent.
+
+**4. Akar kenapa ini lolos 180 pemeriksaan.** Daftar berkas shell validator
+(`tools/validate_config.py:1178`) hanya `scripts/*.sh` + `install.sh`.
+**Enam berkas `lib/*.sh` dan CLI `agentdrop` tidak pernah diperiksa sama
+sekali** — padahal di situlah mayoritas logika installer berada. Ini juga
+sebabnya bug `grep -c || echo 0` di `lib/40-browser.sh` lolos, dan sebabnya
+pemeriksaan memory/lessons yang pertama saya tulis **tidak pernah berjalan**.
+
+Perbaikan:
+
+- `memory` masuk daftar salinan; `mkdir -p "$dst/memory/lessons"` per profil;
+  `hermes_install_memory` menyalin README dan membuat 7 berkas profil kosong di
+  `$STATE_DIR/memory/lessons/`.
+- Daftar periksa validator jadi `scripts/*.sh` + `lib/*.sh` + `install.sh` +
+  `agentdrop` → **180 menjadi 187 berkas**.
+- Pemeriksaan baru: `install.sh` harus memuat `memory` di daftar salinan, dan
+  `lib/30-hermes.sh` harus punya `mkdir` untuk `$dst/memory/lessons`.
+
+**Pemeriksaan pertama saya terlalu lemah dan saya menangkapnya dengan uji.**
+Versi awal mencari "ada `mkdir memory/lessons` di mana pun", jadi ia tetap lolos
+ketika mkdir per-profil dihapus — karena ada mkdir lain untuk `$STATE_DIR`.
+Diperketat ke `\$dst/memory/lessons`, disuntikkan cacatnya, dan sekarang
+tertangkap. **Pemeriksaan yang belum pernah dilihat gagal adalah pemeriksaan
+yang belum teruji.**
+
+Diuji ulang end-to-end dengan `HOME` tiruan (Hermes gagal karena egress sandbox
+diblokir, jadi jalur gagalnya yang teruji):
+
+```
+profil                    repo=7   terpasang=7
+SOUL.md (prompt system)   repo=7   terpasang=7
+skill                     repo=10  terpasang=10
+knowledge                 repo=13  terpasang=13
+memory/lessons per profil repo=7   terpasang=7
+memory loop (kerja)       repo=7   terpasang=7
+config.yaml profil        repo=7   terpasang=7
+```
 
 ### Kelas bug yang berulang — dan cara menangkapnya
 

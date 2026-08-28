@@ -358,6 +358,29 @@ def check_shell(path: Path) -> None:
                 f"perbandingan numerik. Pakai `|| true` lalu `${{n:-0}}`. "
                 f"Baris: {line.strip()}")
 
+    # Direktori yang dijanjikan SOUL.md harus benar-benar dibuat installer.
+    # Ketujuh SOUL.md menyuruh agent membaca `memory/lessons/<profil>.md`, tapi
+    # dulu tidak ada satu pun stage yang membuat direktori itu di lokasi kerja —
+    # jadi langkah pertama setiap agent adalah membaca berkas yang tidak pernah
+    # ada. Validator tidak bisa menjalankan install.sh, tapi ia bisa memastikan
+    # dua janji installer tetap ada di kode.
+    if path.name == "install.sh":
+        m = re.search(r"for item in ([^;]+); do", text)
+        if m and "memory" not in m.group(1).split():
+            err(f"{rel}: daftar salinan stage_install_code tidak memuat 'memory', "
+                f"padahal memory/lessons/README.md dibutuhkan di lokasi kerja. "
+                f"Daftar: {m.group(1).strip()}")
+    if path.name == "30-hermes.sh":
+        # Harus yang PER-PROFIL ($dst/...), bukan sekadar ada mkdir memory/lessons
+        # di mana pun. cwd agent adalah HERMES_HOME profil itu, jadi hanya
+        # $dst/memory/lessons yang membuat path relatif di SOUL.md benar.
+        # Versi pertama pemeriksaan ini mencari pola umum dan lolos walau
+        # mkdir per-profilnya dihapus -- diuji dengan menyuntikkan cacatnya.
+        if not re.search(r'mkdir -p[^\n]*\$dst/memory/lessons', text):
+            err(f"{rel}: tidak ada mkdir untuk $dst/memory/lessons per profil, "
+                f"padahal ketujuh SOUL.md menyuruh agent membaca "
+                f"memory/lessons/<profil>.md relatif terhadap HERMES_HOME profil")
+
     # crontab sistem: kita sengaja pakai cron internal Hermes
     if re.search(r"^\s*\(crontab", text, re.MULTILINE):
         warn(f"{rel}: memakai system crontab. AgentDrop memakai scheduler internal "
@@ -1152,7 +1175,18 @@ def main() -> int:
         check_skill(s)
         print(f"  · {s.relative_to(REPO)}")
 
-    scripts = sorted(REPO.glob("scripts/*.sh")) + ([REPO / "install.sh"] if (REPO / "install.sh").exists() else [])
+    # lib/*.sh dan `agentdrop` WAJIB ikut. Sebelumnya daftar ini hanya
+    # scripts/*.sh + install.sh, jadi 6 berkas di lib/ dan CLI utamanya tidak
+    # pernah diperiksa sama sekali -- padahal di situlah mayoritas logika
+    # installer berada. Akibatnya nyata: bug `grep -c || echo 0` di
+    # lib/40-browser.sh dan mkdir memory/lessons yang hilang di
+    # lib/30-hermes.sh lolos 180 pemeriksaan, dan pemeriksaan baru untuk
+    # memory/lessons tidak pernah berjalan karena berkasnya tidak diserahkan.
+    # `agentdrop` tidak berekstensi .sh, jadi glob tidak akan menemukannya.
+    scripts = sorted(REPO.glob("scripts/*.sh")) + sorted(REPO.glob("lib/*.sh"))
+    for extra in ("install.sh", "agentdrop"):
+        if (REPO / extra).exists():
+            scripts.append(REPO / extra)
     print(f"\n[4] Shell scripts ({len(scripts)} file)")
     for sh in scripts:
         check_shell(sh)
