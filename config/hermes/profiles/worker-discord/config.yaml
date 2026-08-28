@@ -167,3 +167,54 @@ hooks_auto_accept: true
 #
 # Browser harus dipanggil lewat tool native (browser_navigate, browser_snapshot,
 # browser_click, ...) — bukan lewat shell.
+
+# ============================================================================
+# SKILLS — matikan skill bawaan Hermes yang bertentangan dengan aturan AgentDrop
+# ============================================================================
+# Hermes mengirim ~200 skill bawaan (skills/ + optional-skills/ di repo
+# hermes-agent). Semuanya TERLIHAT oleh agent lewat manifest skill, walau
+# toolset-nya tidak kita aktifkan.
+#
+# Itu bukan masalah kosmetik. Manifest skill masuk ke konteks agent, jadi:
+#   1. agent bisa memutuskan mengikuti prosedur skill yang kita larang, lalu
+#      gagal aneh karena toolnya tidak ada;
+#   2. skill adalah dokumen prosedur yang diikuti agent — membiarkan 77 di
+#      antaranya terbaca adalah permukaan prompt-injection yang tidak perlu;
+#   3. `computer-use` ada di antaranya, padahal validator kita sendiri
+#      ([20]) menolak skill AgentDrop yang menganjurkannya.
+#
+# Toolset-nya memang sudah mati di semua profil (terminal, code_execution,
+# computer_use tidak pernah diaktifkan), jadi ini lapisan kedua: prosedurnya
+# tidak terbaca sama sekali.
+#
+# Mekanisme: `skills.disabled` dibaca agent/skill_utils.py:446
+# get_disabled_skill_names() dari config.yaml, lalu dipakai
+# agent/prompt_builder.py:1814 untuk menyaring manifest. Nama harus sama
+# dengan `name:` di frontmatter SKILL.md — sudah diverifikasi ke sumbernya.
+#
+# WAJIB di tiap profil: profil adalah HERMES_HOME terpisah penuh dan TIDAK
+# mewarisi config utama, jadi menaruh ini hanya di config.yaml utama tidak
+# berpengaruh apa pun pada worker.
+#
+# `hermes-agent` tidak boleh dimasukkan: itu satu-satunya isi
+# ESSENTIAL_SKILLS (agent/skill_utils.py:443) dan Hermes mengurangkannya
+# dari daftar disabled apa pun.
+skills:
+  disabled:
+    # Mengendalikan desktop di luar browser — melanggar K7 dan batas wallet.
+    - computer-use
+    # X/Twitter lewat CLI: melewati browser, melewati log audit, dan memakai
+    # kredensial API yang tidak pernah kita berikan.
+    - xurl
+    # Semuanya butuh shell, dan shell dimatikan di setiap profil.
+    - python-debugpy
+    - node-inspect-debugger
+    # Delegasi coding ke CLI pihak ketiga — di luar cakupan airdrop farming,
+    # dan semuanya menjalankan shell.
+    - claude-code
+    - codex
+    - opencode
+    # Menyentuh email dan akun Google operator. Tidak ada task airdrop yang
+    # membutuhkannya, dan keduanya bernilai tinggi kalau disalahgunakan.
+    - himalaya
+    - google-workspace

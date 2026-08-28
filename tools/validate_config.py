@@ -908,6 +908,64 @@ def check_no_stray_cjk() -> None:
 
 
 
+# Skill bawaan Hermes yang dilarang AgentDrop. Harus ada di `skills.disabled`
+# pada config utama DAN setiap profil: profil adalah HERMES_HOME terpisah yang
+# tidak mewarisi config utama, jadi menaruhnya di satu tempat saja tidak
+# berpengaruh pada worker mana pun.
+#
+# Toolset-nya sudah mati (terminal/code_execution/computer_use tidak pernah
+# diaktifkan), tapi manifest skill tetap masuk ke konteks agent — jadi agent
+# bisa memutuskan mengikuti prosedur yang kita larang, dan 77 dokumen prosedur
+# asing yang terbaca adalah permukaan prompt-injection yang tidak perlu.
+SKILL_BAWAAN_DILARANG = {
+    "computer-use",          # mengendalikan desktop di luar browser
+    "xurl",                  # X/Twitter lewat CLI, melewati log audit
+    "python-debugpy",        # butuh shell
+    "node-inspect-debugger", # butuh shell
+    "claude-code",           # delegasi coding, butuh shell
+    "codex",                 # delegasi coding, butuh shell
+    "opencode",              # delegasi coding, butuh shell
+    "himalaya",              # email operator
+    "google-workspace",      # akun Google operator
+}
+# hermes-agent adalah satu-satunya isi ESSENTIAL_SKILLS di Hermes
+# (agent/skill_utils.py:443) dan dikurangkan dari daftar disabled apa pun.
+SKILL_TIDAK_BOLEH_DIMATIKAN = {"hermes-agent"}
+
+
+def check_skills_disabled(configs: list[Path]) -> None:
+    """Setiap config harus mematikan skill bawaan Hermes yang kita larang."""
+    global checks
+    print("\n[22] Skill bawaan Hermes yang dilarang")
+    # `configs` dari main() sudah memuat config/hermes/config.yaml (glob
+    # `config/hermes/**/config.yaml`), jadi tidak perlu ditambahkan lagi —
+    # versi pertama fungsi ini melakukannya dan mencetak config utama dua kali.
+    for cfg in configs:
+        if not cfg.exists():
+            continue
+        checks += 1
+        try:
+            data = yaml.safe_load(cfg.read_text()) or {}
+        except Exception as exc:
+            err(f"{cfg.relative_to(REPO)}: YAML tidak bisa dibaca: {exc}")
+            continue
+        mati = set((data.get("skills") or {}).get("disabled") or [])
+        nama = ("config.yaml utama" if cfg.parent.name == "hermes"
+                else cfg.parent.name)
+        kurang = sorted(SKILL_BAWAAN_DILARANG - mati)
+        if kurang:
+            err(f"{nama}: skills.disabled tidak memuat {kurang}. Skill bawaan "
+                f"Hermes ini tetap muncul di manifest agent walau toolsetnya "
+                f"mati — agent bisa mencoba mengikuti prosedurnya.")
+        salah = sorted(mati & SKILL_TIDAK_BOLEH_DIMATIKAN)
+        if salah:
+            err(f"{nama}: {salah} ada di skills.disabled, padahal itu "
+                f"ESSENTIAL_SKILLS Hermes — Hermes mengabaikannya, jadi "
+                f"barisnya hanya memberi rasa aman palsu.")
+        if not kurang and not salah:
+            print(f"  · {nama}: {len(mati)} skill bawaan dimatikan")
+
+
 def check_shell_disabled(configs: list[Path]) -> None:
     """Worker tidak boleh punya akses shell.
 
@@ -1326,6 +1384,7 @@ def main() -> int:
 
     print("\n[17] Akses shell dimatikan di semua worker")
     check_shell_disabled(configs)
+    check_skills_disabled(configs)
 
     print("\n[18] Memory loop + aturan anti prompt-injection")
     check_memory_loop(configs)

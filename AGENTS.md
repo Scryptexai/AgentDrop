@@ -880,3 +880,83 @@ Jangan diulang.
   hook yang menyala di run Hermes hidup, dan pemasangan ekstensi nyata **tidak
   bisa diuji di sini**. Jangan klaim sudah teruji kalau belum.
 - `pip3 install` system diblokir PEP 668 — selalu pakai venv.
+
+---
+
+## Arc 12 — `agentdrop status` mati dengan traceback, dan 87 skill di UI Hermes
+
+Dua laporan operator, dua sifat yang berbeda: yang pertama cacat nyata, yang
+kedua **bukan** seperti yang dilaporkan — tapi menyembunyikan cacat lain.
+
+### 1. `FileNotFoundError: ~/.agentdrop/app/install.sh`
+
+Validator dijalankan `lib/50-verify.sh:74` dari `$REPO_ROOT`, dan sesudah
+install `$REPO_ROOT` adalah **lokasi terpasang**, bukan repo. Validator
+membaca `install.sh`, `README.md`, `.gitignore`, `.env.example` — tidak
+satunya pun ikut disalin. Hasilnya traceback Python mentah di layar operator.
+
+**Yang diperbaiki bukan empat berkas itu, tapi bentuk daftarnya.** Daftar
+allow yang menyebut satu per satu apa yang disalin sudah gagal **empat
+kali**, selalu dengan pola yang sama: ada yang membaca berkas dari `$ROOT`,
+dan tidak ada yang menambahkannya ke daftar.
+
+| # | yang hilang | akibat |
+|---|---|---|
+| 1 | `memory` | memory/lessons tidak pernah terbuat |
+| 2 | `lib` | tidak pernah tervalidasi, cacat lolos 180 checks |
+| 3 | `scripts` | `agentdrop logs` mati di runtime |
+| 4 | `install.sh` + 3 lainnya | traceback ini |
+
+Daftarnya **dibalik**: salin seluruh repo sebagai cermin (`tar` dengan
+`--exclude`), kecualikan yang memang tidak boleh ikut (`.git`, `.env`,
+cache, `extensions/installed`, sesi browser hidup). Berkas baru kini ikut
+dengan sendirinya — kelas cacat M mati secara struktural, bukan ditambal.
+
+**Jebakan di sini:** pemeriksaan validator yang menjaga daftar itu mencari
+`for item in ...`. Sesudah loop-nya hilang, regex tidak cocok lagi, dan
+karena dipagari `if m and ...` pemeriksaan itu **berhenti menyala tanpa
+suara**. Validator tetap bilang 187 lolos. Pemeriksaan yang belum pernah
+terlihat gagal bukanlah pemeriksaan — ini keenam kalinya.
+
+### 2. "Skill tidak ada di Hermes" — klaimnya salah, tapi ada cacat di baliknya
+
+Operator menempel daftar **87 skill** dari UI Hermes dan menyimpulkan skill
+kita tidak terpasang. Diuji: **kesepuluh skill AgentDrop ada di daftar itu.**
+Klaimnya tidak benar.
+
+Yang benar: 87 = 10 milik kita + **77 bawaan Hermes**. Diverifikasi ke
+sumbernya (`git clone hermes-agent`): repo itu punya 201 `SKILL.md` di
+`skills/` + `optional-skills/`, dan **77/77** nama asing di daftar operator
+cocok dengan bawaan Hermes. Bukan sisa pemasangan kita yang rusak.
+
+**Cacat nyatanya:** toolset untuk skill-skill itu memang sudah mati di semua
+profil (diverifikasi: `terminal`, `code_execution`, `computer_use` tidak
+diaktifkan di satu profil pun), tapi **manifest skill tetap masuk ke konteks
+agent**. Jadi agent bisa memutuskan mengikuti prosedur yang kita larang —
+termasuk `computer-use`, yang justru ditolak validator kita sendiri di [20].
+Dan 77 dokumen prosedur asing yang terbaca agent adalah permukaan
+prompt-injection yang tidak perlu.
+
+Ditutup dengan mekanisme resmi Hermes: `skills.disabled` di `config.yaml`
+(dibaca `agent/skill_utils.py:446 get_disabled_skill_names()`, dipakai
+`agent/prompt_builder.py:1814` untuk menyaring manifest). Sembilan skill
+dimatikan: `computer-use`, `xurl`, `python-debugpy`, `node-inspect-debugger`,
+`claude-code`, `codex`, `opencode`, `himalaya`, `google-workspace`.
+
+**Harus di 8 berkas, bukan 1.** Profil adalah HERMES_HOME terpisah penuh dan
+tidak mewarisi config utama — menaruhnya hanya di `config.yaml` utama tidak
+berpengaruh apa pun pada worker. `hermes-agent` sengaja TIDAK dimatikan:
+itu satu-satunya isi `ESSENTIAL_SKILLS` (`skill_utils.py:443`) dan Hermes
+mengurangkannya dari daftar disabled mana pun, jadi menuliskannya hanya
+memberi rasa aman palsu.
+
+Dikunci pemeriksaan `[22]`, diuji dengan tiga suntikan: buang seksi
+`skills` dari satu profil, buang satu nama dari config utama, dan matikan
+`hermes-agent`. Ketiganya tertangkap.
+
+**Pelajaran:** ketika laporan operator tidak cocok dengan bukti, keduanya
+bisa benar sebagian. Skill memang terpasang (klaim operator salah), tapi
+UI yang menampilkan 87 memang menandakan sesuatu yang belum kita kunci
+(laporan operator benar soal gejalanya). Jangan berhenti di "klaimnya
+keliru" — cari tahu apa yang sebenarnya dilihat orang itu.
+
