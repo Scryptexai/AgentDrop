@@ -347,7 +347,7 @@ browser_start() {
     # menunjukkan kegagalan ini: prosesnya mati, tapi kodenya tetap _die.
     local k sisa=""
     for k in $(seq 1 20); do
-      sisa="$(pgrep -f -- "--user-data-dir=${PROFILE_DIR}" 2>/dev/null | tr '\n' ' ')"
+      sisa="$(pgrep -f -- "--user-data-dir=${PROFILE_DIR}" 2>/dev/null | tr '\n' ' ' || true)"
       [[ -z "${sisa// /}" ]] && break
       sleep 1
     done

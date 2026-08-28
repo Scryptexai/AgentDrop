@@ -381,6 +381,30 @@ def check_shell(path: Path) -> None:
                 f"padahal ketujuh SOUL.md menyuruh agent membaca "
                 f"memory/lessons/<profil>.md relatif terhadap HERMES_HOME profil")
 
+    # Assignment dari pipeline yang bisa gagal harus punya `|| true`.
+    #
+    # Di bawah `set -euo pipefail`, grep/pgrep yang tidak menemukan apa pun
+    # keluar dengan 1; pipefail menularkan status itu ke seluruh pipeline, lalu
+    # ke assignment-nya, lalu set -e mematikan skrip TANPA pesan.
+    #
+    # Inilah penyebab install operator berhenti tepat sesudah "==> Model":
+    # TELEGRAM_* sudah ada di .env sehingga grep-nya cocok, sedangkan
+    # OPENROUTER_API_KEY belum ada sehingga grep-nya gagal. Tiga perbaikan
+    # sebelumnya meleset karena semuanya menyasar baris yang tidak pernah
+    # dieksekusi.
+    # `.*`, bukan `[^"]*`: baris nyata berisi tanda kutip di dalam pipeline
+    # (mis. grep -E "^${var}="), dan [^"]* berhenti di sana sehingga \| tidak
+    # pernah tercapai. Versi pertama pemeriksaan ini tidak pernah menangkap apa
+    # pun karena itu -- diuji dengan menghapus `|| true` dan melihatnya lolos.
+    _asg = re.compile(
+        r'^\s*(?:local\s+)?[A-Za-z_][A-Za-z0-9_]*="\$\(.*\b(grep|egrep|fgrep|pgrep)\b.*\|')
+    for _i, _l in enumerate(text.splitlines(), 1):
+        if _asg.match(_l) and "|| true" not in _l:
+            err(f"{rel}:{_i}: assignment dari pipeline grep/pgrep tanpa `|| true`. "
+                f"Saat polanya tidak cocok, grep keluar 1; dengan pipefail itu "
+                f"menular ke assignment dan set -e mematikan skrip tanpa pesan. "
+                f"Baris: {_l.strip()[:70]}")
+
     # Baris TERAKHIR sebuah fungsi tidak boleh `[[ ... ]] && ...`.
     #
     # Kalau ujinya gagal, bentuk && mengembalikan 1, dan karena itu perintah

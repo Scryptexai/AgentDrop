@@ -15,9 +15,22 @@ _env_set() {  # _env_set KEY VALUE  — tulis/ganti satu kunci di $ENV_FILE
   fi
 }
 
+# CATATAN: `|| true` di dalam $( ) pada dua fungsi di bawah BUKAN hiasan.
+#
+# install.sh berjalan dengan `set -euo pipefail`. grep yang tidak menemukan apa
+# pun keluar dengan 1; dengan pipefail status itu menular ke seluruh pipeline,
+# lalu ke assignment-nya, lalu set -e mematikan seluruh installer TANPA pesan.
+#
+# Inilah sebabnya install berhenti tepat sesudah "==> Model": TELEGRAM_* sudah
+# terisi di .env sehingga grep-nya cocok dan lolos, sedangkan OPENROUTER_API_KEY
+# belum ada sehingga grep-nya gagal. Prompt kuncinya bahkan tidak sempat
+# tercetak karena matinya di baris pertama fungsi, sebelum `read`.
+#
+# Tiga perbaikan sebelumnya meleset karena semuanya menyasar baris yang tidak
+# pernah dieksekusi.
 _ask() {  # _ask PROMPT VARNAME [default] — lewati kalau sudah terisi
   local prompt="$1" var="$2" def="${3:-}" cur=""
-  cur="$(grep -E "^${var}=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2-)"
+  cur="$(grep -E "^${var}=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- || true)"
   if [[ -n "$cur" ]]; then
     _ok "$var sudah terisi (dilewati)"
     return 0
@@ -34,7 +47,7 @@ _ask() {  # _ask PROMPT VARNAME [default] — lewati kalau sudah terisi
 
 _ask_secret() {  # seperti _ask tapi tanpa echo
   local prompt="$1" var="$2" cur=""
-  cur="$(grep -E "^${var}=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2-)"
+  cur="$(grep -E "^${var}=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- || true)"
   [[ -n "$cur" ]] && { _ok "$var sudah terisi (dilewati)"; return 0; }
   [[ ! -t 0 ]] && { _warn "$var kosong dan stdin bukan terminal"; return 0; }
   local v

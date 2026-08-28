@@ -619,6 +619,75 @@ memory/lessons : 7 dari 7
 skill          : 10 dari 10
 ```
 
+### Penyebab SEBENARNYA install mati di "==> Model" — sesudah tiga diagnosis meleset
+
+Operator melaporkan install masih berhenti di tempat yang sama sesudah tiga
+perbaikan. Tiga diagnosis saya sebelumnya **semuanya salah**, dan semuanya salah
+dengan cara yang sama: menyasar baris yang tidak pernah dieksekusi.
+
+Penyebab sebenarnya ada di baris PERTAMA `_ask` dan `_ask_secret`:
+
+```sh
+cur="$(grep -E "^${var}=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2-)"
+```
+
+`install.sh` berjalan dengan `set -euo pipefail`. **grep yang tidak menemukan apa
+pun keluar dengan 1.** Dengan `pipefail` status itu menular ke seluruh pipeline,
+lalu ke assignment-nya, lalu `set -e` mematikan installer **tanpa pesan apa
+pun**.
+
+Ini menjelaskan pola yang sebelumnya tidak masuk akal:
+
+| variabel | ada di `.env` operator? | grep | hasil |
+|---|---|---|---|
+| `TELEGRAM_BOT_TOKEN` | ya | cocok, exit 0 | lolos |
+| `TELEGRAM_HOME_CHANNEL` | ya | cocok, exit 0 | lolos |
+| `OPENROUTER_API_KEY` | **tidak** | gagal, exit 1 | **mati** |
+
+Prompt kuncinya bahkan tidak sempat tercetak, karena matinya di baris pertama
+fungsi — sebelum `read`. Itu petunjuk yang ada di keluaran operator sejak awal
+dan saya lewatkan tiga kali.
+
+**Kenapa tiga perbaikan saya meleset:**
+
+1. Urutan stage — benar sebagai perbaikan, tapi tidak menyentuh penyebabnya.
+2. `[[ -n "$v" ]] && {...}` di baris terakhir `_ask_secret` — cacat nyata, tapi
+   baris itu **tidak pernah tercapai** karena fungsinya mati di baris pertama.
+3. Uji pty saya "berhasil" karena `.env` uji saya **memuat** baris
+   `OPENROUTER_API_KEY=` (kosong tapi ada), sehingga grep-nya cocok. Kondisi
+   operator: barisnya tidak ada sama sekali. **Uji saya tidak meniru kondisi
+   yang dilaporkan.**
+
+Perbaikan: `|| true` di dalam `$( )` pada ketiga tempat — dua di
+`lib/20-credentials.sh`, satu di `lib/40-browser.sh` (sisa perbaikan
+ProcessSingleton saya sendiri, `pgrep` yang gagal saat tidak ada Chrome lama).
+
+**Dibuktikan dengan perbandingan langsung**, `.env` identik dengan milik
+operator (Telegram terisi, `OPENROUTER_API_KEY` tidak ada):
+
+```
+kode lama : ==> Kredensial → Telegram → ==> Model → MATI (exit 1)
+kode baru : ==> Kredensial → Telegram → ==> Model → Wallet → LANJUT (exit 0)
+```
+
+Uji end-to-end `install.sh` sungguhan dengan `.env` itu:
+
+```
+Memasang kode → Kredensial → Config utama → Profil worker
+  → Skill di HERMES_HOME → Memory lessons → Memasang Hermes
+profil 7/7 · memory/lessons 7/7 · skill 10/10 · knowledge 13/13
+```
+
+**Pemeriksaan validator untuk kelas bug ini.** Versi pertama regex-nya
+memakai `[^"]*`, yang berhenti di tanda kutip dalam `grep -E "^${var}="`,
+sehingga `\|` tidak pernah tercapai dan pemeriksaan **tidak pernah menangkap
+apa pun** — diuji dengan menghapus `|| true` dan melihatnya lolos. Diganti
+`.*`, dan sekarang menangkap kedua baris.
+
+**Pelajaran yang paling mahal dari arc ini:** saya tiga kali memperbaiki gejala
+karena tidak pernah mereproduksi kondisi yang dilaporkan operator. Uji yang
+`.env`-nya berbeda dari `.env` operator bukan uji untuk bug operator.
+
 ### Kelas bug yang berulang — dan cara menangkapnya
 
 **Memberi tahu agent memakai sesuatu yang tidak ada — atau melarang/mewajibkan
