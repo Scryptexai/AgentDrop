@@ -182,28 +182,28 @@ memory:
 # ---------------------------------------------------------------------------
 hooks:
   pre_tool_call:
-    - command: "python3 ~/.agentdrop/agent-hooks/audit-log.py"
+    - command: "python3 __AGENTDROP_HOOK__"
       timeout: 10
   post_tool_call:
-    - command: "python3 ~/.agentdrop/agent-hooks/audit-log.py"
+    - command: "python3 __AGENTDROP_HOOK__"
       timeout: 10
   subagent_start:
-    - command: "python3 ~/.agentdrop/agent-hooks/audit-log.py"
+    - command: "python3 __AGENTDROP_HOOK__"
       timeout: 10
   subagent_stop:
-    - command: "python3 ~/.agentdrop/agent-hooks/audit-log.py"
+    - command: "python3 __AGENTDROP_HOOK__"
       timeout: 10
   pre_approval_request:
-    - command: "python3 ~/.agentdrop/agent-hooks/audit-log.py"
+    - command: "python3 __AGENTDROP_HOOK__"
       timeout: 10
   post_approval_response:
-    - command: "python3 ~/.agentdrop/agent-hooks/audit-log.py"
+    - command: "python3 __AGENTDROP_HOOK__"
       timeout: 10
   on_session_start:
-    - command: "python3 ~/.agentdrop/agent-hooks/audit-log.py"
+    - command: "python3 __AGENTDROP_HOOK__"
       timeout: 10
   on_session_end:
-    - command: "python3 ~/.agentdrop/agent-hooks/audit-log.py"
+    - command: "python3 __AGENTDROP_HOOK__"
       timeout: 10
 
 # Cron dan gateway berjalan tanpa TTY, jadi pendaftaran hook baru tidak bisa

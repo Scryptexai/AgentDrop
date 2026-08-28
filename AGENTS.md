@@ -1134,3 +1134,72 @@ penyebab, periksa dulu apakah kode kita benar-benar melakukannya. Di sini
 tuduhannya mengarah ke `multiplex_profiles`, dan config itu memang kita set — tapi
 pemanggil yang salah adalah dashboard Hermes, bukan kita. Memperbaiki config
 untuk memuaskan pesan itu justru akan merusak cron.
+
+---
+
+## Arc 16 — `~` di tengah command hook: `expanduser` hanya bekerja di awal string
+
+Laporan operator, dan kali ini diagnosisnya tepat:
+
+```
+python3: can't open file '/home/nurkahfi/AgentDrop/~/.agentdrop/agent-hooks/audit-log.py'
+```
+
+Path itu membuktikan sendiri apa yang terjadi: `~` **literal** ditempel ke cwd.
+Akibatnya besar — hook gagal, dan **seluruh tool browser ikut terblokir**.
+
+### Kenapa `~` tidak ter-expand
+
+56 baris di 7 profil menulis:
+
+```yaml
+- command: "python3 ~/.agentdrop/agent-hooks/audit-log.py"
+```
+
+Hermes *memang* memanggil `os.path.expanduser` — `agent/shell_hooks.py:555`:
+
+```python
+argv = split_command_line(os.path.expanduser(spec.command))
+```
+
+Tapi `expanduser` hanya meng-expand `~` di **awal string**. Di sini `~` ada di
+token **kedua**, sesudah `python3 `. Jadi ia lolos apa adanya. Lalu
+`split_command_line()` memakai `shlex.split` dan `subprocess.Popen` dipanggil
+dengan `shell=False` (baris 581) — tidak ada shell yang meng-expand-nya. Python
+memperlakukannya sebagai path **relatif terhadap cwd agent**.
+
+Direproduksi di sandbox, kata per kata sama dengan error operator:
+
+```
+argv  : ['python3', '~/.agentdrop/agent-hooks/audit-log.py']
+rc    : 2
+stderr: python3: can't open file '/home/user/AgentDrop/~/.agentdrop/.../audit-log.py'
+```
+
+### Perbaikan
+
+Repo tidak bisa hardcode `/home/<user>` — config ini di-commit dan dipakai semua
+orang. Jadi dipakai placeholder yang **dirender saat install**:
+
+- config: `python3 __AGENTDROP_HOOK__`
+- `lib/30-hermes.sh` merendernya dengan `sed` menjadi `$STATE_DIR/agent-hooks/audit-log.py`
+  saat menyalin config ke profil, dan memperingatkan kalau placeholder tersisa.
+
+Diuji dengan menjalankan hook **persis seperti Hermes memanggilnya**
+(`shlex.split(os.path.expanduser(cmd))`, `shell=False`, cwd = repo):
+versi lama `rc=2` dengan pesan error operator, versi baru `rc=0`.
+
+Dikunci pemeriksaan `[26]`: menolak `~` di command hook (regex diuji terhadap
+lima kasus, termasuk `~` di awal string yang memang ditangani `expanduser`), dan
+memastikan `lib/30-hermes.sh` benar-benar merender placeholder-nya — tanpa itu
+hook akan memanggil berkas bernama harfiah `__AGENTDROP_HOOK__`. Dua suntikan
+diuji: kembalikan `~` ke satu profil, dan hapus renderer-nya. Keduanya tertangkap.
+
+Pemeriksaan lama yang mencari teks `audit-log.py` di config juga diperbarui —
+tanpa itu ia akan melaporkan 56 error palsu sesudah placeholder masuk.
+
+**Pelajaran:** `expanduser` bukan "shell". Ia hanya menangani satu pola di satu
+posisi. Kalau sebuah command disimpan sebagai string dan dijalankan dengan
+`shell=False`, **tidak ada** ekspansi `~`, `$VAR`, glob, atau pipe — semuanya
+harus sudah berupa nilai literal yang benar. Untuk path yang bergantung mesin,
+render saat install; jangan mengandalkan ekspansi runtime.

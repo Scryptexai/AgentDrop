@@ -987,6 +987,63 @@ _GATEWAY_PER_PROFIL = re.compile(
 )
 
 
+# `~` DILARANG di dalam command hook config.
+#
+# agent/shell_hooks.py:555 memang memanggil os.path.expanduser(spec.command),
+# tapi expanduser hanya meng-expand `~` di AWAL string. Command hook berbentuk
+# `python3 ~/.agentdrop/agent-hooks/audit-log.py` -- `~` ada di token KEDUA,
+# jadi ia lolos apa adanya. split_command_line() lalu memakai shlex.split dan
+# subprocess dipanggil dengan shell=False (baris 581), jadi tidak ada shell yang
+# meng-expand-nya. Python memperlakukannya sebagai path RELATIF terhadap cwd
+# agent, dan hasilnya di mesin operator:
+#
+#   python3: can't open file '/home/<user>/AgentDrop/~/.agentdrop/agent-hooks/
+#   audit-log.py': [Errno 2] No such file or directory
+#
+# Hook yang gagal membuat SEMUA tool browser ikut gagal. Karena repo tidak bisa
+# hardcode /home/<user> (config di-commit untuk semua orang), installer merender
+# placeholder __AGENTDROP_HOOK__ menjadi path absolut.
+_HOOK_TILDE = re.compile(r'command:\s*["\']?[^"\'\n]*\s~/')
+
+
+def check_hook_paths() -> None:
+    """Command hook tidak boleh memakai `~`; placeholder harus ada."""
+    global checks
+    print("\n[26] Path hook audit")
+    cfgs = sorted(REPO.glob("config/hermes/**/config.yaml"))
+    tilde = placeholder = 0
+    for cfg in cfgs:
+        checks += 1
+        for i, line in enumerate(cfg.read_text().splitlines(), 1):
+            s = line.strip()
+            if s.startswith("#"):
+                continue
+            if _HOOK_TILDE.search(line):
+                err(f"{cfg.relative_to(REPO)}:{i}: command hook memakai `~`. "
+                    f"os.path.expanduser (agent/shell_hooks.py:555) hanya "
+                    f"meng-expand `~` di awal string, dan subprocess dijalankan "
+                    f"dengan shell=False, jadi `~` di tengah command menjadi "
+                    f"path relatif terhadap cwd agent dan hook gagal -- "
+                    f"memblokir semua tool browser. Pakai placeholder "
+                    f"__AGENTDROP_HOOK__ yang dirender install.sh jadi absolut.")
+                tilde += 1
+            if "__AGENTDROP_HOOK__" in line:
+                placeholder += 1
+    # Placeholder harus benar-benar dirender installer, bukan dibiarkan.
+    checks += 1
+    sh = (REPO / "lib" / "30-hermes.sh")
+    body = sh.read_text() if sh.exists() else ""
+    if placeholder and "__AGENTDROP_HOOK__" not in body:
+        err(f"lib/30-hermes.sh tidak merender __AGENTDROP_HOOK__, padahal "
+            f"{placeholder} baris config memakainya. Hook akan memanggil path "
+            f"bernama harfiah '__AGENTDROP_HOOK__' dan gagal.")
+    elif placeholder:
+        print(f"  · {placeholder} baris hook memakai placeholder, dirender "
+              f"oleh lib/30-hermes.sh")
+    if tilde == 0 and placeholder == 0:
+        print("  · tidak ada command hook")
+
+
 def check_no_profile_gateway() -> None:
     """Tidak boleh ada `hermes --profile X gateway ...` di kode shell."""
     global checks
@@ -1424,9 +1481,14 @@ def check_audit_log() -> None:
                 f"hook diabaikan diam-diam")
         for ev, entries in hooks.items():
             for e in (entries or []):
-                cmd = (e or {}).get("command", "")
-                if "audit-log.py" not in cmd:
-                    err(f"{name}: hooks.{ev} tidak menunjuk audit-log.py")
+                  cmd = (e or {}).get("command", "")
+                  # Sesudah placeholder diperkenalkan (lihat check_hook_paths),
+                  # nama berkas tidak lagi muncul di config repo: yang ada
+                  # adalah __AGENTDROP_HOOK__, dirender lib/30-hermes.sh menjadi
+                  # path absolut saat install. Jadi yang sah ada dua bentuk.
+                  if "audit-log.py" not in cmd and "__AGENTDROP_HOOK__" not in cmd:
+                      err(f"{name}: hooks.{ev} tidak menunjuk audit-log.py "
+                          f"maupun placeholder __AGENTDROP_HOOK__: {cmd!r}")
 
     # setup.sh harus menyalin hook ke lokasi tetap, karena command hook tidak
     # meng-expand $VAR (hanya expanduser).
@@ -1557,6 +1619,7 @@ def main() -> int:
     check_model_provider(configs)
     check_browser_backend(configs)
     check_no_profile_gateway()
+    check_hook_paths()
 
     print("\n[18] Memory loop + aturan anti prompt-injection")
     check_memory_loop(configs)

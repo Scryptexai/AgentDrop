@@ -43,7 +43,28 @@ hermes_install() {
     # berkas yang tidak pernah ada — dan memory loop yang jadi alasan K12
     # tidak pernah benar-benar berputar.
     mkdir -p "$dst/memories" "$dst/logs" "$dst/cron" "$dst/memory/lessons"
-    cp "$src/config.yaml" "$dst/config.yaml"
+    # config.yaml dirender, bukan disalin mentah: placeholder
+    # __AGENTDROP_HOOK__ diganti path ABSOLUT ke audit-log.py.
+    #
+    # Kenapa tidak pakai "~/.agentdrop/..." di repo:
+    # agent/shell_hooks.py:555 memang memanggil os.path.expanduser(spec.command),
+    # TAPI expanduser hanya meng-expand `~` di AWAL string. Command hook kita
+    # berbentuk `python3 ~/.agentdrop/agent-hooks/audit-log.py` — `~` ada di
+    # token KEDUA, jadi ia lolos apa adanya. Lalu split_command_line() memakai
+    # shlex.split dan subprocess dipanggil dengan shell=False (baris 581), jadi
+    # tidak ada shell yang meng-expand `~` itu. Python memperlakukannya sebagai
+    # path RELATIF terhadap cwd agent, dan hasilnya:
+    #
+    #   /home/<user>/AgentDrop/~/.agentdrop/agent-hooks/audit-log.py
+    #
+    # Hook gagal -> SEMUA tool browser ikut gagal. Sudah terjadi di mesin
+    # operator. Path absolut satu-satunya perbaikan yang benar; repo tidak bisa
+    # hardcode /home/<user> karena config ini di-commit untuk semua orang.
+    sed "s|__AGENTDROP_HOOK__|$STATE_DIR/agent-hooks/audit-log.py|g" \
+      "$src/config.yaml" > "$dst/config.yaml"
+    if grep -q "__AGENTDROP_HOOK__" "$dst/config.yaml"; then
+      _warn "$p: placeholder __AGENTDROP_HOOK__ belum terganti"
+    fi
     [[ -f "$src/SOUL.md" ]] && cp "$src/SOUL.md" "$dst/SOUL.md"
 
     # Tiap profil adalah HERMES_HOME terpisah, jadi butuh .env sendiri:
