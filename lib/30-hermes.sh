@@ -21,10 +21,42 @@ declare -A PROFILE_SKILLS=(
   [worker-x]="browser-operation browser-burn-in x-engager self-improvement"
 )
 
+_render_config() {  # _render_config SRC DST LABEL
+  # Salin SRC ke DST sambil mengganti placeholder menjadi nilai konkret.
+  # Alasan kedua kelompok placeholder ada di komentar pemanggil di bawah.
+  local _src="$1" _dst="$2" _lbl="$3"
+  local _tmp _nama _nilai
+  _tmp="$(mktemp)"
+  sed "s|__AGENTDROP_HOOK__|$STATE_DIR/agent-hooks/audit-log.py|g" "$_src" > "$_tmp"
+  if grep -q "__AGENTDROP_HOOK__" "$_tmp"; then
+    _warn "$_lbl: placeholder __AGENTDROP_HOOK__ belum terganti"
+  fi
+  # Ganti setiap ${AGENTDROP_NAMA} dengan nilainya dari .env.
+  for _nama in $(grep -oE '\$\{AGENTDROP_[A-Z0-9_]+\}' "$_tmp" \
+                 | tr -d '${}' | sort -u); do
+    _nilai="$(_env_get "$_nama")"
+    if [[ -z "$_nilai" ]]; then
+      _warn "$_lbl: $_nama kosong di .env — config akan berisi string kosong"
+      continue
+    fi
+    # | sebagai pemisah sed karena nilai bisa berisi / (URL).
+    sed -i "s|\${$_nama}|$_nilai|g" "$_tmp"
+  done
+  if grep -qE '\$\{AGENTDROP_[A-Z0-9_]+\}' "$_tmp"; then
+    _warn "$_lbl: masih ada \${AGENTDROP_*} yang belum terganti"
+  fi
+  mv "$_tmp" "$_dst"
+}
+
 hermes_install() {
   _log "Config utama"
   mkdir -p "$HERMES_HOME_DIR"
-  cp "$REPO_ROOT/config/hermes/config.yaml" "$HERMES_HOME_DIR/config.yaml"
+  # Config utama juga dirender, bukan disalin. Alasannya sama dengan profil:
+  # jalur tampilan Hermes memakai read_user_config_raw() yang TIDAK
+  # meng-expand ${VAR} (config.py:3366-3372), jadi menyalin mentah membuat
+  # profil "default" tampil sebagai "${AGENTDROP_MODEL}" di dashboard.
+  _render_config "$REPO_ROOT/config/hermes/config.yaml" \
+                 "$HERMES_HOME_DIR/config.yaml" "config utama"
   [[ -f "$REPO_ROOT/config/hermes/SOUL.md" ]] && \
     cp "$REPO_ROOT/config/hermes/SOUL.md" "$HERMES_HOME_DIR/SOUL.md"
   _ok "~/.hermes/config.yaml"
@@ -60,11 +92,38 @@ hermes_install() {
     # Hook gagal -> SEMUA tool browser ikut gagal. Sudah terjadi di mesin
     # operator. Path absolut satu-satunya perbaikan yang benar; repo tidak bisa
     # hardcode /home/<user> karena config ini di-commit untuk semua orang.
-    sed "s|__AGENTDROP_HOOK__|$STATE_DIR/agent-hooks/audit-log.py|g" \
-      "$src/config.yaml" > "$dst/config.yaml"
-    if grep -q "__AGENTDROP_HOOK__" "$dst/config.yaml"; then
-      _warn "$p: placeholder __AGENTDROP_HOOK__ belum terganti"
-    fi
+    # config.yaml DIRENDER, bukan disalin mentah. Dua kelompok placeholder:
+    #
+    # 1. __AGENTDROP_HOOK__ -> path ABSOLUT ke audit-log.py.
+    #    Kenapa tidak "~/.agentdrop/...": agent/shell_hooks.py:555 memang
+    #    memanggil os.path.expanduser(spec.command), TAPI expanduser hanya
+    #    meng-expand `~` di AWAL string. Command hook kita berbentuk
+    #    `python3 ~/...` — `~` ada di token KEDUA, jadi lolos apa adanya.
+    #    split_command_line() memakai shlex.split dan subprocess dipanggil
+    #    dengan shell=False (baris 581), jadi tidak ada shell yang
+    #    meng-expand-nya. Python memperlakukannya sebagai path RELATIF
+    #    terhadap cwd agent. Sudah terjadi di mesin operator: hook gagal ->
+    #    SEMUA tool browser ikut gagal.
+    #
+    # 2. ${AGENTDROP_*} -> nilai konkret dari .env.
+    #    Hermes meng-expand ${VAR} di jalur RUNTIME (config.py:2723
+    #    _expand_env_vars, dipakai load_config) — itu benar dan sudah diuji.
+    #    TAPI jalur TAMPILAN memakai read_user_config_raw(), yang dokumen
+    #    Hermes sendiri nyatakan TIDAK melakukan ekspansi:
+    #
+    #      "No DEFAULT_CONFIG merge, no managed-scope overlay, no
+    #       ${ENV_VAR} expansion"      (config.py:3366-3372)
+    #
+    #    profiles.py:756 _read_config_model() memakainya, jadi `hermes profile
+    #    list` dan dashboard menampilkan string "${AGENTDROP_MODEL_WORKER_X}"
+    #    apa adanya. doctor.py juga memakai read_user_config_raw di beberapa
+    #    tempat (1507, 1747, 1795, 3217). Menambal semua jalur tampilan itu
+    #    berarti mengubah kode Hermes — bukan bagian kita.
+    #
+    #    Jadi nilainya dirender DI SINI, dari .env, saat install. Runtime dan
+    #    tampilan jadi sama-sama benar, dan config terpasang tetap bisa dibaca
+    #    manusia tanpa harus membuka .env.
+    _render_config "$src/config.yaml" "$dst/config.yaml" "$p"
     [[ -f "$src/SOUL.md" ]] && cp "$src/SOUL.md" "$dst/SOUL.md"
 
     # Tiap profil adalah HERMES_HOME terpisah, jadi butuh .env sendiri:

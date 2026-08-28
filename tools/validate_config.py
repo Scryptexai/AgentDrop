@@ -1027,6 +1027,64 @@ _HOOK_TILDE = re.compile(r'command:\s*["\']?[^"\'\n]*\s~/')
 SNAPSHOT_THRESHOLD_MAX = 15000
 
 
+def check_render_config() -> None:
+    """install.sh harus merender ${AGENTDROP_*} menjadi nilai konkret.
+
+    Runtime Hermes meng-expand ${VAR} (config.py:2723 _expand_env_vars), jadi
+    agent tetap jalan walau config berisi rujukan. TAPI jalur TAMPILAN memakai
+    read_user_config_raw(), yang dokumen Hermes sendiri nyatakan tidak
+    melakukan ekspansi:
+
+        "No DEFAULT_CONFIG merge, no managed-scope overlay, no ${ENV_VAR}
+         expansion"        (hermes_cli/config.py:3366-3372)
+
+    profiles.py:756 _read_config_model() memakainya, sehingga `hermes profile
+    list` dan dashboard menampilkan "${AGENTDROP_MODEL_WORKER_X}" apa adanya.
+    doctor.py juga memakainya di beberapa tempat (1507, 1747, 1795, 3217).
+
+    Karena itu config TERPASANG harus berisi nilai konkret, dan satu-satunya
+    tempat yang bisa melakukannya adalah install.sh.
+    """
+    global checks
+    print("\n[29] Render config saat install")
+
+    lib = REPO / "lib" / "30-hermes.sh"
+    if not lib.exists():
+        warn("lib/30-hermes.sh tidak ada")
+        return
+    isi = lib.read_text()
+
+    checks += 1
+    if "_render_config()" not in isi:
+        err("lib/30-hermes.sh tidak punya fungsi _render_config. Tanpa itu "
+            "config terpasang berisi ${AGENTDROP_*} mentah dan Hermes "
+            "menampilkannya apa adanya di `hermes profile list` maupun "
+            "dashboard, karena jalur tampilan memakai read_user_config_raw() "
+            "yang tidak meng-expand ${VAR} (config.py:3366-3372).")
+    else:
+        print("  · fungsi _render_config ada")
+
+    # Kedua jalur harus memakainya: config utama DAN tiap profil.
+    checks += 1
+    pakai = len(re.findall(r'^\s*_render_config "', isi, re.M))
+    if pakai < 2:
+        err(f"_render_config hanya dipanggil {pakai} kali. Harus dua: config "
+            f"utama (~/.hermes/config.yaml) dan tiap profil "
+            f"(~/.hermes/profiles/*/config.yaml). Kalau hanya satu, sisi yang "
+            f"lain tetap tampil sebagai ${{AGENTDROP_*}} di dashboard.")
+    else:
+        print(f"  · dipanggil {pakai}x (config utama + profil)")
+
+    # cp mentah ke config.yaml tidak boleh tersisa.
+    checks += 1
+    if re.search(r'cp "\$REPO_ROOT/config/hermes/config\.yaml"', isi):
+        err("lib/30-hermes.sh masih menyalin config utama dengan `cp` mentah. "
+            "Gunakan _render_config supaya ${AGENTDROP_*} menjadi nilai "
+            "konkret.")
+    else:
+        print("  · tidak ada `cp` mentah untuk config.yaml")
+
+
 def check_custom_base_url_trap() -> None:
     """CUSTOM_BASE_URL tidak dibaca Hermes; jangan biarkan dokumen menyuruh memakainya.
 
@@ -1787,6 +1845,7 @@ def main() -> int:
     check_hook_paths()
     check_snapshot_budget(configs)
     check_custom_base_url_trap()
+    check_render_config()
 
     print("\n[18] Memory loop + aturan anti prompt-injection")
     check_memory_loop(configs)

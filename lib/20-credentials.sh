@@ -5,6 +5,14 @@
 # Alasannya konkret: .env tersalin ke setiap profil Hermes, jadi satu key di
 # sana berarti key itu ada di tujuh tempat. Key ditaruh di berkas tersendiri
 # berizin 0600 yang sudah di-gitignore, dan .env hanya menyimpan PATH-nya.
+_env_get() {  # _env_get KEY  — baca satu kunci dari $ENV_FILE (kosong kalau tidak ada)
+  # Dipakai lib/30-hermes.sh untuk merender ${AGENTDROP_*} menjadi nilai konkret.
+  # `|| true` wajib: tanpa itu, grep yang tidak menemukan apa pun membuat
+  # pipeline gagal dan `set -euo pipefail` menjatuhkan seluruh install.
+  local _k="$1"
+  grep -E "^${_k}=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- || true
+}
+
 _env_set() {  # _env_set KEY VALUE  — tulis/ganti satu kunci di $ENV_FILE
   local k="$1" v="$2"
   if grep -qE "^${k}=" "$ENV_FILE" 2>/dev/null; then
