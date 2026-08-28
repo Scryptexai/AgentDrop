@@ -452,6 +452,53 @@ dan exit -1. Solusinya kelas karakter — `user-data-di[r]=...` — supaya pola
 tidak cocok dengan dirinya sendiri. Ini contoh keempat dari pola lama: **kalau
 pemeriksaan saya bertingkah aneh, yang dicurigai pemeriksaannya.**
 
+### install.sh gagal sebelum sempat membuat profil dan skill
+
+Operator melaporkan: tidak ada profil agent yang terbuat, skill juga tidak.
+Keluhan itu benar, dan penyebabnya urutan stage.
+
+`stage_deps` berjalan **pertama**, dan di dalamnya ada **8 panggilan `_die`**
+(`_die() { _err "$*"; exit 1; }` di `lib/00-common.sh:24`). Stage itu mengunduh
+installer Hermes dan memasang PyYAML lewat pip — dua langkah yang paling sering
+gagal: jaringan, proxy, PEP 668, disk penuh. Begitu salah satunya gagal, install
+berhenti dan `stage_setup` **tidak pernah tercapai**. Padahal `stage_setup`-lah
+yang memanggil `hermes_install`, satu-satunya tempat profil dan skill disalin.
+
+Jadi "install gagal" dan "profil kosong" adalah satu kejadian yang sama.
+
+Perbaikannya urutan, bukan logika. Profil, skill, config, hook, dan memory
+semuanya **murni salin-berkas dari repo** — diverifikasi: nol rujukan
+`curl`/`npx`/`pip`/`venv`/`python` di `stage_setup`. Tidak ada alasan
+menaruhnya di belakang langkah berjaringan. Urutan baru:
+
+```
+stage_install_code → stage_credentials → stage_setup → stage_deps → stage_browser → stage_verify
+```
+
+**Diuji sungguhan, bukan dibaca.** `install.sh --non-interactive --skip-browser`
+dijalankan dengan `HOME` tiruan di sandbox yang egress-nya diblokir, sehingga
+unduhan Hermes gagal dengan `SSL_ERROR_SYSCALL`. Hasilnya:
+
+```
+exit code: 1                     (Hermes memang gagal)
+profil : 7 dari 7                (tetap terbuat)
+skill  : 10 dari 10              (tetap terbuat)
+config : ADA
+```
+
+Dan urutan barunya terlihat di log: `Config utama` baris 21, `Profil worker`
+baris 23, `Memasang Hermes` baris 56.
+
+**Catatan tentang diagnosis saya sendiri.** Dugaan pertama saya adalah
+`hermes_install` tidak pernah dipanggil. Itu salah — `grep` menunjukkan ia
+dipanggil di `install.sh:167`. Uji pertama saya juga menyesatkan: log mencetak
+"✓ worker-orchestrator — 5 skill" untuk ketujuh profil, tapi direktori tujuan
+kosong. Penyebabnya harness saya menyetel `HERMES_HOME_DIR` **sebelum**
+me-source `lib/00-common.sh`, yang menimpanya di baris 9
+(`HERMES_HOME_DIR="${HERMES_HOME:-$HOME/.hermes}"`). Berkasnya ada, hanya di
+tempat lain. **Log yang sukses dan disk yang kosong harus diselesaikan dulu
+sebelum menyimpulkan apa pun.**
+
 ### Kelas bug yang berulang — dan cara menangkapnya
 
 **Memberi tahu agent memakai sesuatu yang tidak ada — atau melarang/mewajibkan

@@ -249,10 +249,27 @@ if [[ "$VERIFY_ONLY" == true ]]; then
   exit "${VERIFY_FAILED:-0}"
 fi
 
-stage_deps
+# URUTAN INI SENGAJA, DAN ALASANNYA NYATA.
+#
+# Profil, skill, config, hook, dan memory semuanya murni salin-berkas dari repo:
+# tidak butuh jaringan, tidak butuh Hermes, tidak butuh venv. Sedangkan
+# stage_deps mengunduh installer Hermes dan memasang PyYAML lewat pip — dua
+# langkah yang paling sering gagal (jaringan, proxy, PEP 668, disk penuh).
+#
+# Ketika stage_deps berjalan LEBIH DULU, tiap kegagalannya memanggil _die yang
+# exit 1, jadi stage_setup tidak pernah tercapai. Hasilnya: pengguna melihat
+# "install gagal" dan ~/.hermes/profiles/ KOSONG — tidak ada satu pun profil atau
+# skill yang terbuat. Persis keluhan yang masuk: "tidak ada profiles agent yang
+# dibuat, skill juga tidak di-create".
+#
+# Karena itu pekerjaan yang pasti berhasil didahulukan. Kalau Hermes gagal
+# terpasang, profil dan skill tetap ada di disk, dan menjalankan ulang
+# ./install.sh sesudah jaringan pulih akan menyambung dari situ — bukan mengulang
+# dari nol.
 stage_install_code
 stage_credentials
 stage_setup
+stage_deps
 stage_browser
 stage_verify
 
