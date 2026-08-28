@@ -42,10 +42,27 @@ model:
   # melihat slug yang benar-benar tersedia di akun Anda.
   default: "anthropic/claude-sonnet-4"
 
-  # "auto" = deteksi dari kredensial yang ada. Pilihan lain yang valid:
-  # openrouter, anthropic, openai-codex, copilot, gemini, nous, nous-api,
-  # custom (vLLM/Ollama/LM Studio), deepinfra, nvidia, huggingface, ...
-  provider: "auto"
+  # JANGAN pakai "auto" di sini — ini bukan selera, ini sebab-akibat.
+  #
+  # hermes_cli/config.py:2990 (split_model_config_default) menulis sendiri
+  # bahayanya: merged `model.provider` default "often `auto`, which runtime
+  # resolution treats as authoritative and would otherwise route the model
+  # through the wrong active provider".
+  #
+  # Dan di hermes_cli/auth.py:2268, "auto" baru dipakai kalau provider yang
+  # diminta ADA di PROVIDER_REGISTRY. "auto" tidak ada di sana (37 nama:
+  # nous, openai-codex, openai-api, copilot, gemini, anthropic, ...), dan
+  # "openrouter" pun tidak — openrouter ditangani early-return terpisah di
+  # auth.py:2262. Jadi `provider: "auto"` tidak pernah menyelesaikan ke
+  # OpenRouter; ia jatuh ke deteksi env/auth.json, dan katalog model yang
+  # dibangun model_catalog.py per-provider jadi tidak menunjuk OpenRouter.
+  #
+  # Gejala di layar operator: model custom tidak termuat, yang terlihat hanya
+  # model dan provider bawaan Hermes.
+  #
+  # Nilai sah lain: openrouter, anthropic, openai-codex, copilot, gemini,
+  # nous, custom (vLLM/Ollama/LM Studio), deepinfra, nvidia, huggingface, ...
+  provider: "openrouter"
 
   # Default bawaan Hermes. Ganti kalau pakai provider custom.
   base_url: "https://openrouter.ai/api/v1"

@@ -13,7 +13,13 @@
 model:
   # Tugas analisis butuh penalaran kuat. Jalankan `hermes model` untuk slug valid.
   default: "anthropic/claude-sonnet-4"
-  provider: "auto"
+  # "openrouter", BUKAN "auto". "auto" tidak pernah menyelesaikan ke OpenRouter
+  # (hermes_cli/auth.py:2268 memeriksa PROVIDER_REGISTRY, dan "auto" tidak ada
+  # di sana; config.py:2990 memperingatkan "auto" justru membuat model dirutekan
+  # lewat provider yang salah). Gejalanya: model custom tidak termuat dan UI
+  # hanya menampilkan model/provider bawaan Hermes. Penjelasan panjang ada di
+  # config/hermes/config.yaml.
+  provider: "openrouter"
   base_url: "https://openrouter.ai/api/v1"
 
 toolsets:

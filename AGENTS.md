@@ -960,3 +960,53 @@ UI yang menampilkan 87 memang menandakan sesuatu yang belum kita kunci
 (laporan operator benar soal gejalanya). Jangan berhenti di "klaimnya
 keliru" — cari tahu apa yang sebenarnya dilihat orang itu.
 
+
+---
+
+## Arc 13 — Model custom tidak termuat: `provider: "auto"` tidak menyelesaikan ke apa pun
+
+Laporan operator: *"model setiap worker tidak termuat custom model, semua model
+dan provider bawaan hermes saja yg tersedia atau terlihat."*
+
+Kuncinya **sah** — `model.default`, `model.provider`, `model.base_url` semuanya
+dibaca Hermes (34/50/29 kemunculan di `hermes_cli/`). Yang salah adalah
+**nilainya**.
+
+Dua baris sumber yang menentukan:
+
+1. `hermes_cli/auth.py:2268`
+   ```python
+   if normalized != "auto": ...
+   ```
+   `model.provider` hanya dipakai kalau nilainya ada di `PROVIDER_REGISTRY` —
+   37 nama (`nous`, `openai-codex`, `openai-api`, `copilot`, `gemini`,
+   `anthropic`, ...). **`"auto"` tidak ada di sana.** Dan `"openrouter"` pun
+   tidak: openrouter ditangani *early-return* terpisah di `auth.py:2262`.
+   Jadi `provider: "auto"` tidak pernah menyelesaikan ke OpenRouter — ia jatuh
+   ke deteksi env / `auth.json`.
+
+2. `hermes_cli/config.py:2990` — Hermes memperingatkan hal ini sendiri:
+   > merged `model.provider` default (often `"auto"`, **which runtime
+   > resolution treats as authoritative and would otherwise route the model
+   > through the wrong active provider**)
+
+Karena provider tidak pernah jadi `openrouter`, katalog model yang dibangun
+`hermes_cli/model_catalog.py` **per-provider** tidak menunjuk OpenRouter.
+Itulah sebabnya UI hanya menampilkan model dan provider bawaan Hermes —
+persis yang dilihat operator.
+
+**Perbaikan:** `provider: "auto"` → `provider: "openrouter"` di **8 berkas**
+(config utama + 7 profil; profil tidak mewarisi config utama). Komentar lama
+yang menganjurkan `"auto"` ikut diganti — komentar yang salah lebih berbahaya
+daripada tidak ada komentar, karena orang berikutnya akan mempercayainya.
+
+Dikunci pemeriksaan `[23]`, diuji tiga suntikan: `provider: "auto"` di satu
+profil (cacat asli operator), `provider: "gemini"` yang tidak cocok dengan
+`base_url` OpenRouter, dan `model.default` tanpa prefix `provider/`.
+Ketiganya tertangkap.
+
+**Pelajaran:** nilai `"auto"` terasa aman karena terdengar seperti "biarkan
+sistem memilih". Di sini ia justru berarti *"tidak memilih apa pun"* — dan
+kegagalannya tidak bersuara, hanya diam-diam memakai provider lain. Kalau sebuah
+config punya field yang menentukan sumber data, nilai `auto` di field itu
+harus diverifikasi ke kode yang membacanya, bukan diasumsikan.

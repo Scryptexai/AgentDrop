@@ -933,6 +933,67 @@ SKILL_BAWAAN_DILARANG = {
 SKILL_TIDAK_BOLEH_DIMATIKAN = {"hermes-agent"}
 
 
+# Provider model yang harus dipakai semua config.
+#
+# "auto" DILARANG, dan ini bukan selera. hermes_cli/auth.py:2268 hanya memakai
+# model.provider kalau nilainya ada di PROVIDER_REGISTRY (37 nama: nous,
+# openai-codex, openai-api, copilot, gemini, anthropic, ...). "auto" tidak ada
+# di sana, dan "openrouter" pun tidak -- openrouter ditangani early-return
+# terpisah di auth.py:2262. Jadi "auto" tidak pernah menyelesaikan ke
+# OpenRouter; ia jatuh ke deteksi env/auth.json.
+#
+# hermes_cli/config.py:2990 menulis bahayanya sendiri: merged model.provider
+# default "often `auto`, which runtime resolution treats as authoritative and
+# would otherwise route the model through the wrong active provider".
+#
+# Gejala di mesin operator: model custom tidak termuat, dashboard hanya
+# menampilkan model dan provider bawaan Hermes.
+MODEL_PROVIDER_WAJIB = "openrouter"
+MODEL_PROVIDER_DILARANG = {"auto"}
+
+
+def check_model_provider(configs: list[Path]) -> None:
+    """model.provider harus eksplisit, bukan 'auto', di setiap config."""
+    global checks
+    print("\n[23] Provider model")
+    for cfg in configs:
+        if not cfg.exists():
+            continue
+        checks += 1
+        try:
+            data = yaml.safe_load(cfg.read_text()) or {}
+        except Exception as exc:
+            err(f"{cfg.relative_to(REPO)}: YAML tidak bisa dibaca: {exc}")
+            continue
+        model = data.get("model")
+        nama = ("config.yaml utama" if cfg.parent.name == "hermes"
+                else cfg.parent.name)
+        if not isinstance(model, dict):
+            err(f"{nama}: tidak ada blok `model:` berbentuk mapping -- model "
+                f"worker tidak akan termuat dari config ini.")
+            continue
+        prov = str(model.get("provider") or "").strip()
+        if prov in MODEL_PROVIDER_DILARANG:
+            err(f"{nama}: model.provider = \"{prov}\". Nilai itu tidak pernah "
+                f"menyelesaikan ke OpenRouter (hermes_cli/auth.py:2268 hanya "
+                f"menerima nama yang ada di PROVIDER_REGISTRY, dan \"{prov}\" "
+                f"tidak ada di sana), jadi model custom tidak termuat dan UI "
+                f"hanya menampilkan model bawaan Hermes. Pakai "
+                f"\"{MODEL_PROVIDER_WAJIB}\".")
+        elif prov != MODEL_PROVIDER_WAJIB:
+            err(f"{nama}: model.provider = \"{prov or '<kosong>'}\", diharapkan "
+                f"\"{MODEL_PROVIDER_WAJIB}\". base_url kita menunjuk "
+                f"https://openrouter.ai/api/v1, jadi provider lain akan "
+                f"merutekan permintaan ke tempat yang salah.")
+        else:
+            dflt = str(model.get("default") or "").strip()
+            if "/" not in dflt:
+                err(f"{nama}: model.default = \"{dflt}\" tidak berbentuk "
+                    f"provider/model. OpenRouter menolak slug tanpa prefix.")
+            else:
+                print(f"  · {nama}: {dflt} lewat {prov}")
+
+
 def check_skills_disabled(configs: list[Path]) -> None:
     """Setiap config harus mematikan skill bawaan Hermes yang kita larang."""
     global checks
@@ -1385,6 +1446,7 @@ def main() -> int:
     print("\n[17] Akses shell dimatikan di semua worker")
     check_shell_disabled(configs)
     check_skills_disabled(configs)
+    check_model_provider(configs)
 
     print("\n[18] Memory loop + aturan anti prompt-injection")
     check_memory_loop(configs)
