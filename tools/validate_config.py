@@ -381,6 +381,26 @@ def check_shell(path: Path) -> None:
                 f"padahal ketujuh SOUL.md menyuruh agent membaca "
                 f"memory/lessons/<profil>.md relatif terhadap HERMES_HOME profil")
 
+    # Baris TERAKHIR sebuah fungsi tidak boleh `[[ ... ]] && ...`.
+    #
+    # Kalau ujinya gagal, bentuk && mengembalikan 1, dan karena itu perintah
+    # terakhir, fungsi ikut mengembalikan 1. Di bawah `set -euo pipefail`
+    # pemanggilnya mati TANPA pesan error. Ini yang membuat install operator
+    # berhenti tepat sesudah "==> Model" ketika kunci API dibiarkan kosong --
+    # padahal prompt-nya sendiri menulis "atau kosongkan lalu isi di .env".
+    # Akibatnya stage_setup tidak pernah jalan dan ~/.hermes/profiles/ kosong.
+    #
+    # Diuji dengan pty sungguhan: pola && mati sesudah prompt, if/then lanjut.
+    _lines = text.splitlines()
+    for _i, _l in enumerate(_lines):
+        if _l.strip() == "}" and _i > 0:
+            _prev = _lines[_i - 1].strip()
+            if re.match(r"^\[\[.*\]\]\s*&&", _prev):
+                err(f"{rel}:{_i}: baris terakhir fungsi adalah `{_prev[:60]}`. "
+                    f"Bentuk && mengembalikan 1 saat ujinya gagal, sehingga fungsi "
+                    f"mengembalikan 1 dan set -e mematikan pemanggilnya tanpa pesan. "
+                    f"Pakai if/then, atau akhiri dengan `return 0`.")
+
     # crontab sistem: kita sengaja pakai cron internal Hermes
     if re.search(r"^\s*\(crontab", text, re.MULTILINE):
         warn(f"{rel}: memakai system crontab. AgentDrop memakai scheduler internal "

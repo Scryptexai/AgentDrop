@@ -560,6 +560,65 @@ memory loop (kerja)       repo=7   terpasang=7
 config.yaml profil        repo=7   terpasang=7
 ```
 
+### Install berhenti diam-diam di "==> Model" — dan profil tidak pernah terbuat
+
+Operator menjalankan `./install.sh` dan keluarannya berhenti tepat sesudah
+`==> Model`, tanpa pesan error. `~/.hermes/profiles/` kosong.
+
+Penyebabnya satu baris di `_ask_secret` (`lib/20-credentials.sh`):
+
+```sh
+[[ -n "$v" ]] && { _env_set "$var" "$v"; _ok "$var diisi"; }
+```
+
+Itu baris **terakhir** fungsi. Kalau pengguna menekan Enter tanpa mengisi kunci
+API, `$v` kosong, ujiannya gagal, bentuk `&&` mengembalikan **1**, dan fungsi
+ikut mengembalikan 1. Di bawah `set -euo pipefail` pemanggilnya mati **tanpa
+pesan apa pun**.
+
+Yang membuat ini jahat: prompt-nya sendiri menulis *"atau kosongkan lalu isi di
+.env"* — jadi mengosongkan adalah jalur yang sah, dan justru jalur itulah yang
+mematikan pemasangan. Karena `stage_credentials` berjalan sebelum
+`stage_setup`, profil, skill, dan memory loop tidak pernah terbuat.
+
+**Perbaikan urutan kemarin tidak cukup.** Saya sudah memindah `stage_deps` ke
+belakang `stage_setup`, tapi `stage_credentials` masih di depannya dan masih
+punya jalur yang mematikan. Menggeser satu stage tidak menyelesaikan masalah
+kalau stage lain di depan masih bisa mematikan.
+
+Perbaikan: `if/then` + `return 0` eksplisit.
+
+**Diuji dengan pty sungguhan**, karena tanpa tty fungsi keluar lebih awal di
+penjaga `[[ ! -t 0 ]]` dan bug-nya tidak terlihat sama sekali:
+
+| | sesudah `==> Model` |
+|---|---|
+| kode baru (`if/then`) | lanjut → Wallet → `LANJUT KE STAGE BERIKUTNYA` |
+| pola lama (`&&`) | **mati diam-diam** |
+
+Uji pertama saya **tidak** mereproduksi bug karena stdin-nya bukan tty —
+`_ask_secret` keluar di penjaga sebelum mencapai `read`. Kondisi operator
+justru tty. **Kalau uji tidak meniru kondisi nyata, uji itu tidak menguji apa
+pun.** Diperbaiki dengan `script -qec` untuk mengalokasikan pty.
+
+Diperiksa juga apakah pola ini ada di tempat lain: disisir semua baris terakhir
+fungsi di `lib/*.sh`, `install.sh`, `agentdrop` — hanya satu, dan sudah
+diperbaiki. Uji terpisah menunjukkan pola `&&` di **tengah** fungsi aman
+(exit 0); hanya baris terakhir yang berbahaya.
+
+Pemeriksaan validator ditambahkan: menolak baris terakhir fungsi berpola
+`[[ ... ]] &&`. Diuji dengan menyuntikkan pola lama — tertangkap di
+`lib/20-credentials.sh:51` — lalu dipulihkan dan lolos.
+
+Uji akhir end-to-end (`install.sh` sungguhan, `HOME` tiruan, kunci model kosong):
+
+```
+Config utama → Profil worker → Skill di HERMES_HOME → Memory lessons → Memasang Hermes
+profil         : 7 dari 7
+memory/lessons : 7 dari 7
+skill          : 10 dari 10
+```
+
 ### Kelas bug yang berulang — dan cara menangkapnya
 
 **Memberi tahu agent memakai sesuatu yang tidak ada — atau melarang/mewajibkan

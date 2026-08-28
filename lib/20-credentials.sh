@@ -39,7 +39,17 @@ _ask_secret() {  # seperti _ask tapi tanpa echo
   [[ ! -t 0 ]] && { _warn "$var kosong dan stdin bukan terminal"; return 0; }
   local v
   read -r -s -p "  $prompt: " v; echo
-  [[ -n "$v" ]] && { _env_set "$var" "$v"; _ok "$var diisi"; }
+  # if/then, BUKAN `[[ -n "$v" ]] && {...}`. Bentuk && mengembalikan status 1
+  # kalau v kosong, dan karena ini baris TERAKHIR fungsi, fungsi ikut
+  # mengembalikan 1 -- di bawah `set -euo pipefail` itu mematikan seluruh
+  # install.sh tanpa pesan error apa pun.
+  #
+  # Ini yang membuat install operator berhenti tepat setelah "==> Model" dan
+  # tidak pernah mencapai stage_setup, sehingga ~/.hermes/profiles/ kosong.
+  # Prompt-nya sendiri menulis "atau kosongkan lalu isi di .env", jadi
+  # mengosongkan adalah jalur yang sah dan tidak boleh mematikan pemasangan.
+  if [[ -n "$v" ]]; then _env_set "$var" "$v"; _ok "$var diisi"; fi
+  return 0
 }
 
 credentials_setup() {
