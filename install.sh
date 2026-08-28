@@ -194,6 +194,12 @@ stage_credentials() {
     ENV_FILE="$HERMES_HOME_DIR/.env"
     [[ -f "$ENV_FILE" ]] || cp "$REPO_ROOT/.env.example" "$ENV_FILE"
     chmod 600 "$ENV_FILE"
+    # WAJIB juga di jalur ini. .env yang sudah ada dari instalasi lama tidak
+    # punya AGENTDROP_MODEL/PROVIDER/BASE_URL, padahal config.yaml merujuk
+    # ketiganya lewat ${VAR}. Hermes membiarkan variabel yang tidak ada
+    # VERBATIM (hermes_cli/config.py:2767), jadi tanpa ini model.default jadi
+    # string "${AGENTDROP_MODEL}" apa adanya dan setiap worker gagal.
+    credentials_ensure_model_vars
     _warn "mode non-interaktif: isi $ENV_FILE secara manual"
   fi
 }

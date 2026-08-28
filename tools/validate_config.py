@@ -235,7 +235,12 @@ def check_config(path: Path) -> None:
                          "extra_headers", "reasoning_effort", "timeout_seconds"}:
                 warn(f"{rel}: model.{k} tidak diverifikasi terhadap sumber")
         d = model.get("default")
-        if isinstance(d, str) and "/" not in d:
+        # Rujukan ${VAR} dikecualikan: sesudah model dipindah ke .env, nilai di
+        # config adalah "${AGENTDROP_MODEL}" dan slash-nya baru muncul sesudah
+        # Hermes meng-expand-nya. Memaksa slash di sini mendorong orang
+        # meng-hardcode model lagi, persis cacat yang membuat install ulang
+        # menghapus provider custom operator. Bentuknya dijaga [23].
+        if isinstance(d, str) and "/" not in d and "${" not in d:
             err(f"{rel}: model.default='{d}' harus format 'provider/model'")
 
     # toolsets
@@ -1189,6 +1194,39 @@ def check_model_provider(configs: list[Path]) -> None:
                 f"worker tidak akan termuat dari config ini.")
             continue
         prov = str(model.get("provider") or "").strip()
+        # Sesudah model dipindah ke .env, nilai di config adalah rujukan
+        # ${AGENTDROP_*}, bukan literal. Yang harus diperiksa berubah: bukan
+        # "provider-nya openrouter", tapi "rujukannya benar dan .env mengisinya".
+        # Memaksa literal di sini akan mengunci operator ke satu provider dan
+        # mengembalikan cacat lama: install ulang menghapus setelan custom.
+        if prov == "${AGENTDROP_PROVIDER}":
+            dflt = str(model.get("default") or "").strip()
+            base = str(model.get("base_url") or "").strip()
+            if dflt != "${AGENTDROP_MODEL}":
+                err(f"{nama}: model.provider merujuk ${{AGENTDROP_PROVIDER}} "
+                    f"tapi model.default = {dflt!r}, bukan ${{AGENTDROP_MODEL}}. "
+                    f"Campuran literal dan rujukan membuat sebagian worker "
+                    f"memakai provider yang berbeda dari yang lain.")
+            elif base != "${AGENTDROP_BASE_URL}":
+                err(f"{nama}: model.provider merujuk ${{AGENTDROP_PROVIDER}} "
+                    f"tapi model.base_url = {base!r}, bukan "
+                    f"${{AGENTDROP_BASE_URL}}. base_url yang di-hardcode akan "
+                    f"mengarahkan provider custom ke endpoint yang salah.")
+            else:
+                envx = (REPO / ".env.example").read_text()
+                kurang = [v for v in ("AGENTDROP_MODEL", "AGENTDROP_PROVIDER",
+                                      "AGENTDROP_BASE_URL")
+                          if not re.search(rf"^{v}=.+", envx, re.M)]
+                if kurang:
+                    err(f".env.example tidak memberi default untuk {kurang}. "
+                        f"Hermes membiarkan variabel yang tidak ada VERBATIM "
+                        f"(hermes_cli/config.py:2767), jadi model.default akan "
+                        f"jadi string '${{AGENTDROP_MODEL}}' apa adanya dan "
+                        f"setiap worker gagal.")
+                else:
+                    print(f"  · {nama}: model dari .env "
+                          f"(${{AGENTDROP_MODEL}} / ${{AGENTDROP_PROVIDER}})")
+            continue
         if prov in MODEL_PROVIDER_DILARANG:
             err(f"{nama}: model.provider = \"{prov}\". Nilai itu tidak pernah "
                 f"menyelesaikan ke OpenRouter (hermes_cli/auth.py:2268 hanya "

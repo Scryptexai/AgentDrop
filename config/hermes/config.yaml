@@ -40,7 +40,7 @@ model:
   # Format WAJIB "provider/model". String di bawah diambil verbatim dari help
   # `hermes chat -m` di hermes_cli/_parser.py. Jalankan `hermes model` untuk
   # melihat slug yang benar-benar tersedia di akun Anda.
-  default: "anthropic/claude-sonnet-4"
+  default: "${AGENTDROP_MODEL}"
 
   # JANGAN pakai "auto" di sini — ini bukan selera, ini sebab-akibat.
   #
@@ -62,10 +62,10 @@ model:
   #
   # Nilai sah lain: openrouter, anthropic, openai-codex, copilot, gemini,
   # nous, custom (vLLM/Ollama/LM Studio), deepinfra, nvidia, huggingface, ...
-  provider: "openrouter"
+  provider: "${AGENTDROP_PROVIDER}"
 
   # Default bawaan Hermes. Ganti kalau pakai provider custom.
-  base_url: "https://openrouter.ai/api/v1"
+  base_url: "${AGENTDROP_BASE_URL}"
 
   # context_length = total window (input+output). Biarkan tidak diset agar
   # Hermes auto-detect dari provider. Diset manual HANYA kalau auto-detect

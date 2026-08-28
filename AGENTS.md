@@ -1417,3 +1417,116 @@ bisa mengukur, jangan menyajikan angka. Lebih baik mengatakan "saya tidak tahu,
 ini alat untuk mengetahuinya" daripada memberi rentang yang terdengar hasil
 pengukuran. Operator berhak atas fakta; kalau faktanya belum ada, tugas saya
 membuat alat yang menghasilkannya.
+
+---
+
+## Arc 20 — Provider custom hilang tiap install, dan fakta OpenManus dari kodenya
+
+### 1. `install.sh` menghapus provider custom operator
+
+Operator melaporkan dua hal yang ternyata satu akar: provider custom hanya
+terdaftar di worker-x, dan **ia tidak bisa pull update** karena install ulang
+membuang setelan provider di Hermes.
+
+Akar: `lib/30-hermes.sh:27` menyalin `config/hermes/config.yaml` dari repo ke
+`~/.hermes/config.yaml` **tanpa syarat**, dan `:64` melakukan hal yang sama ke
+tiap profil. Selama model di-hardcode di config repo, setiap `./install.sh`
+menimpa apa pun yang sudah disetel operator lewat dashboard.
+
+Perbaikan: model **tidak lagi di-hardcode**. Kedelapan config merujuk `.env`:
+
+```yaml
+model:
+  default:  "${AGENTDROP_MODEL}"
+  provider: "${AGENTDROP_PROVIDER}"
+  base_url: "${AGENTDROP_BASE_URL}"
+```
+
+Ini aman karena Hermes meng-expand `${VAR}` di config.yaml
+(`hermes_cli/config.py:2723-2740` `_expand_env_vars`) dan `.env` di-load dengan
+`override=True` **sebelum** config dibaca (`env_loader.py:117,348`). Installer
+menyalin config tapi **tidak pernah menyentuh `.env`**, jadi setelan operator
+selamat.
+
+**Jebakan yang harus diingat:** variabel yang tidak ada di environment
+dibiarkan **verbatim** (`config.py:2767`: `return os.environ.get(inner, raw)`) —
+tidak ada sintaks default. Tanpa penjaga, `model.default` jadi string
+`"${AGENTDROP_MODEL}"` apa adanya dan setiap worker gagal dengan pesan yang
+tidak menyebut penyebabnya. Karena itu `credentials_ensure_model_vars()`
+mengisi ketiganya kalau belum ada, dan **dipanggil dari kedua jalur** —
+interaktif dan `--non-interactive`. Versi pertama hanya memasangnya di jalur
+interaktif; itu akan menghasilkan config rusak pada `--non-interactive` dengan
+`.env` lama.
+
+Diuji end-to-end: `.env` lama tanpa `AGENTDROP_*` → terisi default. Lalu diisi
+nilai custom (`deepseek/deepseek-chat`, `custom`, `https://api.contoh-saya.dev/v1`)
+dan **install ulang** → ketiganya bertahan, 7/7 profil merujuk `.env`.
+
+Validator `[23]` diperbarui: yang diperiksa bukan lagi "provider-nya
+openrouter" tapi "rujukannya konsisten dan `.env.example` memberi default".
+Tiga suntikan diuji: campur literal dengan rujukan, hapus default dari
+`.env.example`, dan kembalikan `provider: "auto"` (regresi arc 13). Ketiganya
+tertangkap.
+
+### 2. Fakta OpenManus dari repo aslinya — bukan asumsi
+
+Operator meminta saya memeriksa langsung, dan hasilnya **mengoreksi analisis
+yang ia bawa sendiri**.
+
+**Klaim: "1 task di-pecah ke beberapa agent yang berjalan paralel."**
+
+Dari `FoundationAgents/OpenManus`, `app/flow/planning.py:94-131`:
+
+```python
+while True:
+    self.current_step_index, step_info = await self._get_current_step_info()
+    if self.current_step_index is None:
+        result += await self._finalize_plan(); break
+    executor = self.get_executor(step_type)          # SATU agent
+    step_result = await self._execute_step(executor, step_info)   # await
+```
+
+**Berurutan, bukan paralel.** `asyncio.gather` di seluruh repo hanya muncul di
+tiga tempat, semuanya di level TOOL, bukan agent:
+`tool/chart_visualization/data_visualization.py:126,174` dan
+`tool/web_search.py:340`. Tidak ada satu pun agent yang di-gather.
+
+`get_executor()` (`planning.py:77-92`) memilih **satu** agent per step. Jadi
+arsitekturnya memang multi-agent, tapi eksekusinya serial — sama seperti kita.
+
+**Yang benar-benar membuat OpenManus cepat** ada di `app/agent/toolcall.py:142`:
+
+```python
+for command in self.tool_calls:      # BANYAK tool dalam SATU giliran LLM
+    result = await self.execute_tool(command)
+```
+
+Satu giliran LLM bisa menghasilkan beberapa tool call, dan semuanya
+dieksekusi dalam giliran itu. **Di sinilah putaran dipangkas** — bukan dari
+paralelisme antar-agent.
+
+### 3. Apakah Hermes bisa begitu? Sebagian
+
+Hermes punya batch planner (`agent/tool_dispatch_helpers.py`), tapi tool yang
+boleh berjalan paralel dibatasi `_PARALLEL_SAFE_TOOLS` (baris 48-61):
+`read_file`, `search_files`, `web_search`, `web_extract`, `session_search`,
+`skill_view`, `skills_list`, `image_generate`, `vision_analyze`, `ha_*`.
+
+**`browser_*` tidak ada di daftar itu.** Aturan di baris 175-176 eksplisit:
+*"Anything not in `_PARALLEL_SAFE_TOOLS` and not an opted-in MCP tool →
+barrier."* Dan `supports_parallel_tool_calls` hanya berlaku untuk MCP server
+(`tools/mcp_tool.py:7698`), bukan tool browser bawaan.
+
+Jadi untuk aksi browser, Hermes memang satu tool per giliran. **Tapi** model
+tetap bisa mengeluarkan beberapa tool call sekaligus, dan Hermes
+mengeksekusinya dalam satu giliran sebagai segmen sequential — yang menghemat
+adalah **giliran LLM-nya**, bukan waktu eksekusi tool. Itu artinya penghematan
+terbesar tetap pada hal yang sama: **jangan membuat agent mengambil snapshot
+atau verifikasi yang tidak perlu**, karena tiap putaran browser adalah satu
+giliran LLM penuh yang tidak bisa diparalelkan.
+
+**Pelajaran:** dua hal yang saya sampaikan sebelumnya perlu dikoreksi. Analisis
+operator soal paralelisme antar-agent tidak didukung kode OpenManus — yang
+membuat cepat adalah banyak tool per giliran. Dan jawaban saya sebelumnya
+("tidak ada optimasi yang menghapus lantai itu") juga salah: lantainya bisa
+diturunkan dengan memangkas putaran, persis seperti yang OpenManus lakukan.
