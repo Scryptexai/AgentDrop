@@ -165,10 +165,30 @@ browser:
   # di tengah rangkaian aksi.
   inactivity_timeout: 1800
   command_timeout: 30
-  # Karakter snapshot maksimum sebelum di-truncate-and-store. Naikkan untuk
-  # halaman dashboard airdrop yang panjang.
+  # Karakter snapshot maksimum sebelum di-truncate-and-store.
+  #
+  # 15000 = default Hermes (browser_tool.py:290 DEFAULT_SNAPSHOT_THRESHOLD).
+  # Repo ini pernah menaikkannya ke 20000 dengan alasan "halaman dashboard
+  # airdrop panjang", tanpa mengukur. Komentar di sumber Hermes menjelaskan
+  # kenapa itu mahal: threshold ini adalah "per-page budget" yang masuk ke
+  # KONTEKS MODEL di setiap snapshot (browser_tool.py:285-289). Satu task
+  # browser melakukan banyak snapshot, dan tiap snapshot dikirim ulang di
+  # setiap putaran LLM sesudahnya -- jadi +33% teks dibayar berkali-kali,
+  # bukan sekali.
+  #
+  # Kalau sebuah halaman memang terlalu panjang, jawabannya bukan menaikkan
+  # threshold untuk SEMUA orang: snapshot yang terpotong tetap disimpan utuh
+  # ke cache/web dan agent bisa membacanya lewat read_file. Naikkan angka ini
+  # hanya kalau ada bukti sebuah task konkret gagal karena pemotongan.
   snapshot_threshold: 15000
-  record_sessions: true
+
+  # FALSE. browser_tool.py:5007 _maybe_start_recording dipanggil sekali per
+  # task (ada guard `if task_id in _recording_sessions: return`), jadi ini
+  # bukan biaya per-aksi. Tapi ia menulis video WebM per sesi dan menyimpannya
+  # 72 jam (_cleanup_old_recordings). Untuk farming yang berjalan tiap hari,
+  # itu disk terbuang untuk rekaman yang tidak ditonton siapa pun. Nyalakan
+  # sementara saja saat butuh bukti visual sebuah kegagalan.
+  record_sessions: false
   # FALSE: agent tidak boleh diarahkan ke localhost.
   allow_private_urls: false
 

@@ -57,10 +57,18 @@ agent:
 browser:
   inactivity_timeout: 1800
   command_timeout: 30
-  # X adalah SPA berat dengan timeline virtual yang di-render ulang terus.
-  # Snapshot besar itu normal di sini.
-  snapshot_threshold: 20000
-  record_sessions: true
+  # X adalah SPA berat dengan timeline virtual yang di-render ulang terus,
+  # jadi snapshot-nya memang lebih panjang dari halaman biasa. Itu alasan untuk
+  # MEMBACA snapshot lewat read_file saat terpotong — bukan alasan menaikkan
+  # budget untuk setiap snapshot di setiap putaran.
+  # 15000 = default Hermes (browser_tool.py:290). Jangan dinaikkan tanpa bukti:
+  # angka ini adalah "per-page budget" yang masuk ke KONTEKS MODEL di setiap
+  # snapshot (browser_tool.py:285-289), dan satu task browser melakukan banyak
+  # snapshot -- jadi kenaikannya dibayar berkali-kali, bukan sekali. Snapshot
+  # yang terpotong tetap disimpan utuh ke cache/web dan bisa dibaca lewat
+  # read_file. Penjelasan panjang di config/hermes/config.yaml.
+  snapshot_threshold: 15000
+  record_sessions: false
   allow_private_urls: false
 
   # headed HANYA berlaku untuk browser lokal Hermes (agent-browser), BUKAN

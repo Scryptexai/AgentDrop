@@ -1006,6 +1006,57 @@ _GATEWAY_PER_PROFIL = re.compile(
 _HOOK_TILDE = re.compile(r'command:\s*["\']?[^"\'\n]*\s~/')
 
 
+# snapshot_threshold TIDAK BOLEH di atas default Hermes tanpa alasan.
+#
+# browser_tool.py:290 DEFAULT_SNAPSHOT_THRESHOLD = 15000, dan komentar di
+# browser_tool.py:285-289 menjelaskan bahwa angka ini adalah "per-page budget"
+# yang masuk ke KONTEKS MODEL di setiap snapshot. Satu task browser melakukan
+# banyak snapshot, dan tiap snapshot dikirim ulang di setiap putaran LLM
+# sesudahnya -- jadi menaikkannya dibayar berkali-kali.
+#
+# Repo ini pernah menaikkannya ke 20000 dengan alasan "halaman dashboard
+# airdrop panjang", tanpa mengukur apa pun. Operator kemudian melaporkan
+# semuanya terasa lambat. Snapshot yang terpotong tetap disimpan utuh ke
+# cache/web dan bisa dibaca lewat read_file, jadi menaikkan threshold hampir
+# tidak pernah jawabannya.
+SNAPSHOT_THRESHOLD_MAX = 15000
+
+
+def check_snapshot_budget(configs: list[Path]) -> None:
+    """snapshot_threshold tidak boleh melampaui default Hermes."""
+    global checks
+    print("\n[27] Budget snapshot")
+    for cfg in configs:
+        if not cfg.exists():
+            continue
+        checks += 1
+        try:
+            data = yaml.safe_load(cfg.read_text()) or {}
+        except Exception as exc:
+            err(f"{cfg.relative_to(REPO)}: YAML tidak bisa dibaca: {exc}")
+            continue
+        br = data.get("browser")
+        if not isinstance(br, dict) or "snapshot_threshold" not in br:
+            continue
+        nama = ("config.yaml utama" if cfg.parent.name == "hermes"
+                else cfg.parent.name)
+        try:
+            n = int(br["snapshot_threshold"])
+        except (TypeError, ValueError):
+            err(f"{nama}: snapshot_threshold = {br['snapshot_threshold']!r} "
+                f"bukan angka.")
+            continue
+        if n > SNAPSHOT_THRESHOLD_MAX:
+            err(f"{nama}: snapshot_threshold = {n}, di atas default Hermes "
+                f"{SNAPSHOT_THRESHOLD_MAX} (browser_tool.py:290). Angka ini "
+                f"masuk ke konteks model di SETIAP snapshot, dan satu task "
+                f"browser melakukan banyak snapshot -- kenaikannya dibayar "
+                f"berkali-kali. Snapshot terpotong tetap utuh di cache/web dan "
+                f"bisa dibaca lewat read_file.")
+        else:
+            print(f"  · {nama}: {n} karakter")
+
+
 def check_hook_paths() -> None:
     """Command hook tidak boleh memakai `~`; placeholder harus ada."""
     global checks
@@ -1620,6 +1671,7 @@ def main() -> int:
     check_browser_backend(configs)
     check_no_profile_gateway()
     check_hook_paths()
+    check_snapshot_budget(configs)
 
     print("\n[18] Memory loop + aturan anti prompt-injection")
     check_memory_loop(configs)

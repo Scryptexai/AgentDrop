@@ -1203,3 +1203,66 @@ posisi. Kalau sebuah command disimpan sebagai string dan dijalankan dengan
 `shell=False`, **tidak ada** ekspansi `~`, `$VAR`, glob, atau pipe — semuanya
 harus sudah berupa nilai literal yang benar. Untuk path yang bergantung mesin,
 render saat install; jangan mengandalkan ekspansi runtime.
+
+---
+
+## Arc 17 — Milestone pertama tercapai, dan jawaban atas "kenapa lama"
+
+**Post pertama benar-benar terbit.** worker-x membuka X, menyusun post,
+menerbitkannya, dan memverifikasinya muncul di timeline serta halaman profil —
+lengkap dengan screenshot dan timestamp. Ini milestone nyata pertama.
+
+Dua hal yang belum sempurna, dan keduanya perlu dicatat jujur:
+
+1. **URL post tidak diambil.** Agent menekan "Copy link" lalu koneksi CDP putus
+   sebelum clipboard terbaca. Mengandalkan clipboard adalah pilihan rapuh:
+   butuh izin, butuh fokus window, dan tidak meninggalkan jejak di snapshot.
+   Yang andal adalah membaca URL dari bilah alamat sesudah membuka permalink —
+   itu sudah ada di snapshot, tidak butuh izin apa pun.
+2. **CDP putus di tengah task.** `Browser connection lost (CDP WebSocket
+   refused)`. Perlu diselidiki terpisah; dugaan awal Chrome-nya restart sehingga
+   UUID websocket berubah, tapi ini **belum diverifikasi** — jangan dianggap
+   kesimpulan.
+
+### Kenapa lama: diukur, bukan ditebak
+
+Tiga kandidat diperiksa, dan hasilnya tidak seperti dugaan:
+
+| kandidat | hasil | bukti |
+|---|---|---|
+| 8 hook audit per tool | **bukan** penyebab | diukur: 20.4 ms/panggilan, 20 tool = **0.81 detik** total |
+| `record_sessions: true` | **bukan** per-aksi | `browser_tool.py:5007` dipanggil sekali per `task_id`, ada guard `if task_id in _recording_sessions: return` |
+| `snapshot_threshold: 20000` | **ini yang nyata** | `browser_tool.py:285-289`: angka ini "per-page budget" yang masuk ke KONTEKS MODEL di setiap snapshot |
+
+Jadi penyebab terbesar yang bisa kita kendalikan adalah **ukuran konteks**, dan
+sisanya adalah hal yang memang inherent: setiap aksi browser = satu putaran LLM
+penuh (snapshot → putuskan → aksi → verifikasi). Tujuh langkah yang dilakukan
+agent berarti sedikitnya tujuh putaran, masing-masing membayar seluruh riwayat
+percakapan. Itu biaya arsitektur agent, bukan kemacetan.
+
+**Penyebab yang paling mungkin justru di luar repo:** latency provider. Model
+kita `anthropic/claude-sonnet-4` lewat OpenRouter — dua lompatan jaringan
+(agent → OpenRouter → Anthropic) sebelum token pertama. Dari sandbox tidak bisa
+diukur, jadi ini **dugaan, bukan temuan**.
+
+### Yang diubah
+
+- `snapshot_threshold` 20000 → **15000** (default Hermes) di 8 berkas. Kita
+  pernah menaikkannya dengan alasan "halaman dashboard airdrop panjang" **tanpa
+  mengukur**. Snapshot yang terpotong tetap disimpan utuh ke `cache/web` dan
+  bisa dibaca lewat `read_file`, jadi menaikkan threshold hampir tidak pernah
+  jawabannya.
+- `record_sessions` true → **false**. Bukan biaya per-aksi, tapi menulis WebM
+  per sesi dan menyimpannya 72 jam — disk terbuang untuk rekaman yang tidak
+  ditonton siapa pun.
+- Komentar lama yang menyuruh "Naikkan untuk halaman dashboard airdrop yang
+  panjang" diganti. Komentar itu justru nasihat yang membuat lambat, dan akan
+  diikuti orang berikutnya.
+- Pemeriksaan `[27]` menolak `snapshot_threshold` di atas 15000. Diuji dengan
+  mengembalikan 20000 — tertangkap.
+
+**Pelajaran:** "naikkan limitnya" terasa seperti perbaikan dan tidak pernah
+terasa seperti biaya. Untuk angka yang masuk ke konteks model, kenaikannya
+dibayar **di setiap putaran**, bukan sekali. Ukur dulu; dan kalau sebuah angka
+punya default dari upstream, default itu adalah posisi awal yang sudah
+dipikirkan orang lain.

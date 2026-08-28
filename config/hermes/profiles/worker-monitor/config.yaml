@@ -48,6 +48,12 @@ browser:
   # 1800 (30 menit) — cukup panjang untuk satu rangkaian aksi farming.
   inactivity_timeout: 1800
   command_timeout: 30
+  # 15000 = default Hermes (browser_tool.py:290). Jangan dinaikkan tanpa bukti:
+  # angka ini adalah "per-page budget" yang masuk ke KONTEKS MODEL di setiap
+  # snapshot (browser_tool.py:285-289), dan satu task browser melakukan banyak
+  # snapshot -- jadi kenaikannya dibayar berkali-kali, bukan sekali. Snapshot
+  # yang terpotong tetap disimpan utuh ke cache/web dan bisa dibaca lewat
+  # read_file. Penjelasan panjang di config/hermes/config.yaml.
   snapshot_threshold: 15000
   # Tidak merekam sesi — monitor hanya membaca, dan rekaman menambah beban disk.
   record_sessions: false
