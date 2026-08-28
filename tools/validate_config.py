@@ -1027,6 +1027,66 @@ _HOOK_TILDE = re.compile(r'command:\s*["\']?[^"\'\n]*\s~/')
 SNAPSHOT_THRESHOLD_MAX = 15000
 
 
+def check_custom_base_url_trap() -> None:
+    """CUSTOM_BASE_URL tidak dibaca Hermes; jangan biarkan dokumen menyuruh memakainya.
+
+    Jebakan ini nyata dan sudah menimpa operator: .env.example dulu berkata
+    "Set model.base_url in config.yaml to the same origin", jadi operator
+    mengisi CUSTOM_BASE_URL dan endpoint-nya tidak pernah dipakai.
+
+    Dari sumber:
+      - hermes_cli/models.py:4080   api_key diambil dari CUSTOM_API_KEY
+      - hermes_cli/models.py:2836   _get_custom_base_url() membaca
+                                    model_cfg.get("base_url") dari config.yaml
+    Jadi CUSTOM_API_KEY berpengaruh, CUSTOM_BASE_URL tidak. base_url harus
+    masuk lewat AGENTDROP_BASE_URL karena model.base_url merujuk variabel itu.
+    """
+    global checks
+    print("\n[28] Jebakan CUSTOM_BASE_URL")
+
+    envx = REPO / ".env.example"
+    if envx.exists():
+        checks += 1
+        txt = envx.read_text()
+        # Dokumen tidak boleh menyuruh menyetel base_url di config.yaml,
+        # karena config.yaml sekarang hanya merujuk .env.
+        buruk = re.search(
+            r"^\s*#.*Set model\.base_url in config\.yaml", txt, re.M)
+        if buruk:
+            err(".env.example masih menyuruh menyetel model.base_url di "
+                "config.yaml. Sejak model dipindah ke .env, config.yaml hanya "
+                "merujuk ${AGENTDROP_BASE_URL*}; instruksi itu membuat operator "
+                "mengisi tempat yang tidak dibaca apa pun.")
+        if "CUSTOM_BASE_URL=" in txt and "TIDAK" not in txt.split(
+                "CUSTOM_BASE_URL=")[0][-2000:]:
+            err(".env.example menyediakan CUSTOM_BASE_URL tanpa menjelaskan "
+                "bahwa Hermes tidak membacanya (models.py:2836 mengambil "
+                "base_url dari config.yaml, bukan dari variabel ini).")
+        if not buruk:
+            print("  · .env.example tidak menyuruh mengubah config.yaml")
+
+    # install.sh harus memperingatkan operator yang sudah terjebak.
+    cred = REPO / "lib" / "20-credentials.sh"
+    if cred.exists():
+        checks += 1
+        isi = cred.read_text()
+        # Mencari nama variabelnya saja tidak cukup -- SUNTIK B membuktikan itu:
+        # menghapus baris peringatannya tetap lolos karena "CUSTOM_BASE_URL"
+        # masih muncul di komentar penjelas. Yang harus ada adalah KODE yang
+        # benar-benar membaca variabel itu dan memperingatkan operator.
+        baca = re.search(r'grep -E "\^CUSTOM_BASE_URL=', isi)
+        peringatkan = re.search(r"Hermes TIDAK membaca CUSTOM_BASE_URL", isi)
+        if not baca or not peringatkan:
+            err("lib/20-credentials.sh tidak memperingatkan operator yang "
+                "mengisi CUSTOM_BASE_URL. Tanpa peringatan, endpoint custom "
+                "tidak pernah terpakai dan gejalanya adalah model bawaan yang "
+                "tetap dipakai tanpa penjelasan. Harus ada kode yang membaca "
+                "variabel itu (grep ^CUSTOM_BASE_URL=) dan mencetak "
+                "peringatannya.")
+        else:
+            print("  · install memperingatkan CUSTOM_BASE_URL yang tidak terpakai")
+
+
 def check_snapshot_budget(configs: list[Path]) -> None:
     """snapshot_threshold tidak boleh melampaui default Hermes."""
     global checks
@@ -1726,6 +1786,7 @@ def main() -> int:
     check_no_profile_gateway()
     check_hook_paths()
     check_snapshot_budget(configs)
+    check_custom_base_url_trap()
 
     print("\n[18] Memory loop + aturan anti prompt-injection")
     check_memory_loop(configs)

@@ -1602,3 +1602,77 @@ Diperbaiki dan diuji ulang.
 mengapa sebuah nilai *tidak* diset perlu diuji sama seriusnya dengan nilai itu
 sendiri. "Biarkan default" terdengar aman, padahal default-nya 64.000 dan
 akun operator tidak sanggup.
+
+---
+
+## Arc 22 — `CUSTOM_BASE_URL` tidak dibaca Hermes
+
+Operator mengisi `CUSTOM_BASE_URL=https://api.hcnsec.cn/` di `.env` dan
+endpoint-nya tidak pernah dipakai. `.env.example` sendiri yang menyuruh begitu:
+
+> "Set model.base_url in config.yaml to the same origin."
+
+Sesudah model dipindah ke `.env` (arc 20), instruksi itu menunjuk ke tempat
+yang tidak dibaca apa pun — `config.yaml` sekarang hanya merujuk
+`${AGENTDROP_BASE_URL}`.
+
+Dari sumber, kedua variabel itu diperlakukan **berbeda**:
+
+- `hermes_cli/models.py:4080` — `api_key` diambil dari `CUSTOM_API_KEY`
+  (lalu jatuh ke `OPENAI_API_KEY`, `OPENROUTER_API_KEY`)
+- `hermes_cli/models.py:2836-2839` — base_url diambil dari **config.yaml**:
+
+```python
+def _get_custom_base_url() -> str:
+    model_cfg = _get_model_config_dict()
+    return str(model_cfg.get("base_url", "")).strip()
+```
+
+Jadi `CUSTOM_API_KEY` berpengaruh, **`CUSTOM_BASE_URL` tidak**. Endpoint harus
+masuk lewat `AGENTDROP_BASE_URL`.
+
+Soal bentuk URL: `/v1` di akhir tidak wajib. `probe_api_models`
+(`models.py:5706-5720`) menyusun dua kandidat dan mencoba keduanya:
+
+```python
+if normalized.endswith("/v1"):
+    alternate_base = normalized[:-3].rstrip("/")
+else:
+    alternate_base = normalized + "/v1"
+candidates = [(normalized, False)]
+if alternate_base and alternate_base != normalized:
+    candidates.append((alternate_base, True))
+```
+
+`https://api.hcnsec.cn/` dan `https://api.hcnsec.cn/v1` dua-duanya bisa;
+menuliskan `/v1` hanya menghindarkan satu percobaan jaringan yang gagal.
+
+**Yang tidak bisa diverifikasi dari sini:** sandbox memblokir egress ke host
+itu (`curl` mati di `SSL_ERROR_SYSCALL`), jadi daftar model yang tersedia di
+endpoint tersebut **tidak diketahui**. `AGENTDROP_MODEL` harus diisi dengan id
+model persis seperti yang dilaporkan endpoint — jalankan `hermes model` di
+mesin operator untuk melihatnya. Jangan menebak nama model.
+
+### Yang diubah
+
+- `.env.example`: instruksi lama diganti penjelasan bahwa hanya
+  `CUSTOM_API_KEY` yang dibaca, beserta jalur yang benar.
+- `lib/20-credentials.sh`: memperingatkan operator yang mengisi
+  `CUSTOM_BASE_URL` sementara `AGENTDROP_BASE_URL` masih menunjuk OpenRouter,
+  lengkap dengan tiga baris yang harus disetel. Diuji dua arah: `.env` operator
+  memunculkan peringatan; `.env` yang sudah benar (`provider=custom`,
+  `base_url` endpoint) **tidak** memunculkan peringatan palsu dan nilainya
+  tidak ditimpa.
+- Pemeriksaan `[28]`.
+
+**Pemeriksaan [28] sempat lolos palsu, dan itu layak dicatat.** Versi pertama
+hanya mencari `"CUSTOM_BASE_URL" in cred.read_text()`. Menghapus baris
+peringatannya tetap lolos, karena nama variabel itu masih muncul di komentar
+penjelas. Persis pola lama: *a check that has never been seen to fail is
+untested*. Diperketat menjadi dua regex — kode yang membaca variabelnya
+(`grep -E "^CUSTOM_BASE_URL=`) dan kode yang mencetak peringatannya — lalu
+kedua suntikan diuji ulang dan keduanya tertangkap.
+
+**Pelajaran:** mencari nama sebuah variabel di dalam berkas tidak membuktikan
+ada kode yang memakainya. Komentar mengandung nama variabel sama seringnya
+dengan kode.

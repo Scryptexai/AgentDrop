@@ -159,6 +159,27 @@ credentials_ensure_model_vars() {
     done
   done
 
+  # Jebakan yang sudah benar-benar terjadi: operator mengisi CUSTOM_BASE_URL
+  # karena .env.example lama menyuruh "Set model.base_url in config.yaml to the
+  # same origin", lalu heran endpoint-nya tidak dipakai. Hermes memang membaca
+  # CUSTOM_API_KEY (hermes_cli/models.py:4080) tapi TIDAK membaca
+  # CUSTOM_BASE_URL — _get_custom_base_url() (models.py:2836-2839) mengambil
+  # base_url dari model.base_url di config.yaml, yang sekarang merujuk
+  # ${AGENTDROP_BASE_URL}. Jadi endpoint harus diisi ke AGENTDROP_BASE_URL.
+  local _cb _ab
+  _cb="$(grep -E "^CUSTOM_BASE_URL=.+" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+  _ab="$(grep -E "^AGENTDROP_BASE_URL=.+" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- || true)"
+  if [[ -n "$_cb" && "$_ab" == *"openrouter.ai"* ]]; then
+    _warn "CUSTOM_BASE_URL=$_cb terisi, tapi AGENTDROP_BASE_URL masih $_ab"
+    _warn "  Hermes TIDAK membaca CUSTOM_BASE_URL — hanya CUSTOM_API_KEY"
+    _warn "  (models.py:4080). base_url diambil dari model.base_url di"
+    _warn "  config.yaml (models.py:2836), yang merujuk AGENTDROP_BASE_URL."
+    _warn "  Untuk memakai endpoint itu, setel di $ENV_FILE:"
+    _warn "    AGENTDROP_PROVIDER=custom"
+    _warn "    AGENTDROP_BASE_URL=$_cb"
+    _warn "    AGENTDROP_MODEL=<id model dari endpoint itu>"
+  fi
+
   _log "Model berbeda per worker: ubah AGENTDROP_*_<WORKER> di $ENV_FILE,"
   _log "  mis. AGENTDROP_MODEL_WORKER_QUESTS=anthropic/claude-opus-4"
 }
