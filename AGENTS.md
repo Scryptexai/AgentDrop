@@ -1754,3 +1754,87 @@ berbeda.
 
 **Batas lama tetap berlaku di enam profil lain.** Ini pengecualian untuk satu
 worker, bukan perubahan yang berlaku umum.
+
+---
+
+## Arc 24 — Provider custom tidak pernah sampai ke worker, dan ukuran sebenarnya dari 29.480 token
+
+### Kenapa `hermes model` tidak berpengaruh ke worker
+
+Operator menyetel DeepSeek lewat `hermes model`, lalu `worker-onboard` tetap
+meminta `anthropic/claude-sonnet-4` ke OpenRouter. Bukan cache, bukan
+kesalahan operator.
+
+`hermes model` menulis ke **profil default**:
+
+- `hermes_cli/main.py:4957` — `cfg["custom_providers"] = providers` lalu
+  `save_config(cfg)`
+- `hermes_cli/config.py:4023` — docstring `save_config`: *"Save configuration
+  to ~/.hermes/config.yaml"*
+
+Profil worker punya `config.yaml` sendiri di `~/.hermes/profiles/<nama>/`.
+Tidak ada mekanisme yang menyalin setelan default ke sana. Jadi perintah itu
+memang berhasil — ke tempat yang tidak dibaca worker.
+
+Perbaikan: setiap config (utama + 8 profil) sekarang punya blok
+`custom_providers` yang dirender dari `.env`. Diverifikasi dengan
+`load_config()` Hermes sendiri:
+
+```
+model.default    = 'DeepSeek-V4-Flash'
+model.provider   = 'custom'
+model.base_url   = 'https://api.hcnsec.cn/v1'
+custom_providers = [{'name': 'agentdrop-custom', ..., 'api_mode': 'codex_responses',
+                     'models': {'DeepSeek-V4-Flash': {}}}]
+```
+
+Dan diuji arah sebaliknya: dengan `AGENTDROP_PROVIDER=openrouter`, blok itu
+**dibuang** oleh `_render_config` — kalau dibiarkan, config berisi provider
+hantu dengan `base_url` kosong.
+
+Bentuk list dipakai karena itulah yang ditulis `hermes model` sendiri.
+`config.py:2076` menyebutnya "legacy list form; modern equivalent is
+`providers: {}`", tapi memakai dua skema berbeda untuk hal yang sama lebih
+buruk daripada memakai bentuk legacy yang konsisten dengan tool-nya.
+
+### `AGENTDROP_API_MODE` — satu variabel yang menentukan berhasil atau tidak
+
+Endpoint operator menawarkan DeepSeek/GLM/Kimi/MiniMax dan memilih mode
+`codex_responses` (`/responses`). Kalau config kita membiarkan mode
+`auto`, heuristik URL akan memilih `/chat/completions` dan **tool calling
+gagal walau modelnya benar**. Variabel ini sekarang eksplisit di `.env`, dan
+`.env.example` menjelaskan keempat pilihan beserta akibat salah memilih.
+
+### Ukuran sebenarnya dari 29.480 token
+
+Log operator menunjukkan `Context: 2 msgs, ~29,480 tokens` **sebelum satu tool
+call pun**. Itu overhead tetap yang dibayar di **setiap putaran**. Saya ukur
+komposisinya, dan hasilnya mengoreksi dugaan saya sendiri:
+
+| sumber | token | catatan |
+|---|---|---|
+| SOUL.md worker-onboard | ~2.290 | 9.162 karakter |
+| deskripsi 4 skill | ~171 | **bukan isi skill** — `prompt_builder.py:2014` hanya mengirim `description` frontmatter |
+| deskripsi tool browser | ~1.089 | 21 tool |
+| **sisanya: Hermes inti** | **~25.930** | tidak bisa kita pangkas lewat config |
+
+Dua hal yang saya duga sebelumnya ternyata salah:
+
+1. **Isi skill tidak masuk prompt.** Saya sempat menghitung 7.891 token untuk
+   empat SKILL.md. Hermes memakai *progressive disclosure*
+   (`tools/tool_search.py:1-30`): yang dikirim hanya nama + deskripsi pendek,
+   dan isi baru dibaca saat skill dipanggil.
+2. **Sebagian besar overhead bukan milik kita.** `toolsets.py:31-59`
+   `_HERMES_CORE_TOOLS` memuat 29 tool yang **tidak pernah ditunda** —
+   komentar di `tool_search.py` eksplisit: *"Core tools ... are never
+   deferred. Always-load means always-load."* Enam di antaranya tidak kita
+   pakai sama sekali: `terminal`, `process`, `vision_analyze`,
+   `image_generate`, `browser_exec`, `text_to_speech`.
+
+Jadi memangkas SOUL.md dan skill **tidak akan** mengubah 29.480 secara
+berarti. Yang bisa memangkas adalah mengurangi **jumlah putaran**, dan itu
+soal prosedur, bukan ukuran berkas.
+
+**Pelajaran:** saya dua kali menghitung biaya konteks dari ukuran berkas di
+repo, dan dua kali pula hasilnya salah karena tidak memeriksa apa yang
+benar-benar dikirim. Ukuran berkas bukan ukuran prompt.

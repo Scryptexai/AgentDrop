@@ -35,6 +35,29 @@ _render_config() {  # _render_config SRC DST LABEL
   if grep -q "__AGENTDROP_HOOK__" "$_tmp"; then
     _warn "$_lbl: placeholder __AGENTDROP_HOOK__ belum terganti"
   fi
+
+  # custom_providers hanya relevan kalau operator memakai endpoint custom.
+  # Kalau tidak, bloknya dibuang — kalau dibiarkan, config berisi provider
+  # hantu dengan base_url kosong dan Hermes bisa merutekan ke sana.
+  local _prov
+  _prov="$(_env_get AGENTDROP_PROVIDER)"
+  if [[ "$_prov" != "custom" ]]; then
+    # Hapus blok custom_providers (dari barisnya sampai baris top-level berikutnya).
+    awk '
+      /^custom_providers:/ { skip=1; next }
+      skip && /^[^ \t#]/ { skip=0 }
+      skip && /^#/ { next }
+      !skip { print }
+    ' "$_tmp" > "$_tmp.2" && mv "$_tmp.2" "$_tmp"
+  else
+    local _pn _am
+    _pn="$(_env_get AGENTDROP_PROVIDER_NAME)"; [[ -n "$_pn" ]] || _pn="agentdrop-custom"
+    _am="$(_env_get AGENTDROP_API_MODE)";     [[ -n "$_am" ]] || _am="auto"
+    sed -i "s|__AGENTDROP_PROVIDER_NAME__|$_pn|g; s|__AGENTDROP_API_MODE__|$_am|g" "$_tmp"
+  fi
+  if grep -q "__AGENTDROP_PROVIDER_NAME__\|__AGENTDROP_API_MODE__" "$_tmp"; then
+    _warn "$_lbl: placeholder custom_providers belum terganti"
+  fi
   # Ganti setiap ${AGENTDROP_NAMA} dengan nilainya dari .env.
   for _nama in $(grep -oE '\$\{AGENTDROP_[A-Z0-9_]+\}' "$_tmp" \
                  | tr -d '${}' | sort -u); do

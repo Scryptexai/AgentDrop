@@ -49,7 +49,13 @@ TOP_LEVEL_KEYS = {
     "_config_version", "agent", "approvals", "auxiliary", "bedrock", "bot_mode",
     "browser", "checkpoints", "code_execution", "command_allowlist",
     "compression", "computer_use", "context", "context_file_max_chars",
-    "credential_pool_strategies", "cron", "curator", "dashboard", "database",
+    # custom_providers sah di root walau tidak ada di DEFAULT_CONFIG:
+    # hermes_cli/config.py:2076 memasukkannya ke _EXTRA_KNOWN_ROOT_KEYS
+    # ("legacy list form; modern equivalent is providers: {}"). Bentuk list
+    # inilah yang ditulis `hermes model` sendiri (main.py:4957), jadi kita
+    # pakai bentuk yang sama agar tidak ada dua skema yang bersaing.
+    "credential_pool_strategies", "cron", "curator", "custom_providers",
+    "dashboard", "database",
     "delegation", "desktop", "discord", "display", "doctor",
     "fallback_providers", "file_read_max_chars", "gateway", "goals", "honcho",
     "hooks", "hooks_auto_accept", "human_delay", "kanban", "logging", "loops",
@@ -1027,6 +1033,64 @@ _HOOK_TILDE = re.compile(r'command:\s*["\']?[^"\'\n]*\s~/')
 SNAPSHOT_THRESHOLD_MAX = 15000
 
 
+def check_custom_providers_block(configs: list[Path]) -> None:
+    """Setiap config harus punya blok custom_providers yang bisa dirender.
+
+    `hermes model` menulis custom_providers ke config profil DEFAULT:
+    hermes_cli/main.py:4957 memanggil save_config(cfg), dan save_config
+    menulis ~/.hermes/config.yaml (config.py:4023). Profil worker punya
+    config.yaml sendiri, jadi tanpa blok ini setelan provider custom operator
+    TIDAK PERNAH sampai ke worker mana pun — worker tetap ke provider lama.
+
+    Itu sudah terjadi: operator menyetel DeepSeek lewat `hermes model`, lalu
+    worker-onboard tetap meminta anthropic/claude-sonnet-4 ke OpenRouter.
+    """
+    global checks
+    print("\n[30] Blok custom_providers")
+    for cfg in configs:
+        if not cfg.exists():
+            continue
+        checks += 1
+        nama = ("config utama" if cfg.parent.name == "hermes" else cfg.parent.name)
+        txt = cfg.read_text()
+        if "custom_providers:" not in txt:
+            err(f"{nama}: tidak punya blok custom_providers. `hermes model` "
+                f"hanya menulis ke config profil default "
+                f"(hermes_cli/main.py:4957 -> config.py:4023), jadi tanpa blok "
+                f"ini provider custom tidak pernah sampai ke worker.")
+            continue
+        # Blok harus punya field yang dibaca Hermes.
+        kurang = [k for k in ("base_url", "key_env", "api_mode", "models")
+                  if k not in txt.split("custom_providers:", 1)[1][:600]]
+        if kurang:
+            err(f"{nama}: blok custom_providers kurang field {kurang}. Hermes "
+                f"membaca name/base_url/key_env/api_mode/models "
+                f"(config.py:1458-1577).")
+        else:
+            print(f"  · {nama}: blok lengkap")
+
+    # install.sh harus membuang blok itu saat provider bukan custom.
+    lib = REPO / "lib" / "30-hermes.sh"
+    if lib.exists():
+        checks += 1
+        isi = lib.read_text()
+        # Mencari kata "custom" saja tidak cukup — SUNTIK B membuktikan itu:
+        # mengganti kondisi `[[ "$_prov" != "custom" ]]` dengan `false` tetap
+        # lolos karena kedua kata masih ada di berkas. Yang harus ada adalah
+        # PERBANDINGAN yang benar-benar memutuskan, dan kode yang membuang
+        # bloknya.
+        bandingkan = re.search(r'\[\[ "\$_prov" != "custom" \]\]', isi)
+        buang = re.search(r'/\^custom_providers:/', isi)
+        if not bandingkan or not buang:
+            err("lib/30-hermes.sh tidak membuang blok custom_providers saat "
+                "provider bukan 'custom'. Harus ada perbandingan "
+                '[[ "$_prov" != "custom" ]] dan kode awk yang menghapus blok '
+                "itu. Tanpa itu config berisi provider hantu dengan base_url "
+                "kosong dan Hermes bisa merutekan permintaan ke sana.")
+        else:
+            print("  · install membuang blok saat provider bukan custom")
+
+
 def check_render_config() -> None:
     """install.sh harus merender ${AGENTDROP_*} menjadi nilai konkret.
 
@@ -1846,6 +1910,7 @@ def main() -> int:
     check_snapshot_budget(configs)
     check_custom_base_url_trap()
     check_render_config()
+    check_custom_providers_block(configs)
 
     print("\n[18] Memory loop + aturan anti prompt-injection")
     check_memory_loop(configs)

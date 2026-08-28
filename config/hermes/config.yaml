@@ -91,6 +91,21 @@ model:
   # terpotong.
   max_tokens: "${AGENTDROP_MAX_TOKENS}"
 
+
+# Provider OpenAI-compatible. Dirender dari .env saat install.
+#
+# WAJIB ada di SETIAP profil, bukan hanya di config utama: `hermes model`
+# menulis `custom_providers` ke config profil DEFAULT (hermes_cli/main.py:4957
+# -> save_config -> config.py:4023 menulis ~/.hermes/config.yaml). Profil
+# worker punya config.yaml sendiri, jadi tanpa blok ini setelan provider
+# custom tidak pernah sampai ke worker mana pun.
+custom_providers:
+  - name: "__AGENTDROP_PROVIDER_NAME__"
+    base_url: "${AGENTDROP_BASE_URL}"
+    key_env: "CUSTOM_API_KEY"
+    api_mode: "__AGENTDROP_API_MODE__"
+    models:
+      "${AGENTDROP_MODEL}": {}
 # ----------------------------------------------------------------------------
 # TOOLSETS — id asli dari hermes_cli/tools_config.py
 # ----------------------------------------------------------------------------
