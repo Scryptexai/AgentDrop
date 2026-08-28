@@ -378,6 +378,135 @@ def cmd_stuck(args):
     return 1
 
 
+def _parse_ts(ts):
+    """ts audit -> datetime, atau None kalau tidak bisa dibaca."""
+    if not ts:
+        return None
+    from datetime import datetime
+    for fmt in ("%Y-%m-%dT%H:%M:%S.%fZ", "%Y-%m-%dT%H:%M:%SZ"):
+        try:
+            return datetime.strptime(ts, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _dur(secs):
+    """detik -> '1m 02s' / '12.3s'."""
+    if secs is None:
+        return "?"
+    if secs < 60:
+        return f"{secs:.1f}s"
+    m, s = divmod(int(secs), 60)
+    if m < 60:
+        return f"{m}m {s:02d}s"
+    h, m = divmod(m, 60)
+    return f"{h}j {m:02d}m"
+
+
+def cmd_timing(args):
+    """Pecah waktu sebuah task jadi angka: di dalam tool vs di luar tool.
+
+    Ini dibuat karena pertanyaan "kenapa lama" dijawab dengan tebakan terlalu
+    lama. Log audit sudah menyimpan `ts` di setiap baris dan `ms` di setiap
+    post_tool_call, jadi pemecahannya bisa dihitung, bukan diperkirakan:
+
+      waktu_dalam_tool  = jumlah `ms` pada post_tool_call
+      waktu_luar_tool   = rentang dinding - waktu_dalam_tool
+                          (= model berpikir + round-trip ke provider)
+      jumlah putaran    = jumlah pre_tool_call
+
+    Kalau waktu_luar_tool mendominasi DAN putarannya banyak, yang mahal adalah
+    banyaknya giliran -- itu soal skill/prosedur, dan bisa dipangkas. Kalau
+    putarannya sedikit tapi tiap jeda besar, yang mahal adalah provider.
+    Tanpa pemecahan ini kedua penjelasan itu terdengar sama masuk akalnya.
+    """
+    recs = _load()
+    if not recs:
+        print(YELLOW("Log kosong. Jalankan satu task dulu, lalu ulangi."))
+        return 1
+
+    # Kelompokkan per task; baris tanpa task masuk ke keranjang session-nya.
+    groups = defaultdict(list)
+    for r in recs:
+        key = r.get("task") or r.get("session") or "(tanpa-task)"
+        groups[key].append(r)
+
+    if args.task:
+        if args.task not in groups:
+            print(YELLOW(f"Task '{args.task}' tidak ada di log."))
+            print("Task yang ada: " + ", ".join(sorted(groups)[-10:]))
+            return 1
+        dipilih = [args.task]
+    else:
+        # Ambil N task terakhir menurut baris terakhirnya.
+        dipilih = sorted(groups, key=lambda k: groups[k][-1].get("ts", ""))[-args.tasks:]
+
+    for key in dipilih:
+        rs = groups[key]
+        ts_list = [x for x in (_parse_ts(r.get("ts")) for r in rs) if x]
+        if len(ts_list) < 2:
+            print(DIM(f"=== {key}: terlalu sedikit baris untuk diukur ==="))
+            continue
+        dinding = (max(ts_list) - min(ts_list)).total_seconds()
+
+        pre = [r for r in rs if r.get("event") == "pre_tool_call"]
+        post = [r for r in rs if r.get("event") == "post_tool_call"]
+        dalam = sum(float(r.get("ms") or 0) for r in post) / 1000.0
+        luar = max(0.0, dinding - dalam)
+
+        print(BOLD(f"=== task {key} ==="))
+        print(f"  rentang dinding    : {_dur(dinding)}"
+              f"  ({min(ts_list).strftime('%H:%M:%S')} -> "
+              f"{max(ts_list).strftime('%H:%M:%S')})")
+        print(f"  putaran tool       : {len(pre)}")
+        pct = (luar / dinding * 100) if dinding else 0
+        print(f"  waktu DI DALAM tool: {_dur(dalam)}")
+        print(f"  waktu DI LUAR tool : {_dur(luar)}  ({pct:.0f}%)"
+              + DIM("  <- model berpikir + provider"))
+
+        # Per tool: mana yang paling sering dipanggil.
+        hit = Counter()
+        wkt = defaultdict(float)
+        for r in post:
+            nm = r.get("tool") or "?"
+            hit[nm] += 1
+            wkt[nm] += float(r.get("ms") or 0) / 1000.0
+        if hit:
+            print("  per tool:")
+            for nm, c in hit.most_common(args.top):
+                print(f"    {nm:<24} {c:>3}x  total {_dur(wkt[nm])}")
+
+        # Jeda terbesar antar baris berurutan = kandidat putaran termahal.
+        berurutan = sorted((r for r in rs if _parse_ts(r.get("ts"))),
+                           key=lambda r: r.get("ts", ""))
+        jeda = []
+        for a, b in zip(berurutan, berurutan[1:]):
+            d = (_parse_ts(b["ts"]) - _parse_ts(a["ts"])).total_seconds()
+            jeda.append((d, a, b))
+        jeda.sort(key=lambda x: -x[0])
+        if jeda:
+            print("  jeda terbesar:")
+            for d, a, b in jeda[:args.top]:
+                print(f"    {_dur(d):>8}  sesudah "
+                      f"{a.get('tool') or a.get('event')} -> "
+                      f"{b.get('tool') or b.get('event')}")
+
+        # Putusan, supaya angkanya tidak dibiarkan tanpa arti.
+        if len(pre) >= 20 and pct >= 70:
+            print(YELLOW("  -> putaran banyak DAN waktunya di luar tool: yang "
+                         "mahal adalah BANYAKNYA giliran. Pangkas prosedurnya, "
+                         "bukan providernya."))
+        elif pct >= 70:
+            print(YELLOW("  -> waktu dominan di luar tool dengan sedikit "
+                         "putaran: kandidat kuat latensi PROVIDER."))
+        else:
+            print(YELLOW("  -> waktu dominan DI DALAM tool: browser/CDP yang "
+                         "lambat, bukan model."))
+        print()
+    return 0
+
+
 def cmd_tail(args):
     recs = _load()
     for r in recs[-args.n:]:
@@ -414,6 +543,12 @@ def main() -> int:
     p = sub.add_parser("stuck", help="tool yang mulai tanpa selesai")
     p.add_argument("--limit", type=int, default=20)
     p.set_defaults(fn=cmd_stuck)
+
+    p = sub.add_parser("timing", help="pecah waktu task: di dalam vs di luar tool")
+    p.add_argument("--task", help="id task tertentu (default: beberapa terakhir)")
+    p.add_argument("--tasks", type=int, default=3, help="jumlah task terakhir")
+    p.add_argument("--top", type=int, default=5, help="baris per daftar")
+    p.set_defaults(fn=cmd_timing)
 
     p = sub.add_parser("tail", help="baris terakhir")
     p.add_argument("-n", type=int, default=40)

@@ -194,6 +194,7 @@ agentdrop start           nyalakan gateway Telegram (agent berjalan di atasnya)
 agentdrop stop
 agentdrop audit doctor    diagnosis kalau ada yang rusak
 agentdrop audit trace ID  runtutan satu task
+agentdrop audit timing    ke mana perginya waktu sebuah task
 agentdrop logs            kumpulkan log ke data/audit/ untuk dianalisis
 agentdrop cron            pasang jadwal otomatis
 agentdrop burn-in         uji stabilisasi sebelum agent dipercaya

@@ -1358,3 +1358,62 @@ pun: **memangkas jumlah putaran**, bukan kecepatannya. Konkret:
 
 Itu perubahan di **SKILL.md**, bukan di arsitektur. Murah, bisa diukur, dan
 tidak menyentuh batas keamanan mana pun.
+
+---
+
+## Arc 19 — Koreksi: angka "3–12 detik per putaran" itu saya karang
+
+Operator menolak jawaban saya soal kecepatan, dan penolakannya benar.
+
+Saya menulis bahwa task post X punya lantai 21–84 detik karena "7 aksi ×
+3–12 detik per putaran". **Angka 3, 6, dan 12 detik itu tidak pernah saya
+ukur.** Saya memberinya label optimis/realistis/pesimis supaya terlihat
+terukur. Itu persis kegagalan yang berulang kali saya koreksi dari pekerjaan
+sendiri: dugaan yang disajikan dengan nada temuan.
+
+Kesimpulan yang dibangun di atasnya ikut gugur. Saya menulis "tidak ada
+optimasi arsitektur yang menghapus lantai itu" — padahal kalau Manus
+menyelesaikan task kompleks dalam 1–5 menit, lantai itu jelas bukan hukum
+alam. Yang benar: **jumlah putaran per task adalah variabel utama**, dan itu
+bisa jauh lebih rendah dari yang kita lakukan sekarang.
+
+Fakta yang dilaporkan operator dan tidak saya bantah:
+- 1 task sederhana = 15 menit
+- 20 menit untuk task connect wallet, dan tombol connect **belum diklik**
+- proyeksi 2–6 jam per proyek
+
+Yang belum saya ukur: **ke mana perginya 15 menit itu.** Tanpa itu, "provider
+lambat" dan "prosedur kita boros giliran" sama-sama terdengar masuk akal.
+
+### Instrumennya sudah ada, alat bacanya belum
+
+Log audit ternyata sudah menyimpan yang dibutuhkan:
+- `ts` di setiap baris (`tools/audit_log.py:156,191`)
+- `ms` dari `duration_ms` di setiap `post_tool_call` (`agent-hooks/audit-log.py:119`)
+
+Jadi pemecahannya bisa **dihitung**, bukan diperkirakan:
+
+```
+waktu_dalam_tool = jumlah ms pada post_tool_call
+waktu_luar_tool  = rentang dinding - waktu_dalam_tool
+                   (= model berpikir + round-trip provider)
+jumlah putaran   = jumlah pre_tool_call
+```
+
+Ditambahkan `agentdrop audit timing`. Diuji dengan TIGA log sintetis yang
+masing-masing harus memberi putusan berbeda:
+
+| kasus | putaran | alat menyimpulkan |
+|---|---|---|
+| 40 putaran, tool 0.8s, jeda 20s | 40 | "putaran banyak DAN waktu di luar tool → pangkas prosedurnya, bukan providernya" |
+| 6 putaran, tool 0.9s, jeda 90s | 6 | "sedikit putaran, waktu dominan di luar tool → kandidat kuat latensi PROVIDER" |
+| 12 putaran, tool 45s, jeda 3s | 12 | "waktu dominan DI DALAM tool → browser/CDP yang lambat, bukan model" |
+
+Ketiganya benar. Alat ini yang akan menjawab pertanyaan operator dengan angka
+dari mesinnya sendiri, bukan dari dugaan saya.
+
+**Pelajaran, dan ini yang kedua kalinya di arc yang berdekatan:** kalau tidak
+bisa mengukur, jangan menyajikan angka. Lebih baik mengatakan "saya tidak tahu,
+ini alat untuk mengetahuinya" daripada memberi rentang yang terdengar hasil
+pengukuran. Operator berhak atas fakta; kalau faktanya belum ada, tugas saya
+membuat alat yang menghasilkannya.
