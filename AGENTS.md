@@ -1925,3 +1925,70 @@ tool lambat → browser/CDP.
 **Pelajaran:** alat diagnosis yang memberi verdict harus diuji pada kasus
 *gagal*, bukan hanya kasus *lambat*. Versi pertama hanya diuji pada tiga
 bentuk kelambatan, jadi cabang kegagalan tidak pernah terlihat salah.
+
+## Arc 26 — Uji semua worker, dan exit code yang berbohong
+
+Operator meminta: *"persiapkan untuk test berikutnya … tinggal atur dan prepare ke
+cronjob, kita akan test semua worker."* Sebelum menyusun paket uji, ada satu
+fakta di log operator sendiri yang menentukan seluruh desainnya:
+
+```
+✓ worker-onboard selesai (rc=0)
+```
+
+Padahal task itu mati di panggilan API pertama (HTTP 402) dan tidak memanggil
+satu tool pun. `agentdrop:163-168` menilai dari `$?` keluaran
+`hermes chat`, dan **rc=0 hanya berarti "sesi selesai", bukan "tugas
+berhasil"**. Jadi sinyal yang dipakai selama ini tidak bisa membedakan worker
+yang bekerja dari worker yang gagal total.
+
+Karena itu `scripts/test-workers.sh` menilai dari **log audit**, bukan exit
+code:
+
+```
+LULUS = ada pre_tool_call DAN tidak ada baris level=error
+GAGAL = 0 tool call (agent mati sebelum bertindak), atau ada error tercatat
+```
+
+Setiap worker mendapat satu task kecil read-only yang sesuai perannya
+(SOUL.md); tidak ada yang menyentuh wallet, login, atau posting. Terdaftar
+sebagai `agentdrop test-workers [--only <profil>]` — 14 subcommand sekarang.
+
+**Dua bug di kode yang saya tulis sendiri, keduanya ketahuan dari pengujian:**
+
+1. `_sekarang()` memakai `date -u +"%Y-%m-%dT%H:%M:%S.%fZ"`. **GNU date tidak
+   mendukung `%f`** — ia mencetak `%f` apa adanya, jadi pembanding string
+   menjadi `...:%fZ` dan seluruh filter waktu rusak (hitungan menumpuk antar
+   worker: 1, 2, 3, 4…).
+
+2. Setelah `%f` diperbaiki, hitungannya *masih* menumpuk (1, 2, 3, 4, 5, 6).
+   Penyebabnya lebih halus: resolusi milidetik terlalu kasar — dua task yang
+   berurutan cepat berbagi timestamp yang sama, jadi task kedua mewarisi
+   hitungan task pertama. Diganti **selisih jumlah baris** sebelum/sesudah,
+   yang tidak bergantung pada presisi jam sama sekali.
+
+**Validator menemukan cacat di dirinya sendiri.** Aturan `hermes chat` di
+`tools/validate_config.py:351` memindai semua baris termasuk komentar, jadi
+komentar `# rc sengaja TIDAK dipakai … hermes chat mengembalikan 0 walau`
+terbaca sebagai pelanggaran — padahal pemanggilan sebenarnya sudah benar
+(`chat -q "$T"`). Aturan tetangga di `:364-365` sudah punya pengecualian
+komentar; aturan ini belum. Disamakan. Diuji dua arah: pelanggaran nyata di
+kode tetap tertangkap (exit 1), komentar lolos.
+
+**Empat kasus diuji dengan `hermes` tiruan yang menulis ke log audit asli:**
+semua sukses → 8 lulus 0 gagal (tepat 1 tool call tiap worker); semua gagal →
+0 lulus 8 gagal; campuran → 7 lulus 1 gagal dengan worker yang tepat
+teridentifikasi; `--only worker-x` → 1 lulus. Jalur CLI
+(`agentdrop test-workers`) diuji terpisah dari pemanggilan skrip langsung.
+
+**Pelajaran:** sebuah harness uji yang salah akan menghasilkan kesimpulan yang
+salah dengan sangat meyakinkan. Harness pertama melaporkan "8/8 lulus" dengan
+hitungan 1,2,3…8 — angka yang jelas-jelas salah tapi lolos sebagai "lulus".
+**Baca nilainya, bukan hanya verdict-nya.**
+
+**Yang belum bisa dipastikan dari sandbox:** `api_mode` yang benar untuk
+endpoint operator (`chat_completions` vs `codex_responses`) tetap tidak bisa
+diverifikasi di sini — egress ke `api.hcnsec.cn` mati di TLS. `agentdrop
+test-workers` justru alat yang akan menjawabnya di mesin operator: kalau
+`api_mode` salah, tool calling tidak jalan dan tiap worker akan tampil sebagai
+"0 tool call".

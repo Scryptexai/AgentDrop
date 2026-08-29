@@ -349,6 +349,13 @@ def check_shell(path: Path) -> None:
 
     # `hermes ... chat <teks>` tanpa -q adalah bug: chat tidak punya argumen posisional.
     for line in text.splitlines():
+        # Komentar yang MENDOKUMENTASIKAN pola ini bukan cacat — sama seperti
+        # aturan `grep -c || echo 0` di bawah. Tanpa ini, menulis
+        # "hermes chat mengembalikan 0 walau task gagal" di komentar terbaca
+        # sebagai pemanggilan yang salah, dan penulis akan tergoda menghapus
+        # penjelasannya daripada memperbaiki kodenya.
+        if line.lstrip().startswith("#"):
+            continue
         if "chat " in line and "-q" not in line and "--query" not in line:
             if re.search(r"hermes.*\bchat\s+['\"]", line) or re.search(r"hermes.*\bchat\s+[A-Za-z]", line):
                 err(f"{rel}: kemungkinan pemanggilan 'hermes chat' dengan argumen "

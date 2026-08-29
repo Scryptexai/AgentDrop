@@ -17,6 +17,7 @@
 #   agentdrop logs         kumpulkan log ke data/audit/ untuk dianalisis
 #   agentdrop cron         pasang jadwal otomatis
 #   agentdrop burn-in      uji stabilisasi sebelum agent dipercaya
+#   agentdrop test-workers uji fungsional semua worker, dinilai dari log audit
 #
 # CATATAN (K9): gateway dan agent BUKAN dua hal. Agent berjalan di atas
 # gateway, jadi `start` menyalakan keduanya sekaligus. Memisahkannya hanya
@@ -267,6 +268,7 @@ cmd_status()   { verify_run "${1:-}"; }
 cmd_audit()    { "$(_pyu)" "$ROOT/tools/audit.py" "$@"; }
 cmd_cron()     { bash "$ROOT/scripts/install-cron.sh" "$@"; }
 cmd_burnin()   { bash "$ROOT/scripts/burn-in.sh" "$@"; }
+cmd_testworkers() { bash "$ROOT/scripts/test-workers.sh" "$@"; }
 cmd_logs()     { bash "$ROOT/scripts/collect-logs.sh" "$@"; }
 
 main() {
@@ -285,6 +287,7 @@ main() {
     logs)         cmd_logs "$@" ;;
     cron)         cmd_cron "$@" ;;
     burn-in)      cmd_burnin "$@" ;;
+    test-workers) cmd_testworkers "$@" ;;
     -h|--help|"") usage ;;
     *) _err "perintah tidak dikenal: $sub"; echo; usage; exit 1 ;;
   esac
