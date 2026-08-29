@@ -22,7 +22,7 @@ ditebak dari halamannya saja:
 | `discord-engager` | role apa yang didapat, syarat apa yang ternyata berlaku |
 | `x-engager` | metode verifikasi mana yang dipakai, dan apakah platform mendeteksi akun yang dikelola agent |
 | `portfolio-tracker` | state terbaru, supaya laporan berikutnya berisi **perubahan** |
-| `worker-monitor` | kondisi terakhir yang tercatat, untuk mendeteksi anomali |
+| `pekerja-pantau` | kondisi terakhir yang tercatat, untuk mendeteksi anomali |
 
 ## Aturan menulis
 

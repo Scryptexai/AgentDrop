@@ -43,7 +43,7 @@ Ditambah yang lebih tua tapi tetap berlaku:
 ### Jangan seragam — dan ini bukan hiasan
 
 Jadwal cron yang persis 24 jam pada jam yang sama **adalah sinyal**. Kalau
-`worker-daily` dijalankan cron, variasinya harus nyata, bukan acak kosmetik.
+`pekerja-harian` dijalankan cron, variasinya harus nyata, bukan acak kosmetik.
 
 ### Sidik jari gas: alasan multi-wallet
 

@@ -44,7 +44,7 @@ selama delapan bulan** peringkatnya lebih tinggi daripada **lima puluh
 transaksi dalam satu hari**.
 
 Jadi cron harian yang mengerjakan semuanya sekaligus adalah **pola yang salah**.
-Yang benar: sedikit, tersebar, tidak seragam. Ini alasan `worker-daily` ada
+Yang benar: sedikit, tersebar, tidak seragam. Ini alasan `pekerja-harian` ada
 sebagai worker terpisah dengan state sendiri, bukan sekadar loop.
 
 ### 2. Jangan seragam

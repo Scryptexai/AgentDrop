@@ -1,31 +1,27 @@
 # ============================================================================
-# WORKER: MONITOR — verifikasi, pelaporan, deteksi anomali
+# WORKER: QUESTS — eksekusi campaign multi-langkah (Galxe, Layer3, Zealy, dll.)
 # ============================================================================
-# Dipasang ke: ~/.hermes/profiles/worker-monitor/config.yaml
+# Dipasang ke: ~/.hermes/profiles/pekerja-quest/config.yaml
 # Profil = HERMES_HOME terpisah penuh. Tidak mewarisi config utama.
-#
-# Worker ini MEMBACA dan MEMVERIFIKASI lewat browser, tapi tidak mengeksekusi.
-# Toolset terminal sengaja tidak diaktifkan: monitor boleh melihat, tidak boleh
-# mengubah sistem.
 # ============================================================================
 
 model:
-  # Variabel model worker INI, bukan global. memantau dan membandingkan angka; jarang bertindak.
+  # Variabel model worker INI, bukan global. menavigasi dApp dengan wallet; keandalan paling mahal di sini.
   # Kosongkan salah satu di .env untuk memakai nilai global
   # (AGENTDROP_MODEL dst.) — install.sh yang menyelesaikan
   # fallback-nya, karena Hermes tidak punya sintaks default
   # untuk ${VAR} (config.py:2767 membiarkannya verbatim).
-  # Sintesis lintas campaign + penilaian tren. Butuh penalaran baik.
-  default: "${AGENTDROP_MODEL_WORKER_MONITOR}"
+  # Eksekusi campaign = banyak keputusan navigasi. Butuh model kuat.
+  default: "${AGENTDROP_MODEL}"
   # "openrouter", BUKAN "auto". "auto" tidak pernah menyelesaikan ke OpenRouter
   # (hermes_cli/auth.py:2268 memeriksa PROVIDER_REGISTRY, dan "auto" tidak ada
   # di sana; config.py:2990 memperingatkan "auto" justru membuat model dirutekan
   # lewat provider yang salah). Gejalanya: model custom tidak termuat dan UI
   # hanya menampilkan model/provider bawaan Hermes. Penjelasan panjang ada di
   # config/hermes/config.yaml.
-  provider: "${AGENTDROP_PROVIDER_WORKER_MONITOR}"
-  base_url: "${AGENTDROP_BASE_URL_WORKER_MONITOR}"
-  max_tokens: "${AGENTDROP_MAX_TOKENS_WORKER_MONITOR}"
+  provider: "${AGENTDROP_PROVIDER}"
+  base_url: "${AGENTDROP_BASE_URL}"
+  max_tokens: "${AGENTDROP_MAX_TOKENS}"
 
 
 # Provider OpenAI-compatible. Dirender dari .env saat install.
@@ -41,34 +37,28 @@ custom_providers:
     key_env: "CUSTOM_API_KEY"
     api_mode: "__AGENTDROP_API_MODE__"
     models:
-      "${AGENTDROP_MODEL_WORKER_MONITOR}": {}
+      "${AGENTDROP_MODEL}": {}
 toolsets:
   - hermes-cli
   - browser
   - file
   - web
-  - memory
+  - todo
 
 agent:
-  max_turns: 40
+  # Campaign multi-langkah dengan banyak halaman. 60 turn realistis.
+  max_turns: 60
   reasoning_effort: "high"
   # MATIKAN SHELL — lihat penjelasan di akhir file.
   disabled_toolsets: [terminal, code_execution]
 
-# ----------------------------------------------------------------------------
-# BROWSER
-# ----------------------------------------------------------------------------
-# worker-monitor diberi akses browser karena tugasnya MEMVERIFIKASI klaim
-# worker lain. Verifikasi yang hanya membaca progress.json bisa dibohongi oleh
-# laporan palsu; membuka kembali halamannya dan membaca state secara langsung
-# tidak bisa.
-#
-# Tetap tanpa kemampuan eksekusi berat (terminal sengaja tidak diaktifkan) —
-# monitor boleh melihat, tidak boleh mengubah sistem.
 browser:
   # 1800 (30 menit) — cukup panjang untuk satu rangkaian aksi farming.
+  # Default Hermes 120 detik terlalu pendek: sesi login dashboard
+  # bisa tertutup di tengah rangkaian aksi.
   inactivity_timeout: 1800
   command_timeout: 30
+  # Halaman quest sering panjang (daftar task, syarat, footer).
   # 15000 = default Hermes (browser_tool.py:290). Jangan dinaikkan tanpa bukti:
   # angka ini adalah "per-page budget" yang masuk ke KONTEKS MODEL di setiap
   # snapshot (browser_tool.py:285-289), dan satu task browser melakukan banyak
@@ -76,9 +66,9 @@ browser:
   # yang terpotong tetap disimpan utuh ke cache/web dan bisa dibaca lewat
   # read_file. Penjelasan panjang di config/hermes/config.yaml.
   snapshot_threshold: 15000
-  # Tidak merekam sesi — monitor hanya membaca, dan rekaman menambah beban disk.
   record_sessions: false
   allow_private_urls: false
+
   # headed HANYA berlaku untuk browser lokal Hermes (agent-browser), BUKAN
   # mode CDP. GUI di setup ini datang dari noVNC
   # (Xvfb 1920x1080 -> x11vnc :5900 -> noVNC :6080). Biarkan false.
@@ -123,6 +113,10 @@ compression:
 tool_loop_guardrails:
   warnings_enabled: true
   hard_stop_enabled: true
+  warn_after:
+    exact_failure: 2
+    same_tool_failure: 3
+    idempotent_no_progress: 2
 
 # ---------------------------------------------------------------------------
 # MEMORY LOOP

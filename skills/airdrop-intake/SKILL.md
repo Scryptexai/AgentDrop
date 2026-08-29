@@ -119,7 +119,7 @@ Sebelum eksekusi, cari tahu dan catat:
 ## Langkah 5 — Output
 
 Tulis hasilnya ke **`data/campaigns/<nama-proyek>/info.json`**. Berkas ini
-dibaca `daily-executor` dan `worker-monitor`, jadi kalau tidak ditulis, keduanya
+dibaca `daily-executor` dan `pekerja-pantau`, jadi kalau tidak ditulis, keduanya
 kehilangan konteks proyek dan bekerja tanpa tahu chain, referral, atau syarat
 proyeknya.
 

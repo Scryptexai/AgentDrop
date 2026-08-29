@@ -90,13 +90,13 @@ Anda  →  ya
 ```
 Telegram (bot)
    ↓  pesan mentah
-worker-orchestrator          ← role: orchestrator, delegate_task
+pekerja-koordinator          ← role: orchestrator, delegate_task
    ├─ skill airdrop-intake   parse + klasifikasi + INVESTIGASI yang ambigu
    ↓  delegate_task(tasks=[...], output_schema=...)
-   ├──→ worker-quests        eksekusi task `auto`
-   ├──→ worker-daily         daily mission + cron
-   ├──→ worker-analyzer      kelayakan proyek (opsional)
-   └──→ worker-discord       komunitas
+   ├──→ pekerja-quest        eksekusi task `auto`
+   ├──→ pekerja-harian         daily mission + cron
+   ├──→ pekerja-riset      kelayakan proyek (opsional)
+   └──→ pekerja-discord       komunitas
 ```
 
 Ini memakai delegation native Hermes, bukan bikinan:
@@ -236,7 +236,7 @@ agentdrop burn-in 3               # ulang satu uji saja
 agentdrop burn-in --with-wallet   # + Uji 5 (connect wallet, TESTNET saja)
 agentdrop burn-in --with-social   # + Uji 6 (alur sosial nyata)
 agentdrop burn-in --all           # Uji 1-6
-agentdrop burn-in --profile worker-quests
+agentdrop burn-in --profile pekerja-quest
 ```
 
 | Uji | Yang diuji | Sentuh wallet/sosial? |
@@ -264,16 +264,16 @@ masalah lingkungan. Perbaiki lingkungannya, jangan perkuat promptnya.
 
 ```bash
 # Analisis sebuah proyek
-hermes --profile worker-analyzer chat -q "Analisis proyek ini: https://..."
+hermes --profile pekerja-riset chat -q "Analisis proyek ini: https://..."
 
 # Jalankan check-in harian sekarang
-hermes --profile worker-daily chat -q "Jalankan daily check-in untuk semua campaign aktif"
+hermes --profile pekerja-harian chat -q "Jalankan daily check-in untuk semua campaign aktif"
 
 # Kerjakan sebuah quest
-hermes --profile worker-quests chat -q "Kerjakan campaign ini: https://app.galxe.com/quest/..."
+hermes --profile pekerja-quest chat -q "Kerjakan campaign ini: https://app.galxe.com/quest/..."
 
 # Laporan mingguan
-hermes --profile worker-monitor chat -q "Buat ringkasan mingguan semua campaign"
+hermes --profile pekerja-pantau chat -q "Buat ringkasan mingguan semua campaign"
 
 # Chat interaktif
 agentdrop start
@@ -402,9 +402,9 @@ AgentDrop/
 │       ├── config.yaml         # config utama (browser.cdp_url, toolsets, security)
 │       ├── SOUL.md             # identitas agent utama
 │       └── profiles/           # 7 profil, masing-masing {config.yaml, SOUL.md}
-│           ├── worker-orchestrator/   ← pintu masuk Telegram
-│           ├── worker-analyzer/  worker-daily/  worker-quests/
-│           ├── worker-discord/   worker-monitor/  worker-x/
+│           ├── pekerja-koordinator/   ← pintu masuk Telegram
+│           ├── pekerja-riset/  pekerja-harian/  pekerja-quest/
+│           ├── pekerja-discord/   pekerja-pantau/  pekerja-x/
 │
 ├── skills/                     # 10 skill; tiap profil hanya dapat yang dipetakan
 │   ├── browser-operation/  browser-burn-in/  airdrop-intake/
@@ -440,14 +440,14 @@ AgentDrop/
 
 | Profil | Tugas | Model | Reasoning |
 |---|---|---|---|
-| `worker-orchestrator` | **Pintu masuk Telegram** + delegasi ke worker | kuat | `high` |
-| `worker-analyzer` | Filter proyek 4 dimensi | kuat | `high` |
-| `worker-daily` | Check-in harian | hemat | `medium` |
-| `worker-quests` | Eksekusi campaign multi-langkah | kuat | `high` |
-| `worker-discord` | Engagement komunitas | sedang | `medium` |
-| `worker-monitor` | Verifikasi & pelaporan | kuat | `high` |
+| `pekerja-koordinator` | **Pintu masuk Telegram** + delegasi ke worker | kuat | `high` |
+| `pekerja-riset` | Filter proyek 4 dimensi | kuat | `high` |
+| `pekerja-harian` | Check-in harian | hemat | `medium` |
+| `pekerja-quest` | Eksekusi campaign multi-langkah | kuat | `high` |
+| `pekerja-discord` | Engagement komunitas | sedang | `medium` |
+| `pekerja-pantau` | Verifikasi & pelaporan | kuat | `high` |
 
-`worker-orchestrator` adalah satu-satunya yang boleh mendelegasikan
+`pekerja-koordinator` adalah satu-satunya yang boleh mendelegasikan
 (`delegation.orchestrator_enabled: true`) dan satu-satunya yang menghadap
 Telegram. Ia **tidak** diberi toolset `terminal` di
 `platform_toolsets.telegram` — pintu masuk publik tidak boleh punya shell.
@@ -463,19 +463,19 @@ Telegram. Ia **tidak** diberi toolset `terminal` di
 
 | Waktu | Profil | Job |
 |---|---|---|
-| 09:00 | `worker-daily` | Daily check-in semua campaign |
-| 13:00 | `worker-monitor` | Verifikasi tengah hari |
-| 20:00 | `worker-monitor` | Laporan harian |
-| Minggu 21:00 | `worker-monitor` | Ringkasan mingguan + rekomendasi lanjut/berhenti |
+| 09:00 | `pekerja-harian` | Daily check-in semua campaign |
+| 13:00 | `pekerja-pantau` | Verifikasi tengah hari |
+| 20:00 | `pekerja-pantau` | Laporan harian |
+| Minggu 21:00 | `pekerja-pantau` | Ringkasan mingguan + rekomendasi lanjut/berhenti |
 
 Memakai **scheduler internal Hermes** (ticker in-process 60 detik), bukan system
 crontab — jadi job dapat preflight validation, model-drift guard, dan terlihat
 di `hermes cron list`.
 
 ```bash
-hermes --profile worker-daily cron list      # lihat job
-hermes --profile worker-monitor cron status  # status scheduler
-hermes --profile worker-monitor cron runs    # riwayat eksekusi
+hermes --profile pekerja-harian cron list      # lihat job
+hermes --profile pekerja-pantau cron status  # status scheduler
+hermes --profile pekerja-pantau cron runs    # riwayat eksekusi
 ```
 
 Job cron butuh scheduler yang hidup. Jalankan gateway:
@@ -489,13 +489,13 @@ melayani semua profil dan yang menjalankan cron job tiap profil. Docs Hermes
 melarang secondary profile menyalakan gateway sendiri saat multiplex aktif.
 
 **Yang sama berlakunya di dashboard web Hermes.** Kalau Anda membuka dashboard
-saat profil yang aktif adalah salah satu worker (mis. `worker-x`) lalu menekan
-Restart Gateway, dashboard menjalankan `hermes --profile worker-x gateway
+saat profil yang aktif adalah salah satu worker (mis. `pekerja-x`) lalu menekan
+Restart Gateway, dashboard menjalankan `hermes --profile pekerja-x gateway
 restart` — bukan restart multiplexer. Hermes menolak dengan:
 
 ```
 ✗ The default gateway is running as a profile multiplexer and already serves
-  profile 'worker-x'.
+  profile 'pekerja-x'.
 ```
 
 Itu **penolakan yang benar, bukan kerusakan**. Rantainya:
@@ -577,15 +577,15 @@ data/
 ```
 1. Operator forward info airdrop
         ↓
-2. worker-analyzer → skor 4 dimensi → 8/10 → PRIORITIZE
+2. pekerja-riset → skor 4 dimensi → 8/10 → PRIORITIZE
         ↓
 3. Operator: "gas"
         ↓
-4. worker-quests → kerjakan task `auto`, STOP di task `human`
+4. pekerja-quest → kerjakan task `auto`, STOP di task `human`
         ↓
-5. worker-daily → check-in otomatis tiap 09:00
+5. pekerja-harian → check-in otomatis tiap 09:00
         ↓
-6. worker-monitor → verifikasi 13:00, laporan 20:00, ringkasan Minggu 21:00
+6. pekerja-pantau → verifikasi 13:00, laporan 20:00, ringkasan Minggu 21:00
 ```
 
 ---

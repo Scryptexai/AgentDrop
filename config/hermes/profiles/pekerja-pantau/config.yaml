@@ -1,31 +1,31 @@
 # ============================================================================
-# WORKER: DISCORD — engagement komunitas
+# WORKER: MONITOR — verifikasi, pelaporan, deteksi anomali
 # ============================================================================
-# Dipasang ke: ~/.hermes/profiles/worker-discord/config.yaml
+# Dipasang ke: ~/.hermes/profiles/pekerja-pantau/config.yaml
 # Profil = HERMES_HOME terpisah penuh. Tidak mewarisi config utama.
 #
-# Catatan: worker ini memakai BROWSER (Discord web) atas akun Discord milik
-# operator sendiri. Hermes punya toolset `discord`/`discord_admin` native, tapi
-# itu untuk BOT — bukan untuk memakai akun pribadi operator sebagai bot, yang
-# melanggar ToS Discord. Karena itu toolset discord TIDAK diaktifkan di sini.
+# Worker ini MEMBACA dan MEMVERIFIKASI lewat browser, tapi tidak mengeksekusi.
+# Toolset terminal sengaja tidak diaktifkan: monitor boleh melihat, tidak boleh
+# mengubah sistem.
 # ============================================================================
 
 model:
-  # Variabel model worker INI, bukan global. membaca kanal + menulis balasan pendek.
+  # Variabel model worker INI, bukan global. memantau dan membandingkan angka; jarang bertindak.
   # Kosongkan salah satu di .env untuk memakai nilai global
   # (AGENTDROP_MODEL dst.) — install.sh yang menyelesaikan
   # fallback-nya, karena Hermes tidak punya sintaks default
   # untuk ${VAR} (config.py:2767 membiarkannya verbatim).
-  default: "${AGENTDROP_MODEL_WORKER_DISCORD}"
+  # Sintesis lintas campaign + penilaian tren. Butuh penalaran baik.
+  default: "${AGENTDROP_MODEL}"
   # "openrouter", BUKAN "auto". "auto" tidak pernah menyelesaikan ke OpenRouter
   # (hermes_cli/auth.py:2268 memeriksa PROVIDER_REGISTRY, dan "auto" tidak ada
   # di sana; config.py:2990 memperingatkan "auto" justru membuat model dirutekan
   # lewat provider yang salah). Gejalanya: model custom tidak termuat dan UI
   # hanya menampilkan model/provider bawaan Hermes. Penjelasan panjang ada di
   # config/hermes/config.yaml.
-  provider: "${AGENTDROP_PROVIDER_WORKER_DISCORD}"
-  base_url: "${AGENTDROP_BASE_URL_WORKER_DISCORD}"
-  max_tokens: "${AGENTDROP_MAX_TOKENS_WORKER_DISCORD}"
+  provider: "${AGENTDROP_PROVIDER}"
+  base_url: "${AGENTDROP_BASE_URL}"
+  max_tokens: "${AGENTDROP_MAX_TOKENS}"
 
 
 # Provider OpenAI-compatible. Dirender dari .env saat install.
@@ -41,26 +41,34 @@ custom_providers:
     key_env: "CUSTOM_API_KEY"
     api_mode: "__AGENTDROP_API_MODE__"
     models:
-      "${AGENTDROP_MODEL_WORKER_DISCORD}": {}
+      "${AGENTDROP_MODEL}": {}
 toolsets:
   - hermes-cli
   - browser
   - file
+  - web
   - memory
 
 agent:
   max_turns: 40
-  reasoning_effort: "medium"
+  reasoning_effort: "high"
   # MATIKAN SHELL — lihat penjelasan di akhir file.
   disabled_toolsets: [terminal, code_execution]
 
+# ----------------------------------------------------------------------------
+# BROWSER
+# ----------------------------------------------------------------------------
+# pekerja-pantau diberi akses browser karena tugasnya MEMVERIFIKASI klaim
+# worker lain. Verifikasi yang hanya membaca progress.json bisa dibohongi oleh
+# laporan palsu; membuka kembali halamannya dan membaca state secara langsung
+# tidak bisa.
+#
+# Tetap tanpa kemampuan eksekusi berat (terminal sengaja tidak diaktifkan) —
+# monitor boleh melihat, tidak boleh mengubah sistem.
 browser:
   # 1800 (30 menit) — cukup panjang untuk satu rangkaian aksi farming.
-  # Default Hermes 120 detik terlalu pendek: sesi login dashboard
-  # bisa tertutup di tengah rangkaian aksi.
   inactivity_timeout: 1800
   command_timeout: 30
-  # Discord web adalah SPA berat dengan banyak panel.
   # 15000 = default Hermes (browser_tool.py:290). Jangan dinaikkan tanpa bukti:
   # angka ini adalah "per-page budget" yang masuk ke KONTEKS MODEL di setiap
   # snapshot (browser_tool.py:285-289), dan satu task browser melakukan banyak
@@ -68,9 +76,9 @@ browser:
   # yang terpotong tetap disimpan utuh ke cache/web dan bisa dibaca lewat
   # read_file. Penjelasan panjang di config/hermes/config.yaml.
   snapshot_threshold: 15000
+  # Tidak merekam sesi — monitor hanya membaca, dan rekaman menambah beban disk.
   record_sessions: false
   allow_private_urls: false
-
   # headed HANYA berlaku untuk browser lokal Hermes (agent-browser), BUKAN
   # mode CDP. GUI di setup ini datang dari noVNC
   # (Xvfb 1920x1080 -> x11vnc :5900 -> noVNC :6080). Biarkan false.

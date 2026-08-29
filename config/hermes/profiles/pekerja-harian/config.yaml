@@ -1,29 +1,28 @@
 # ============================================================================
-# WORKER: QUESTS — eksekusi campaign multi-langkah (Galxe, Layer3, Zealy, dll.)
+# WORKER: DAILY — check-in harian semua campaign aktif
 # ============================================================================
-# Dipasang ke: ~/.hermes/profiles/worker-quests/config.yaml
+# Dipasang ke: ~/.hermes/profiles/pekerja-harian/config.yaml
 # Profil = HERMES_HOME terpisah penuh. Tidak mewarisi config utama.
 # ============================================================================
 
 model:
-  # Variabel model worker INI, bukan global. menavigasi dApp dengan wallet; keandalan paling mahal di sini.
+  # Variabel model worker INI, bukan global. tugas berulang yang sudah dikenal; model murah cukup.
   # Kosongkan salah satu di .env untuk memakai nilai global
   # (AGENTDROP_MODEL dst.) — install.sh yang menyelesaikan
   # fallback-nya, karena Hermes tidak punya sintaks default
   # untuk ${VAR} (config.py:2767 membiarkannya verbatim).
-  # Onboarding = register + connect wallet + setup awal di situs proyek.
-  # Alurnya pendek tapi tiap langkah menentukan: salah isi form atau salah
-  # pilih wallet berarti akun tidak terdaftar untuk airdrop-nya.
-  default: "${AGENTDROP_MODEL_WORKER_ONBOARD}"
+  # Tugas repetitif dan terstruktur: pakai model murah. Ini worker yang jalan
+  # setiap hari, jadi biayanya yang paling terasa. Ganti via `hermes model`.
+  default: "${AGENTDROP_MODEL}"
   # "openrouter", BUKAN "auto". "auto" tidak pernah menyelesaikan ke OpenRouter
   # (hermes_cli/auth.py:2268 memeriksa PROVIDER_REGISTRY, dan "auto" tidak ada
   # di sana; config.py:2990 memperingatkan "auto" justru membuat model dirutekan
   # lewat provider yang salah). Gejalanya: model custom tidak termuat dan UI
   # hanya menampilkan model/provider bawaan Hermes. Penjelasan panjang ada di
   # config/hermes/config.yaml.
-  provider: "${AGENTDROP_PROVIDER_WORKER_ONBOARD}"
-  base_url: "${AGENTDROP_BASE_URL_WORKER_ONBOARD}"
-  max_tokens: "${AGENTDROP_MAX_TOKENS_WORKER_ONBOARD}"
+  provider: "${AGENTDROP_PROVIDER}"
+  base_url: "${AGENTDROP_BASE_URL}"
+  max_tokens: "${AGENTDROP_MAX_TOKENS}"
 
 
 # Provider OpenAI-compatible. Dirender dari .env saat install.
@@ -39,19 +38,18 @@ custom_providers:
     key_env: "CUSTOM_API_KEY"
     api_mode: "__AGENTDROP_API_MODE__"
     models:
-      "${AGENTDROP_MODEL_WORKER_ONBOARD}": {}
+      "${AGENTDROP_MODEL}": {}
 toolsets:
   - hermes-cli
   - browser
   - file
-  - web
   - todo
 
 agent:
-  # Register -> connect wallet -> setup awal. Lebih pendek dari campaign
-  # quest, tapi tetap butuh ruang untuk retry saat form menolak.
-  max_turns: 40
-  reasoning_effort: "high"
+  # Rutinitas harian pendek dan terprediksi. 30 cukup; kalau mentok, itu tanda
+  # ada yang salah — bukan tanda perlu budget lebih besar.
+  max_turns: 30
+  reasoning_effort: "medium"
   # MATIKAN SHELL — lihat penjelasan di akhir file.
   disabled_toolsets: [terminal, code_execution]
 
@@ -61,7 +59,6 @@ browser:
   # bisa tertutup di tengah rangkaian aksi.
   inactivity_timeout: 1800
   command_timeout: 30
-  # Halaman quest sering panjang (daftar task, syarat, footer).
   # 15000 = default Hermes (browser_tool.py:290). Jangan dinaikkan tanpa bukti:
   # angka ini adalah "per-page budget" yang masuk ke KONTEKS MODEL di setiap
   # snapshot (browser_tool.py:285-289), dan satu task browser melakukan banyak
@@ -69,6 +66,7 @@ browser:
   # yang terpotong tetap disimpan utuh ke cache/web dan bisa dibaca lewat
   # read_file. Penjelasan panjang di config/hermes/config.yaml.
   snapshot_threshold: 15000
+  # Audit trail harian.
   record_sessions: false
   allow_private_urls: false
 
@@ -113,6 +111,8 @@ browser:
 compression:
   enabled: true
 
+# Worker ini jalan tanpa pengawasan via cron. Hard stop = circuit breaker:
+# berhenti lebih baik daripada menghabiskan budget iterasi untuk retry buta.
 tool_loop_guardrails:
   warnings_enabled: true
   hard_stop_enabled: true

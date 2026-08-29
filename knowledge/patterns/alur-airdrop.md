@@ -64,7 +64,7 @@ Token bisa diambil.
 
 Token live dan diperdagangkan.
 
-- **Yang masuk akal:** `worker-monitor` memantau saldo dan vesting
+- **Yang masuk akal:** `pekerja-pantau` memantau saldo dan vesting
 - **Catatan:** banyak program punya vesting bertahap, jadi saldo awal bukan
   jumlah akhir
 
@@ -76,12 +76,12 @@ Saat menerima task, tentukan lebih dulu **tahap mana** proyeknya:
 
 | Tahap | Worker utama | Yang dilaporkan |
 |---|---|---|
-| 1 pra-pengumuman | `worker-analyzer` | kelayakan spekulatif, confidence rendah |
-| 2 poin/quest | `worker-quests`, `worker-daily`, `worker-x`, `worker-discord` | progres per quest |
-| 3 snapshot | `worker-monitor` | apakah syarat terpenuhi |
-| 4 alokasi | `worker-monitor` | dapat / tidak dapat, dan kenapa |
-| 5 klaim | **manusia**, dengan `worker-monitor` memverifikasi | tx hash + saldo masuk |
-| 6 pasca-TGE | `worker-monitor` | saldo, vesting |
+| 1 pra-pengumuman | `pekerja-riset` | kelayakan spekulatif, confidence rendah |
+| 2 poin/quest | `pekerja-quest`, `pekerja-harian`, `pekerja-x`, `pekerja-discord` | progres per quest |
+| 3 snapshot | `pekerja-pantau` | apakah syarat terpenuhi |
+| 4 alokasi | `pekerja-pantau` | dapat / tidak dapat, dan kenapa |
+| 5 klaim | **manusia**, dengan `pekerja-pantau` memverifikasi | tx hash + saldo masuk |
+| 6 pasca-TGE | `pekerja-pantau` | saldo, vesting |
 
 **Kalau tahapnya tidak bisa ditentukan, itu sendiri temuan.** Laporkan bahwa
 tahapnya tidak jelas — jangan menebak lalu mengerjakan task yang tidak relevan.

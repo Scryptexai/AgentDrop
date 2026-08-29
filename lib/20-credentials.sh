@@ -129,17 +129,29 @@ credentials_ensure_model_vars() {
   local _k _v _prof _kunci _glob _cur
 
   # 1) GLOBAL dulu — ini sumber fallback untuk setiap worker.
-  for _k in MODEL PROVIDER BASE_URL MAX_TOKENS; do
+  # API_MODE dan PROVIDER_NAME ikut dijamin, dan itu bukan sekadar kerapian.
+  # Keduanya dikonsumsi oleh _render_config (lib/30-hermes.sh:55) yang
+  # menggantikan __AGENTDROP_API_MODE__ / __AGENTDROP_PROVIDER_NAME__ di
+  # config.yaml. Kalau variabelnya tidak ada di .env, render jatuh ke default
+  # "auto" — dan "auto" TIDAK PERNAH resolve sebagai provider:
+  # hermes_cli/auth.py:2268 menutup jalur config-provider sehingga provider
+  # "auto" tidak pernah terpilih. Hasilnya endpoint custom terpasang di config
+  # tapi tidak pernah dipakai, tanpa error yang jelas.
+  for _k in MODEL PROVIDER BASE_URL MAX_TOKENS API_MODE PROVIDER_NAME; do
     case "$_k" in
-      MODEL)     _v="anthropic/claude-sonnet-4" ;;
-      PROVIDER)  _v="openrouter" ;;
-      BASE_URL)  _v="https://openrouter.ai/api/v1" ;;
+      MODEL)     _v="Qwen3.8-27B" ;;
+      PROVIDER)  _v="custom" ;;
+      BASE_URL)  _v="https://api.hcnsec.cn/v1" ;;
       # Tanpa ini agent GAGAL di panggilan pertama pada akun ber-kredit
       # terbatas: ceiling native claude-sonnet-4 adalah 64.000
       # (agent/anthropic_adapter.py:175) dan OpenRouter menolaknya dengan
       # HTTP 402 "You requested up to 64000 tokens, but can only afford 2666".
       # Nilai config menang atas default model (agent/agent_init.py:2384).
       MAX_TOKENS) _v="8192" ;;
+      # chat_completions untuk endpoint kompatibel-OpenAI. Salah pilih di sini
+      # membuat tool calling gagal walau model dan base_url sudah benar.
+      API_MODE)  _v="chat_completions" ;;
+      PROVIDER_NAME) _v="agentdrop-custom" ;;
     esac
     if grep -qE "^AGENTDROP_${_k}=.+" "$ENV_FILE" 2>/dev/null; then
       _ok "AGENTDROP_${_k} sudah diset"
@@ -147,24 +159,6 @@ credentials_ensure_model_vars() {
       _env_set "AGENTDROP_${_k}" "$_v"
       _warn "AGENTDROP_${_k} belum ada — diisi default: $_v"
     fi
-  done
-
-  # 2) PER WORKER — mewarisi nilai global yang baru saja dijamin ada.
-  for _prof in worker-analyzer worker-daily worker-discord worker-monitor \
-               worker-onboard worker-orchestrator worker-quests worker-x; do
-    _kunci="${_prof//-/_}"          # worker-x -> WORKER_X
-    _kunci="${_kunci^^}"
-    for _k in MODEL PROVIDER BASE_URL MAX_TOKENS; do
-      _glob="AGENTDROP_${_k}"
-      _cur="AGENTDROP_${_k}_${_kunci}"
-      _v="$(grep -E "^${_glob}=" "$ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2- || true)"
-      if grep -qE "^${_cur}=.+" "$ENV_FILE" 2>/dev/null; then
-        _ok "$_cur sudah diset"
-      else
-        _env_set "$_cur" "$_v"
-        _ok "$_cur = $_v  (mengikuti global)"
-      fi
-    done
   done
 
   # Jebakan yang sudah benar-benar terjadi: operator mengisi CUSTOM_BASE_URL
@@ -188,6 +182,6 @@ credentials_ensure_model_vars() {
     _warn "    AGENTDROP_MODEL=<id model dari endpoint itu>"
   fi
 
-  _log "Model berbeda per worker: ubah AGENTDROP_*_<WORKER> di $ENV_FILE,"
-  _log "  mis. AGENTDROP_MODEL_WORKER_QUESTS=anthropic/claude-opus-4"
+  # Tidak ada lagi variabel per-worker. Semua worker membaca AGENTDROP_MODEL
+  # global — lihat komentar di kepala berkas kenapa lapisan itu dihapus.
 }

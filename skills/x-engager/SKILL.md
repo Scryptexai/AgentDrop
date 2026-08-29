@@ -8,7 +8,7 @@ license: MIT
 
 # X Engager
 
-Skill ini untuk worker-x. Baca dulu **Protokol Browser** di SOUL.md — tidak ada
+Skill ini untuk pekerja-x. Baca dulu **Protokol Browser** di SOUL.md — tidak ada
 CSS selector di sini, semua elemen diambil dari snapshot.
 
 ## Langkah 0 — tentukan metode verifikasinya DULU

@@ -201,7 +201,7 @@ Semua ini diverifikasi terhadap sumber Hermes (`tools/browser_tool.py`,
 | `web_extract` | `web` | hanya profil yang mengaktifkan `web` |
 
 Skill ini dipasang ke **semua** profil, tapi toolset `web` tidak. Yang tidak
-memilikinya: `worker-daily`, `worker-discord`, `worker-x`. Kalau Anda salah
+memilikinya: `pekerja-harian`, `pekerja-discord`, `pekerja-x`. Kalau Anda salah
 satunya, `web_extract` tidak tersedia — pakai `browser_navigate` +
 `browser_snapshot` untuk membaca isi halaman.
 

@@ -35,7 +35,7 @@ Dijadwalkan otomatis lewat cron Hermes (lihat `scripts/install-cron.sh`), atau
 manual:
 
 ```bash
-hermes --profile worker-daily chat -q "Jalankan daily check-in untuk semua campaign aktif"
+hermes --profile pekerja-harian chat -q "Jalankan daily check-in untuk semua campaign aktif"
 ```
 
 Perhatikan `-q`. `hermes chat` **tidak menerima argumen posisional** — hanya

@@ -110,7 +110,7 @@ gagal** — catat, lalu berhenti.
 
 ```
 BURN-IN REPORT — <timestamp>
-Browser: Chrome <versi>  |  Profil: <profil yang dipakai, default worker-daily>
+Browser: Chrome <versi>  |  Profil: <profil yang dipakai, default pekerja-harian>
 
 Uji 1  Navigasi & snapshot      LOLOS/GAGAL   <bukti>
 Uji 2  Elemen dinamis & ref     LOLOS/GAGAL   <bukti>

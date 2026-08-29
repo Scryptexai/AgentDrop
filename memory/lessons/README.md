@@ -1,6 +1,6 @@
 # Pelajaran agent — append-only
 
-Satu berkas per profil: `worker-daily.md`, `worker-quests.md`, dst.
+Satu berkas per profil: `pekerja-harian.md`, `pekerja-quest.md`, dst.
 Dibuat otomatis oleh agent pada run pertama.
 
 Format dan protokolnya ada di `skills/self-improvement/SKILL.md`.

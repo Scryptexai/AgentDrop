@@ -1,28 +1,28 @@
 # lib/30-hermes.sh — config utama, profil, skill, dan hook audit.
 # Di-source oleh install.sh.
 
-PROFILES=(worker-orchestrator worker-analyzer worker-daily worker-onboard
-          worker-quests worker-discord worker-monitor worker-x)
+PROFILES=(pekerja-koordinator pekerja-riset pekerja-harian pekerja-daftar
+          pekerja-quest pekerja-discord pekerja-pantau pekerja-x)
 
 SKILLS=(browser-operation browser-burn-in airdrop-intake airdrop-analyzer
         daily-executor quest-executor discord-engager portfolio-tracker
         x-engager self-improvement)
 
 # Hermes tidak membatasi skill apa yang boleh dipanggil sebuah profil — apa pun
-# yang ada di foldernya bisa dipakai. Tanpa pemetaan ini, worker-discord bisa
+# yang ada di foldernya bisa dipakai. Tanpa pemetaan ini, pekerja-discord bisa
 # memanggil daily-executor dan mengerjakan campaign yang bukan urusannya.
 declare -A PROFILE_SKILLS=(
-  [worker-orchestrator]="browser-operation browser-burn-in airdrop-intake airdrop-analyzer self-improvement"
-  [worker-analyzer]="browser-operation browser-burn-in airdrop-analyzer self-improvement"
-  [worker-daily]="browser-operation browser-burn-in daily-executor self-improvement"
+  [pekerja-koordinator]="browser-operation browser-burn-in airdrop-intake airdrop-analyzer self-improvement"
+  [pekerja-riset]="browser-operation browser-burn-in airdrop-analyzer self-improvement"
+  [pekerja-harian]="browser-operation browser-burn-in daily-executor self-improvement"
   # onboard = register + connect wallet di SITUS PROYEK (bukan platform quest).
   # quest-executor tidak dipetakan ke sini: alurnya berbeda dan mencampurnya
-  # membuat worker-onboard mengerjakan campaign yang bukan urusannya.
-  [worker-onboard]="browser-operation browser-burn-in airdrop-intake self-improvement"
-  [worker-quests]="browser-operation browser-burn-in quest-executor self-improvement"
-  [worker-discord]="browser-operation browser-burn-in discord-engager self-improvement"
-  [worker-monitor]="browser-operation browser-burn-in portfolio-tracker self-improvement"
-  [worker-x]="browser-operation browser-burn-in x-engager self-improvement"
+  # membuat pekerja-daftar mengerjakan campaign yang bukan urusannya.
+  [pekerja-daftar]="browser-operation browser-burn-in airdrop-intake self-improvement"
+  [pekerja-quest]="browser-operation browser-burn-in quest-executor self-improvement"
+  [pekerja-discord]="browser-operation browser-burn-in discord-engager self-improvement"
+  [pekerja-pantau]="browser-operation browser-burn-in portfolio-tracker self-improvement"
+  [pekerja-x]="browser-operation browser-burn-in x-engager self-improvement"
 )
 
 _render_config() {  # _render_config SRC DST LABEL
@@ -162,7 +162,7 @@ hermes_install() {
     #       ${ENV_VAR} expansion"      (config.py:3366-3372)
     #
     #    profiles.py:756 _read_config_model() memakainya, jadi `hermes profile
-    #    list` dan dashboard menampilkan string "${AGENTDROP_MODEL_WORKER_X}"
+    #    list` dan dashboard menampilkan string "${AGENTDROP_MODEL_PEKERJA_X}"
     #    apa adanya. doctor.py juga memakai read_user_config_raw di beberapa
     #    tempat (1507, 1747, 1795, 3217). Menambal semua jalur tampilan itu
     #    berarti mengubah kode Hermes — bukan bagian kita.

@@ -120,8 +120,8 @@ Dari `hermes_cli/_parser.py`: `-q/--query` dan `--query-file` berada dalam
 **mutually exclusive group**, dan tidak ada positional. Jadi:
 
 ```bash
-hermes --profile worker-daily chat 'teks'      # ✗ error
-hermes --profile worker-daily chat -q 'teks'   # ✓
+hermes --profile pekerja-harian chat 'teks'      # ✗ error
+hermes --profile pekerja-harian chat -q 'teks'   # ✓
 ```
 
 ### `model.default` memakai format `provider/model`
@@ -314,7 +314,7 @@ session_key = "task_"   + uuid5(NAMESPACE_URL, f"camofox-session:{scope_root}:{t
 
 Verifikasi empiris:
 ```
-HERMES_HOME=/home/user/.hermes/profiles/worker-daily
+HERMES_HOME=/home/user/.hermes/profiles/pekerja-harian
 get_camofox_identity() -> {'user_id': 'hermes_68c00ea529',
                            'session_key': 'task_8fe86c2102965395'}
 ```

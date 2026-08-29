@@ -113,10 +113,26 @@ custom_providers:
 #        computer_use, code_execution, cronjob, delegation, session_search,
 #        context_engine, clarify, delegation, image_gen, tts, stt, ...
 # Catatan: `hermes-cli` adalah default bawaan Hermes.
+#
+# `delegation` WAJIB ada di sini, dan alasannya spesifik:
+# gateway multiplex melayani profil DEFAULT lebih dulu
+# (hermes_cli/profiles.py:1105 profiles_to_serve(multiplex=True) — "the default
+# profile is always served"), jadi profil default-lah yang memegang
+# TELEGRAM_BOT_TOKEN dan menjawab pesan Telegram. Kalau profil ini tidak punya
+# delegate_task, tidak ada jalan dari Telegram ke pekerja mana pun — operator
+# bicara pada agent default yang mengerjakan semuanya sendiri. Itu persis
+# keluhan yang dilaporkan: "telegram juga worker nya masih default agent hermes
+# bukan worker yang dibuat yang tersambung ke situ".
+#
+# `terminal` sengaja TIDAK ada di sini. CodeAct ditolak operator
+# (disabled_toolsets: [terminal, code_execution] di semua profil pekerja), dan
+# menaruh terminal di root config sementara menghilangkannya dari semua pekerja
+# hanya berarti satu profil — justru yang paling sering dipakai lewat Telegram —
+# punya kemampuan yang operator larang.
 toolsets:
   - hermes-cli
   - browser
-  - terminal
+  - delegation
   - file
   - web
   - memory
@@ -129,6 +145,11 @@ agent:
   # Default Hermes 500. 90 cukup untuk satu sesi farming dan membatasi biaya.
   # Rekomendasi resmi di cli-config.yaml.example: 20-30 focused, 50-100 open.
   max_turns: 90
+
+  # CodeAct ditolak operator. Berlaku di SEMUA profil termasuk default — tanpa
+  # baris ini, profil default (yang menjawab Telegram) punya terminal dan
+  # execute_code sementara semua pekerja tidak.
+  disabled_toolsets: [terminal, code_execution]
 
   # Level valid: none, minimal, low, medium, high, xhigh, max, ultra.
   # (Prompt aslinya menyebut "xhigh" sebagai maksimum — sebenarnya ada juga
@@ -161,6 +182,32 @@ agent:
 #
 # JANGAN set BROWSER_CDP_URL bersama --session: agent-browser >=0.13 membuat
 # browser lokal sendiri dan mengabaikan --cdp tanpa error apa pun.
+
+# ----------------------------------------------------------------------------
+# DELEGATION — struktur bersarang yang membuat alur terasa cepat
+# ----------------------------------------------------------------------------
+# Default Hermes adalah max_spawn_depth: 1 (flat): hanya profil default yang
+# boleh memanggil delegate_task, dan pekerja tidak bisa memanggil pekerja lain.
+#
+# Di sini dinaikkan ke 2 supaya pekerja bisa memecah tugasnya sendiri menjadi
+# subagent — struktur yang diminta operator: "worker apapun di bawahnya ada
+# agent lagi yang bertindak untuk setiap task kecilnya". Hermes mensyaratkan
+# role="orchestrator" pada agent perantara (cli-config.yaml.example:1539-1541),
+# jadi hanya pekerja-koordinator yang boleh melakukannya; pekerja lain tetap
+# flat dan tidak bisa memperdalam pohonnya.
+#
+# max_concurrent_children dibiarkan default 10. Menaikkannya melipatgandakan
+# biaya API secara linear (peringatan asli di cli-config.yaml.example:1538).
+delegation:
+  max_iterations: 250
+  max_spawn_depth: 2
+  orchestrator_enabled: true
+  # subagent_auto_approve tetap false: subagent yang bertemu permintaan approval
+  # perintah berbahaya otomatis DITOLAK, bukan disetujui diam-diam. Parent
+  # memegang stdin, jadi memblokir akan deadlock — penolakan otomatis adalah
+  # jalan keluar yang aman (cli-config.yaml.example:1543-1546).
+  subagent_auto_approve: false
+
 browser:
   # "off" = PAKSA built-in browser tools (browser_navigate, browser_click, ...).
   #
@@ -254,8 +301,8 @@ compression:
 # GATEWAY — satu proses melayani semua profil
 # ----------------------------------------------------------------------------
 # WAJIB untuk cron. Hermes menyimpan cron job PER-PROFIL
-# (cron/jobs.py:68, issue #4707): `hermes --profile worker-daily cron create`
-# menulis ke ~/.hermes/profiles/worker-daily/cron/jobs.json.
+# (cron/jobs.py:68, issue #4707): `hermes --profile pekerja-harian cron create`
+# menulis ke ~/.hermes/profiles/pekerja-harian/cron/jobs.json.
 #
 # Tanpa flag ini, ticker gateway hanya membaca HERMES_HOME prosesnya — yaitu
 # ~/.hermes/cron/jobs.json, yang kosong. Komentar di gateway/run.py:31774

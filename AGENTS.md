@@ -232,7 +232,7 @@ Selesai:
   bekerja. Tiap skill kini membuka dengan "baca dulu" dan "tulis balik".
 - **Peta tool browser dikoreksi**: toolset `browser` punya **14** anggota, dan
   `web_extract` bukan salah satunya — ia milik toolset `web`, yang tidak
-  diaktifkan untuk `worker-daily`, `worker-discord`, `worker-x`.
+  diaktifkan untuk `pekerja-harian`, `pekerja-discord`, `pekerja-x`.
 - **Dokumen dibaca ulang dari awal sampai akhir**, bukan di-grep. Ini menemukan
   8 klaim palsu yang lolos dari semua validator (lihat di bawah).
 - **Ketujuh `SOUL.md` sudah dibaca penuh** (arc kedua dari teknik yang sama).
@@ -255,8 +255,8 @@ dari ingatan. Clone ulang setelah reprovision:
 
 - **`gateway.multiplex_profiles: true` wajib, dan tadinya tidak ada.** Hermes
   menyimpan cron job **per profil** (`cron/jobs.py:68`, issue #4707):
-  `hermes --profile worker-daily cron create` menulis ke
-  `~/.hermes/profiles/worker-daily/cron/jobs.json`. Gateway yang dinyalakan
+  `hermes --profile pekerja-harian cron create` menulis ke
+  `~/.hermes/profiles/pekerja-harian/cron/jobs.json`. Gateway yang dinyalakan
   `agentdrop start` berjalan dengan `HERMES_HOME=~/.hermes` (profil default),
   jadi ticker-nya membaca `~/.hermes/cron/jobs.json` yang kosong. Komentar di
   `gateway/run.py:31774` menyebut akibatnya persis: profil sekunder
@@ -291,14 +291,14 @@ dari ingatan. Clone ulang setelah reprovision:
   juga dicari, bukan dihardcode ke `/usr/share/novnc` (salah path = websockify
   jalan tapi 404, gejalanya identik dengan noVNC rusak).
 - **Tiga hand-off antar agent yang hilang.** Pembagian tugas agent 1–5 cocok
-  1:1 dengan profil yang ada, tapi sambungannya tidak ada: `worker-daily` tidak
-  pernah menyebut `worker-x` (task "buat konten" dikerjakan agent check-in
-  tanpa bahan riset); `worker-x` tidak membaca `knowledge/projects/<nama>.md`
-  hasil analyzer sebelum bikin konten; `worker-discord` hanya menulis
+  1:1 dengan profil yang ada, tapi sambungannya tidak ada: `pekerja-harian` tidak
+  pernah menyebut `pekerja-x` (task "buat konten" dikerjakan agent check-in
+  tanpa bahan riset); `pekerja-x` tidak membaca `knowledge/projects/<nama>.md`
+  hasil analyzer sebelum bikin konten; `pekerja-discord` hanya menulis
   `discord-log.json`, tidak ke `knowledge/`. Ketiganya sudah disambung.
 - **Dua variabel orphan sisa subsistem yang dihapus:** `SIGNER_PORT`
   (`lib/00-common.sh`, 0 pemakaian) dan `prof` (`agentdrop cmd_start`, dibaca
-  tapi tidak pernah dipakai — jadi `agentdrop start worker-daily` diam-diam
+  tapi tidak pernah dipakai — jadi `agentdrop start pekerja-harian` diam-diam
   sama saja dengan `agentdrop start`).
 
 ### Arc keempat — koreksi operator: noVNC bukan satu-satunya layar
@@ -492,7 +492,7 @@ baris 23, `Memasang Hermes` baris 56.
 **Catatan tentang diagnosis saya sendiri.** Dugaan pertama saya adalah
 `hermes_install` tidak pernah dipanggil. Itu salah — `grep` menunjukkan ia
 dipanggil di `install.sh:167`. Uji pertama saya juga menyesatkan: log mencetak
-"✓ worker-orchestrator — 5 skill" untuk ketujuh profil, tapi direktori tujuan
+"✓ pekerja-koordinator — 5 skill" untuk ketujuh profil, tapi direktori tujuan
 kosong. Penyebabnya harness saya menyetel `HERMES_HOME_DIR` **sebelum**
 me-source `lib/00-common.sh`, yang menimpanya di baris 9
 (`HERMES_HOME_DIR="${HERMES_HOME:-$HOME/.hermes}"`). Berkasnya ada, hanya di
@@ -782,7 +782,7 @@ sesuatu yang bertentangan dengan rancangan.** Sepuluh kali:
    memunculkan popup. Titik berhentinya benar; kata-katanya melarang pekerjaan.
 
 10. **Template output tidak punya field yang workflow-nya sendiri wajibkan.**
-    `worker-analyzer` menulis "VERDICT → dengan confidence eksplisit", tapi
+    `pekerja-riset` menulis "VERDICT → dengan confidence eksplisit", tapi
     template yang disalin agent berhenti di `Evidence`. Agent mengikuti
     template, bukan kalimat yang menjelaskan template — jadi confidence hilang,
     dan ambang 0.7 yang memicu review manusia ikut mati.
@@ -1017,7 +1017,7 @@ harus diverifikasi ke kode yang membacanya, bukan diasumsikan.
 
 Laporan operator: skill `x-engager` dan `browser-operation` termuat, tapi
 `browser_navigate` **tidak tersedia di sesi**, dan tidak ada tool browser sama
-sekali. Padahal `browser` ada di `toolsets:` worker-x.
+sekali. Padahal `browser` ada di `toolsets:` pekerja-x.
 
 Bukan toolset yang salah. Yang mengganti daftar tool adalah field lain.
 
@@ -1081,7 +1081,7 @@ Operator menempel keluaran yang muncul **dua kali**:
 
 ```
 ✗ The default gateway is running as a profile multiplexer and already serves
-  profile 'worker-x'.
+  profile 'pekerja-x'.
 ```
 
 **Ini bukan cacat AgentDrop.** Tidak ada satu pun berkas kita yang memanggil
@@ -1097,8 +1097,8 @@ Rantainya ada di sisi Hermes, dan saya telusuri sampai ujung:
        return _profile_cli_args(profile) + ["gateway", verb]
    ```
    Dashboard web menyusun perintah gateway **dengan profil yang sedang aktif di
-   UI**. Kalau Anda membuka dashboard sebagai `worker-x` lalu menekan Restart
-   Gateway, yang dijalankan adalah `hermes --profile worker-x gateway restart`.
+   UI**. Kalau Anda membuka dashboard sebagai `pekerja-x` lalu menekan Restart
+   Gateway, yang dijalankan adalah `hermes --profile pekerja-x gateway restart`.
 
 2. `hermes_cli/gateway.py:6131` menolaknya. Komentarnya sendiri:
    *"named-profile `hermes gateway run` is always a misconfiguration"*.
@@ -1208,7 +1208,7 @@ render saat install; jangan mengandalkan ekspansi runtime.
 
 ## Arc 17 — Milestone pertama tercapai, dan jawaban atas "kenapa lama"
 
-**Post pertama benar-benar terbit.** worker-x membuka X, menyusun post,
+**Post pertama benar-benar terbit.** pekerja-x membuka X, menyusun post,
 menerbitkannya, dan memverifikasinya muncul di timeline serta halaman profil —
 lengkap dengan screenshot dan timestamp. Ini milestone nyata pertama.
 
@@ -1285,7 +1285,7 @@ satu klaim kecepatan keliru secara aritmetika.
 | "Gunakan file system sebagai extended context" | Sudah: **truncate-and-store**. Snapshot di atas threshold disimpan utuh ke `cache/web` dan agent membacanya lewat `read_file` | `browser_tool.py:287,297,3741`; deskripsi tool :2556 |
 | "Implementasikan KV-cache optimization" | Hermes sudah mengirim `prompt_cache_key` dan melacak `cached_tokens`/`creation_tokens`. Bahkan punya **cache scope yang stabil melintasi rotasi kompresi** (`resolve_prompt_cache_scope` memetakan session id ke akar lineage-nya) | `agent/transports/chat_completions.py:53`, `anthropic.py:230`, `agent/prompt_cache_scope.py:1-13` |
 | "Implementasikan recitation (todo.md)" | Toolset `todo` sudah ada dan sudah diaktifkan di 5 dari 7 profil | `tools/todo_tool.py`; `toolsets:` di config profil |
-| "Multi-agent dengan Orchestrator" | Sudah: `worker-orchestrator` dengan toolset `delegation` | `config/hermes/profiles/worker-orchestrator/` |
+| "Multi-agent dengan Orchestrator" | Sudah: `pekerja-koordinator` dengan toolset `delegation` | `config/hermes/profiles/pekerja-koordinator/` |
 
 Menulis ulang salah satu dari ini berarti membangun yang sudah ada, dengan
 risiko regresi.
@@ -1425,7 +1425,7 @@ membuat alat yang menghasilkannya.
 ### 1. `install.sh` menghapus provider custom operator
 
 Operator melaporkan dua hal yang ternyata satu akar: provider custom hanya
-terdaftar di worker-x, dan **ia tidak bisa pull update** karena install ulang
+terdaftar di pekerja-x, dan **ia tidak bisa pull update** karena install ulang
 membuang setelan provider di Hermes.
 
 Akar: `lib/30-hermes.sh:27` menyalin `config/hermes/config.yaml` dari repo ke
@@ -1578,15 +1578,15 @@ install dan dituliskan ke `.env` sebagai nilai konkret.
 
 1. **global** — `AGENTDROP_MODEL|PROVIDER|BASE_URL|MAX_TOKENS`, diisi default
    kalau belum ada
-2. **per worker** — `AGENTDROP_MODEL_WORKER_QUESTS` dst. (7 worker × 4 = 28
+2. **per worker** — `AGENTDROP_MODEL_PEKERJA_QUEST` dst. (7 worker × 4 = 28
    variabel), mewarisi nilai global yang baru dijamin ada
 
 Urutan itu penting. Versi pertama menulis per worker lebih dulu, jadi variabel
 global belum ada saat fallback dibaca dan **semua worker mendapat nilai
-kosong**. Terlihat dari uji: `AGENTDROP_MODEL_WORKER_QUESTS=` tanpa nilai.
+kosong**. Terlihat dari uji: `AGENTDROP_MODEL_PEKERJA_QUEST=` tanpa nilai.
 
-Diuji end-to-end: `.env` kosong → 28 variabel terisi. Lalu `worker-quests`
-diubah ke `claude-opus-4` dan `AGENTDROP_MAX_TOKENS_WORKER_X=4096`, install
+Diuji end-to-end: `.env` kosong → 28 variabel terisi. Lalu `pekerja-quest`
+diubah ke `claude-opus-4` dan `AGENTDROP_MAX_TOKENS_PEKERJA_X=4096`, install
 ulang → **keduanya bertahan**, worker lain tetap mengikuti global. 7/7 profil
 terpasang merujuk variabelnya sendiri.
 
@@ -1679,24 +1679,24 @@ dengan kode.
 
 ---
 
-## Arc 23 — `worker-onboard`, dan pembalikan sebagian batas signing
+## Arc 23 — `pekerja-daftar`, dan pembalikan sebagian batas signing
 
 ### Worker yang hilang
 
-Operator benar: tidak ada worker untuk **onboarding awal**. `worker-quests`
+Operator benar: tidak ada worker untuk **onboarding awal**. `pekerja-quest`
 dibatasi platform quest — SOUL.md-nya menyebut Galxe, Layer3, Zealy, Intract —
 sedangkan task nGRND yang ia jalankan ada di **situs proyek sendiri**
 (`digitsbt.ngrndrewards.com`) dengan alur register → connect wallet → SBT →
 earn. Tidak ada profil yang mengakuinya.
 
-Ditambahkan `worker-onboard`:
+Ditambahkan `pekerja-daftar`:
 
-- `config/hermes/profiles/worker-onboard/{config.yaml,SOUL.md}`
-- variabel model sendiri: `AGENTDROP_*_WORKER_ONBOARD`
+- `config/hermes/profiles/pekerja-daftar/{config.yaml,SOUL.md}`
+- variabel model sendiri: `AGENTDROP_*_PEKERJA_DAFTAR`
 - `max_turns: 40` (onboarding lebih pendek dari campaign quest)
 - terdaftar di `PROFILES` dan `PROFILE_SKILLS` (`lib/30-hermes.sh`), di daftar
   variabel `.env` (`lib/20-credentials.sh`), dan di rute delegasi
-  `worker-orchestrator`
+  `pekerja-koordinator`
 - skill: `browser-operation browser-burn-in airdrop-intake self-improvement` —
   **`quest-executor` sengaja tidak dipetakan**, karena mencampurnya membuat
   worker ini mengerjakan campaign yang bukan urusannya
@@ -1706,7 +1706,7 @@ Diverifikasi dengan kode Hermes sendiri, bukan dengan membaca berkas:
 ```
 from hermes_cli import profiles
   default          model='anthropic/claude-sonnet-4'  skill=10
-  worker-onboard   model='anthropic/claude-sonnet-4'  skill=4
+  pekerja-daftar   model='anthropic/claude-sonnet-4'  skill=4
   ... (8 profil)
 ```
 
@@ -1725,7 +1725,7 @@ Keduanya disisipkan dari pola profil yang sudah lolos, dengan penguatan khusus
 wallet muncul, **manusia yang menekan Confirm/Sign/Approve**. Berlaku di semua
 profil.
 
-**Keputusan operator sekarang:** `worker-onboard` **boleh** menekan
+**Keputusan operator sekarang:** `pekerja-daftar` **boleh** menekan
 `Confirm`/`Sign`/`Approve` di dalam popup wallet.
 
 Ini penyimpangan sadar, bukan kelalaian. Karena itu aturan penggantinya
@@ -1746,7 +1746,7 @@ Dan dua aturan yang hanya ada karena signing-nya otomatis:
 - **Kalau teks halaman dan isi popup wallet tidak cocok, agent berhenti.**
 
 Alasan aturan kedua perlu ditulis eksplisit: worker lain punya lapisan kedua
-berupa manusia yang membaca popup. `worker-onboard` tidak. Kalau sebuah
+berupa manusia yang membaca popup. `pekerja-daftar` tidak. Kalau sebuah
 halaman berhasil mengubah apa yang agent siapkan, **tidak ada yang
 menangkapnya**. Blok anti-injection di SOUL.md-nya menyatakan itu dengan
 kalimat sendiri, bukan menyalin alasan worker lain — karena alasannya memang
@@ -1761,7 +1761,7 @@ worker, bukan perubahan yang berlaku umum.
 
 ### Kenapa `hermes model` tidak berpengaruh ke worker
 
-Operator menyetel DeepSeek lewat `hermes model`, lalu `worker-onboard` tetap
+Operator menyetel DeepSeek lewat `hermes model`, lalu `pekerja-daftar` tetap
 meminta `anthropic/claude-sonnet-4` ke OpenRouter. Bukan cache, bukan
 kesalahan operator.
 
@@ -1813,7 +1813,7 @@ komposisinya, dan hasilnya mengoreksi dugaan saya sendiri:
 
 | sumber | token | catatan |
 |---|---|---|
-| SOUL.md worker-onboard | ~2.290 | 9.162 karakter |
+| SOUL.md pekerja-daftar | ~2.290 | 9.162 karakter |
 | deskripsi 4 skill | ~171 | **bukan isi skill** — `prompt_builder.py:2014` hanya mengirim `description` frontmatter |
 | deskripsi tool browser | ~1.089 | 21 tool |
 | **sisanya: Hermes inti** | **~25.930** | tidak bisa kita pangkas lewat config |
@@ -1891,9 +1891,9 @@ sesudah : default: "Qwen3.8-27B"   provider: "custom"
 Dan diverifikasi dengan `load_config()` Hermes sendiri pada tiga profil:
 
 ```
-worker-onboard   Qwen3.8-27B  custom  max=4096  api_mode=chat_completions
-worker-x         Qwen3.8-27B  custom  max=4096  api_mode=chat_completions
-worker-quests    Qwen3.8-27B  custom  max=4096  api_mode=chat_completions
+pekerja-daftar   Qwen3.8-27B  custom  max=4096  api_mode=chat_completions
+pekerja-x         Qwen3.8-27B  custom  max=4096  api_mode=chat_completions
+pekerja-quest    Qwen3.8-27B  custom  max=4096  api_mode=chat_completions
 ```
 
 Satu cacat di versi pertama: kondisi `[[ "${1:-}" == "--show" || $# -eq 0 && ! -t 0 ]]`
@@ -1933,7 +1933,7 @@ cronjob, kita akan test semua worker."* Sebelum menyusun paket uji, ada satu
 fakta di log operator sendiri yang menentukan seluruh desainnya:
 
 ```
-✓ worker-onboard selesai (rc=0)
+✓ pekerja-daftar selesai (rc=0)
 ```
 
 Padahal task itu mati di panggilan API pertama (HTTP 402) dan tidak memanggil
@@ -1978,7 +1978,7 @@ kode tetap tertangkap (exit 1), komentar lolos.
 **Empat kasus diuji dengan `hermes` tiruan yang menulis ke log audit asli:**
 semua sukses → 8 lulus 0 gagal (tepat 1 tool call tiap worker); semua gagal →
 0 lulus 8 gagal; campuran → 7 lulus 1 gagal dengan worker yang tepat
-teridentifikasi; `--only worker-x` → 1 lulus. Jalur CLI
+teridentifikasi; `--only pekerja-x` → 1 lulus. Jalur CLI
 (`agentdrop test-workers`) diuji terpisah dari pemanggilan skrip langsung.
 
 **Pelajaran:** sebuah harness uji yang salah akan menghasilkan kesimpulan yang
@@ -1992,3 +1992,138 @@ diverifikasi di sini — egress ke `api.hcnsec.cn` mati di TLS. `agentdrop
 test-workers` justru alat yang akan menjawabnya di mesin operator: kalau
 `api_mode` salah, tool calling tidak jalan dan tiap worker akan tampil sebagai
 "0 tool call".
+
+## Arc 27 — Enam koreksi operator, dan dua fakta yang membatalkan sebagian permintaannya
+
+Operator melaporkan enam hal sekaligus. Sebelum menulis kode, semuanya diverifikasi
+di repo asli — dan dua di antaranya tidak bertahan setelah diperiksa.
+
+### 1. OpenManus: struktur bersarang itu ADA, tapi bukan sumber kecepatannya
+
+Operator: *"openmanus membagi beberapa agent di bawahnya … setiap agent worker
+tidak ambil task itu sendiri dia kerja bareng dengan agent di bawahnya."*
+
+Dibaca ulang di `FoundationAgents/OpenManus`:
+
+- `main.py:17` — `agent = await Manus.create()`. **Satu** agent. Tidak ada pohon.
+- Multi-agent hanya lewat `run_flow.py:16`, yang menambah **satu** agent
+  (`data_analysis`). `README.md:174` mengonfirmasi: hanya DataAnalysis yang
+  terintegrasi.
+- `flow/planning.py:77 get_executor(step_type)` memang memilih agent per jenis
+  langkah — mekanisme yang operator maksud itu nyata — tapi ia memilih **satu**
+  executor per langkah, dan eksekusinya tetap `while True` berurutan.
+- Kecepatan ada di `agent/toolcall.py:142` — `for command in self.tool_calls:` —
+  **banyak tool call dalam SATU respons model.**
+
+Operator memilih jalur ini (`multitool`). Ditambahkan sebagai
+`## Kecepatan: beberapa aksi dalam satu putaran` ke 8 SOUL.md, dengan batas yang
+eksplisit: gabung yang independen, pisahkan yang berurutan — karena `ref` dari
+`browser_snapshot` batal setelah halaman berubah.
+
+Hermes sudah mendukungnya (`agent/tool_dispatch_helpers.py:201`
+`for tool_call in tool_calls`). Yang **tidak** didukung adalah paralelisme
+browser: `_PARALLEL_SAFE_TOOLS` (`:48-61`) tidak memuat satu pun `browser_*`, dan
+`:175` menyatakan apa pun di luar daftar itu menjadi barrier. Jadi keuntungan di
+sini adalah berkurangnya round-trip ke model, bukan eksekusi serentak. Ditulis
+terus terang di SOUL.md supaya tidak ada yang menganggapnya paralel.
+
+### 2. Skill BUKAN penyebab lambat — klaim ini saya tolak dengan angka
+
+Operator: *"skill yang kamu buat terlalu banyak file, 1 worker punya lebih dari
+2 file skill ini yang membuat worker lama prosesnya."*
+
+Diukur, bukan diperkirakan:
+
+- `agent/skill_utils.py:1175` — `SKILL_PROMPT_DESC_LIMIT = 60`. Deskripsi skill
+  **dipotong di 60 karakter**.
+- `agent/prompt_builder.py:2014` — yang dikirim hanya `(name, description)`;
+  body SKILL.md tidak pernah masuk prompt.
+- 4 skill × 60 karakter = 240 karakter ≈ **60 token**.
+- Pembanding: `_HERMES_CORE_TOOLS` = **53 tool** yang selalu dikirim dan, menurut
+  `tools/tool_search.py:10`, *"never deferred. Always-load means always-load."*
+
+Jadi memangkas skill menghemat puluhan token dari konteks ~29.000. Tidak
+dilakukan, dan alasannya dicatat di sini supaya tidak diulang sebagai "sudah
+diperbaiki".
+
+### 3. Nama worker → bahasa Indonesia
+
+`worker-orchestrator → pekerja-koordinator`, `worker-analyzer → pekerja-riset`,
+`worker-daily → pekerja-harian`, `worker-onboard → pekerja-daftar`,
+`worker-quests → pekerja-quest`, `worker-discord → pekerja-discord`,
+`worker-monitor → pekerja-pantau`, `worker-x → pekerja-x`.
+
+300 penggantian di 45 berkas + 8 folder, memakai pemetaan **eksplisit** — bukan
+`sed s/worker/pekerja/` buta, karena "worker" juga muncul sebagai kata benda umum
+("worker apapun") dan menggantinya membabi buta menghasilkan kalimat rusak. Ada
+juga `worker_x` bertanda hubung bawah (label status di SOUL.md) yang akan
+terlewat oleh pola bertanda hubung.
+
+### 4. Endpoint custom jadi default; lapisan per-worker DIHAPUS
+
+Ini akar dari keluhan *"custom di env tapi tidak pernah dipakai"*. Mekanisme
+kegagalannya:
+
+`config.yaml` tiap profil merujuk `${AGENTDROP_MODEL_WORKER_X}`. Variabel itu
+**tidak pernah ada di `.env.example`** — hanya dibuat saat install. Kalau satu
+langkah terlewat, Hermes membiarkannya verbatim (`config.py:2767`), jadi
+`model.default` menjadi string `"${AGENTDROP_MODEL_WORKER_X}"` apa adanya.
+Endpoint terpasang di config tapi tidak pernah dipakai, **tanpa error yang jelas.**
+
+40 rujukan per-worker diganti ke variabel global; blok per-worker dihapus dari
+`lib/20-credentials.sh`; `.env.example` default ke `custom` /
+`https://api.hcnsec.cn/v1` / `Qwen3.8-27B` / `chat_completions`.
+
+**Bug ikutan yang ketahuan dari pengujian:** `AGENTDROP_API_MODE` dan
+`AGENTDROP_PROVIDER_NAME` tidak ikut dijamin oleh `credentials_ensure_model_vars`,
+padahal keduanya dikonsumsi `_render_config` (`lib/30-hermes.sh:55`). Akibatnya
+`api_mode` ter-render sebagai `"auto"` — dan `"auto"` **tidak pernah resolve**
+sebagai provider (`hermes_cli/auth.py:2268` menutup jalur config-provider).
+Diperbaiki; diverifikasi `api_mode='chat_completions'` di 4 profil lewat
+`load_config()` Hermes asli.
+
+### 5. Telegram tersambung ke agent default — dan sekarang bisa mendelegasikan
+
+Penyebabnya dua lapis, keduanya terverifikasi:
+
+1. `hermes_cli/profiles.py:1105 profiles_to_serve(multiplex=True)` — *"the
+   default profile is always served"*. Profil **default** yang memegang
+   `TELEGRAM_BOT_TOKEN` dan menjawab Telegram, bukan pekerja.
+2. Config utama tidak punya toolset `delegation` (hanya disebut di komentar),
+   jadi tidak ada `delegate_task` — **tidak ada jalan** dari Telegram ke pekerja
+   mana pun. Ia mengerjakan semuanya sendiri.
+
+Diperbaiki: `delegation` ditambahkan ke toolset root, `terminal` dibuang dari
+root (CodeAct ditolak operator dan berlaku di semua profil — menaruhnya hanya di
+root berarti justru profil yang paling sering dipakai punya kemampuan yang
+dilarang), `disabled_toolsets: [terminal, code_execution]` ditambahkan ke root,
+dan `SOUL.md` root ditulis ulang dari pelaksana menjadi koordinator dengan tabel
+delegasi.
+
+`delegation.max_spawn_depth: 2` + `orchestrator_enabled: true` — inilah struktur
+bersarang yang operator minta, dan Hermes memang mendukungnya
+(`cli-config.yaml.example:1539-1541`, mensyaratkan `role="orchestrator"` pada
+perantara).
+
+Dibuktikan dengan kode Hermes sendiri, bukan dengan membaca config:
+`_get_platform_tools()` + `toolsets.TOOLSETS` → `delegate_task` **ADA** di profil
+default dan semua pekerja; `terminal` dan `execute_code` **tidak ada**.
+
+### Validator: 273 → 285 checks
+
+`[31]` menolak variabel model per-worker di config mana pun. `[32]` menolak
+config root tanpa `delegation`, dengan `terminal`, atau tanpa
+`disabled_toolsets`. Keempat cabang diuji dengan injeksi nyata: var per-worker
+dikembalikan → tertangkap; `delegation` dibuang → tertangkap; `terminal`
+dikembalikan → tertangkap; `disabled_toolsets` dikosongkan → tertangkap.
+
+**Cacat di aturan baru saya sendiri:** blok `[31]/[32]` pertama ditulis langsung
+di dalam `main()` yang tidak mendeklarasikan `global checks` →
+`UnboundLocalError` saat validator sampai di ringkasan. Dipindah ke fungsi
+tersendiri mengikuti pola `[30]`. Pesan `[31]` juga salah mencetak
+`$AGENTDROP_MODEL` (kurang `${}`) karena `m.group(0)[2:]` membuang `${` —
+diperbaiki dan diuji ulang dengan injeksi.
+
+**Pelajaran:** validator yang saya tulis untuk mencegah regresi pun mengandung
+cacat yang hanya terlihat saat dijalankan sampai akhir. Menambah aturan tidak
+cukup; aturannya harus dijalankan dan dilihat gagal.

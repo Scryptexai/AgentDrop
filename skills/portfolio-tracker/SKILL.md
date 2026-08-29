@@ -32,7 +32,7 @@ perubahan.
 
 
 ```bash
-hermes --profile worker-monitor chat -q "Buat ringkasan progres mingguan semua campaign"
+hermes --profile pekerja-pantau chat -q "Buat ringkasan progres mingguan semua campaign"
 ```
 
 ## Struktur data

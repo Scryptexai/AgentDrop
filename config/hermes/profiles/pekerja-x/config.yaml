@@ -1,30 +1,49 @@
 # ============================================================================
-# WORKER: ORCHESTRATOR — pintu masuk Telegram + pendelegasian ke worker
+# WORKER: X / TWITTER — engagement & verifikasi quest
 # ============================================================================
-# Dipasang ke: ~/.hermes/profiles/worker-orchestrator/config.yaml
+# Dipasang ke: ~/.hermes/profiles/pekerja-x/config.yaml
 # Profil = HERMES_HOME terpisah penuh. Tidak mewarisi config utama.
 #
-# INI PROFIL YANG MENGHADAP TELEGRAM. Anda mengirim task ke bot, profil ini
-# yang menerima, menganalisis, lalu mendelegasikan ke worker di bawahnya.
+# KENAPA WORKER INI ADA
+# ---------------------
+# Crypto dan airdrop tidak bisa dipisahkan dari X. Banyak quest mewajibkan
+# post di akun X, dan ada DUA metode verifikasi yang harus ditangani:
+#
+#   1. OAUTH  — proyek terhubung ke akun X operator. Begitu post tayang,
+#               sistem proyek mendeteksinya otomatis. Agent cukup post, lalu
+#               menunggu status quest berubah.
+#
+#   2. MANUAL — proyek anggaran rendah (atau yang tidak mau urus OAuth)
+#               meminta URL post ditempel ke form quest. Agent harus:
+#               post -> ambil URL post itu -> tempel ke form -> submit.
+#
+# Metode 2 adalah yang paling sering gagal, karena URL post tidak muncul di
+# address bar. Detail penanganannya ada di skills/x-engager/SKILL.md.
+#
+# CATATAN ToS
+# -----------
+# X melarang otomasi yang menyamar sebagai aktivitas manusia organik. Worker
+# ini memakai akun operator secara transparan, dengan jeda antar aksi dan batas
+# harian. Batas itu bukan hiasan — akun yang kena suspend membuat seluruh
+# campaign yang bergantung padanya hangus.
 # ============================================================================
 
 model:
-  # Variabel model worker INI, bukan global. memecah tugas dan mendelegasikan; penalaran paling penting.
+  # Variabel model worker INI, bukan global. menulis post pendek + navigasi ringan.
   # Kosongkan salah satu di .env untuk memakai nilai global
   # (AGENTDROP_MODEL dst.) — install.sh yang menyelesaikan
   # fallback-nya, karena Hermes tidak punya sintaks default
   # untuk ${VAR} (config.py:2767 membiarkannya verbatim).
-  # Orkestrasi = banyak keputusan routing. Butuh model kuat.
-  default: "${AGENTDROP_MODEL_WORKER_ORCHESTRATOR}"
+  default: "${AGENTDROP_MODEL}"
   # "openrouter", BUKAN "auto". "auto" tidak pernah menyelesaikan ke OpenRouter
   # (hermes_cli/auth.py:2268 memeriksa PROVIDER_REGISTRY, dan "auto" tidak ada
   # di sana; config.py:2990 memperingatkan "auto" justru membuat model dirutekan
   # lewat provider yang salah). Gejalanya: model custom tidak termuat dan UI
   # hanya menampilkan model/provider bawaan Hermes. Penjelasan panjang ada di
   # config/hermes/config.yaml.
-  provider: "${AGENTDROP_PROVIDER_WORKER_ORCHESTRATOR}"
-  base_url: "${AGENTDROP_BASE_URL_WORKER_ORCHESTRATOR}"
-  max_tokens: "${AGENTDROP_MAX_TOKENS_WORKER_ORCHESTRATOR}"
+  provider: "${AGENTDROP_PROVIDER}"
+  base_url: "${AGENTDROP_BASE_URL}"
+  max_tokens: "${AGENTDROP_MAX_TOKENS}"
 
 
 # Provider OpenAI-compatible. Dirender dari .env saat install.
@@ -40,67 +59,29 @@ custom_providers:
     key_env: "CUSTOM_API_KEY"
     api_mode: "__AGENTDROP_API_MODE__"
     models:
-      "${AGENTDROP_MODEL_WORKER_ORCHESTRATOR}": {}
+      "${AGENTDROP_MODEL}": {}
 toolsets:
   - hermes-cli
   - browser
   - file
-  - web
   - memory
+  # `todo` penting di sini: satu campaign X bisa punya banyak post terjadwal,
+  # dan agent harus bisa melacak mana yang sudah tayang.
   - todo
-  # Toolset "delegation" berisi tool delegate_task. Id-nya "delegation";
-  # "delegate_task" adalah NAMA TOOL, bukan id toolset, dan menyebutnya di sini
-  # tidak memberi apa-apa.
-  - delegation
-
-# Toolset yang boleh dipakai saat pesan datang dari Telegram.
-# Sengaja TIDAK memberi terminal: pintu masuk publik tidak boleh punya shell.
-platform_toolsets:
-  telegram: [hermes-cli, browser, file, web, memory, todo, delegation]
 
 agent:
-  # Orkestrator menunggu banyak child selesai. Butuh ruang.
-  max_turns: 120
-  reasoning_effort: "high"
+  max_turns: 40
+  reasoning_effort: "medium"
   # MATIKAN SHELL — lihat penjelasan di akhir file.
   disabled_toolsets: [terminal, code_execution]
 
-# ----------------------------------------------------------------------------
-# DELEGATION — inti dari arsitektur berlapis
-# ----------------------------------------------------------------------------
-# Key asli dari DEFAULT_CONFIG (hermes_cli/config_defaults.py).
-delegation:
-  # Wajib true agar tool delegate_task aktif untuk profil ini.
-  orchestrator_enabled: true
-
-  # Berapa child boleh jalan paralel. 3 cukup untuk farming: lebih dari itu
-  # membuat sesi browser bertabrakan dan biaya melonjak.
-  max_concurrent_children: 3
-
-  # KEDALAMAN. 1 = orchestrator boleh spawn leaf, leaf TIDAK boleh spawn lagi.
-  # JANGAN naikkan kecuali Anda paham implikasinya — delegasi rekursif tanpa batas
-  # adalah cara tercepat menghabiskan saldo API.
-  max_spawn_depth: 1
-
-  # Child tidak boleh menyetujui aksinya sendiri. Persetujuan tetap milik Anda.
-  subagent_auto_approve: false
-
-  # Batas iterasi per child. Default Hermes 250 terlalu longgar untuk satu
-  # campaign airdrop.
-  max_iterations: 60
-
-  # Ringkasan child yang dikirim balik ke orchestrator.
-  max_summary_chars: 24000
-
-  # Model untuk child. Kosong = ikut model orchestrator. Isi dengan model murah
-  # kalau child-nya tugas repetitif.
-  model: ""
-  reasoning_effort: "medium"
-
 browser:
-  # 1800 (30 menit) — cukup panjang untuk satu rangkaian aksi farming.
   inactivity_timeout: 1800
   command_timeout: 30
+  # X adalah SPA berat dengan timeline virtual yang di-render ulang terus,
+  # jadi snapshot-nya memang lebih panjang dari halaman biasa. Itu alasan untuk
+  # MEMBACA snapshot lewat read_file saat terpotong — bukan alasan menaikkan
+  # budget untuk setiap snapshot di setiap putaran.
   # 15000 = default Hermes (browser_tool.py:290). Jangan dinaikkan tanpa bukti:
   # angka ini adalah "per-page budget" yang masuk ke KONTEKS MODEL di setiap
   # snapshot (browser_tool.py:285-289), dan satu task browser melakukan banyak
@@ -110,6 +91,7 @@ browser:
   snapshot_threshold: 15000
   record_sessions: false
   allow_private_urls: false
+
   # headed HANYA berlaku untuk browser lokal Hermes (agent-browser), BUKAN
   # mode CDP. GUI di setup ini datang dari noVNC
   # (Xvfb 1920x1080 -> x11vnc :5900 -> noVNC :6080). Biarkan false.
@@ -148,28 +130,12 @@ browser:
   cdp_url: "http://127.0.0.1:9222"
 
 
-# Job cron tidak boleh dapat approval (tidak ada manusia di sana).
-approvals:
-  mode: "smart"
-  cron_mode: "deny"
-  single_query_mode: "deny"
-  denial_breaker_threshold: 3
-
-security:
-  redact_secrets: true
-  allow_private_urls: false
-  protected_instruction_files: true
-
 compression:
   enabled: true
 
 tool_loop_guardrails:
   warnings_enabled: true
   hard_stop_enabled: true
-  warn_after:
-    exact_failure: 2
-    same_tool_failure: 3
-    idempotent_no_progress: 2
 
 # ---------------------------------------------------------------------------
 # MEMORY LOOP

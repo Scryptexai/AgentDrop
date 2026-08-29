@@ -1,28 +1,31 @@
 # ============================================================================
-# WORKER: DAILY — check-in harian semua campaign aktif
+# WORKER: DISCORD — engagement komunitas
 # ============================================================================
-# Dipasang ke: ~/.hermes/profiles/worker-daily/config.yaml
+# Dipasang ke: ~/.hermes/profiles/pekerja-discord/config.yaml
 # Profil = HERMES_HOME terpisah penuh. Tidak mewarisi config utama.
+#
+# Catatan: worker ini memakai BROWSER (Discord web) atas akun Discord milik
+# operator sendiri. Hermes punya toolset `discord`/`discord_admin` native, tapi
+# itu untuk BOT — bukan untuk memakai akun pribadi operator sebagai bot, yang
+# melanggar ToS Discord. Karena itu toolset discord TIDAK diaktifkan di sini.
 # ============================================================================
 
 model:
-  # Variabel model worker INI, bukan global. tugas berulang yang sudah dikenal; model murah cukup.
+  # Variabel model worker INI, bukan global. membaca kanal + menulis balasan pendek.
   # Kosongkan salah satu di .env untuk memakai nilai global
   # (AGENTDROP_MODEL dst.) — install.sh yang menyelesaikan
   # fallback-nya, karena Hermes tidak punya sintaks default
   # untuk ${VAR} (config.py:2767 membiarkannya verbatim).
-  # Tugas repetitif dan terstruktur: pakai model murah. Ini worker yang jalan
-  # setiap hari, jadi biayanya yang paling terasa. Ganti via `hermes model`.
-  default: "${AGENTDROP_MODEL_WORKER_DAILY}"
+  default: "${AGENTDROP_MODEL}"
   # "openrouter", BUKAN "auto". "auto" tidak pernah menyelesaikan ke OpenRouter
   # (hermes_cli/auth.py:2268 memeriksa PROVIDER_REGISTRY, dan "auto" tidak ada
   # di sana; config.py:2990 memperingatkan "auto" justru membuat model dirutekan
   # lewat provider yang salah). Gejalanya: model custom tidak termuat dan UI
   # hanya menampilkan model/provider bawaan Hermes. Penjelasan panjang ada di
   # config/hermes/config.yaml.
-  provider: "${AGENTDROP_PROVIDER_WORKER_DAILY}"
-  base_url: "${AGENTDROP_BASE_URL_WORKER_DAILY}"
-  max_tokens: "${AGENTDROP_MAX_TOKENS_WORKER_DAILY}"
+  provider: "${AGENTDROP_PROVIDER}"
+  base_url: "${AGENTDROP_BASE_URL}"
+  max_tokens: "${AGENTDROP_MAX_TOKENS}"
 
 
 # Provider OpenAI-compatible. Dirender dari .env saat install.
@@ -38,17 +41,15 @@ custom_providers:
     key_env: "CUSTOM_API_KEY"
     api_mode: "__AGENTDROP_API_MODE__"
     models:
-      "${AGENTDROP_MODEL_WORKER_DAILY}": {}
+      "${AGENTDROP_MODEL}": {}
 toolsets:
   - hermes-cli
   - browser
   - file
-  - todo
+  - memory
 
 agent:
-  # Rutinitas harian pendek dan terprediksi. 30 cukup; kalau mentok, itu tanda
-  # ada yang salah — bukan tanda perlu budget lebih besar.
-  max_turns: 30
+  max_turns: 40
   reasoning_effort: "medium"
   # MATIKAN SHELL — lihat penjelasan di akhir file.
   disabled_toolsets: [terminal, code_execution]
@@ -59,6 +60,7 @@ browser:
   # bisa tertutup di tengah rangkaian aksi.
   inactivity_timeout: 1800
   command_timeout: 30
+  # Discord web adalah SPA berat dengan banyak panel.
   # 15000 = default Hermes (browser_tool.py:290). Jangan dinaikkan tanpa bukti:
   # angka ini adalah "per-page budget" yang masuk ke KONTEKS MODEL di setiap
   # snapshot (browser_tool.py:285-289), dan satu task browser melakukan banyak
@@ -66,7 +68,6 @@ browser:
   # yang terpotong tetap disimpan utuh ke cache/web dan bisa dibaca lewat
   # read_file. Penjelasan panjang di config/hermes/config.yaml.
   snapshot_threshold: 15000
-  # Audit trail harian.
   record_sessions: false
   allow_private_urls: false
 
@@ -111,15 +112,9 @@ browser:
 compression:
   enabled: true
 
-# Worker ini jalan tanpa pengawasan via cron. Hard stop = circuit breaker:
-# berhenti lebih baik daripada menghabiskan budget iterasi untuk retry buta.
 tool_loop_guardrails:
   warnings_enabled: true
   hard_stop_enabled: true
-  warn_after:
-    exact_failure: 2
-    same_tool_failure: 3
-    idempotent_no_progress: 2
 
 # ---------------------------------------------------------------------------
 # MEMORY LOOP

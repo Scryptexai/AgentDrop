@@ -88,22 +88,22 @@ create_job() {
 # JADWAL
 # ----------------------------------------------------------------------------
 # 09:00 — daily check-in semua campaign
-create_job worker-daily "0 9 * * *" \
+create_job pekerja-harian "0 9 * * *" \
   "Jalankan daily check-in untuk semua campaign aktif. Baca data/campaigns/ dulu, verifikasi status login sebelum aksi, ambil screenshot bukti, lalu update progress.json. Kalau ketemu CAPTCHA atau sesi mati, hentikan campaign itu dan catat." \
   "airdrop-daily-checkin" "daily-executor" "medium"
 
 # 13:00 — verifikasi tengah hari
-create_job worker-monitor "0 13 * * *" \
+create_job pekerja-pantau "0 13 * * *" \
   "Verifikasi semua aksi pagi ini benar-benar tercatat. Cocokkan progress.json dengan screenshot yang ada. Klaim tanpa bukti harus dilaporkan sebagai temuan, bukan diterima diam-diam." \
   "airdrop-midday-verify" "portfolio-tracker" "medium"
 
 # 20:00 — laporan harian
-create_job worker-monitor "0 20 * * *" \
+create_job pekerja-pantau "0 20 * * *" \
   "Buat laporan progres harian. Sebutkan apa yang jalan, apa yang gagal, dan apa yang butuh tindakan manusia. Tulis ke data/logs/. Jangan mengarang angka — kalau data kurang, katakan data kurang." \
   "airdrop-daily-report" "portfolio-tracker" "medium"
 
 # Minggu 21:00 — ringkasan mingguan + rekomendasi lanjut/berhenti
-create_job worker-monitor "0 21 * * 0" \
+create_job pekerja-pantau "0 21 * * 0" \
   "Buat ringkasan mingguan semua campaign: hari aktif, total poin, tren, dan rekomendasi LANJUT / EVALUASI / BERHENTI beserta alasannya. Strategi kita fokus 3-5 proyek, jadi jangan ragu merekomendasikan berhenti untuk campaign yang tidak produktif." \
   "airdrop-weekly-summary" "portfolio-tracker" "high"
 
@@ -112,14 +112,14 @@ create_job worker-monitor "0 21 * * 0" \
 # ----------------------------------------------------------------------------
 echo
 log "Job terpasang per profil:"
-for p in worker-daily worker-monitor; do
+for p in pekerja-harian pekerja-pantau; do
   echo "  --- $p ---"
   hermes --profile "$p" cron list 2>/dev/null || warn "  (tidak bisa membaca cron list untuk $p)"
 done
 
 echo
 log "Status scheduler:"
-for p in worker-daily worker-monitor; do
+for p in pekerja-harian pekerja-pantau; do
   hermes --profile "$p" cron status 2>/dev/null || true
 done
 

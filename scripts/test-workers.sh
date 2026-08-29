@@ -6,7 +6,7 @@
 #   `hermes --profile X chat -q "..."` mengembalikan rc=0 WALAU task-nya gagal.
 #   Sudah terjadi di mesin operator: panggilan API pertama ditolak HTTP 402,
 #   agent tidak pernah memanggil satu tool pun, dan agentdrop tetap mencetak
-#   "✓ worker-onboard selesai (rc=0)". Exit code hermes menandakan "sesi
+#   "✓ pekerja-daftar selesai (rc=0)". Exit code hermes menandakan "sesi
 #   selesai", bukan "tugas berhasil".
 #
 # Jadi penilaian di sini diambil dari LOG AUDIT, yang mencatat apa yang
@@ -55,21 +55,21 @@ command -v hermes >/dev/null 2>&1 || die "hermes tidak ada — jalankan ./instal
 # Peran diambil dari SOUL.md masing-masing; lihat AGENTS.md bagian TUJUAN.
 task_for() {
   case "$1" in
-    worker-analyzer)
+    pekerja-riset)
       echo "Baca https://example.com lalu ringkas isinya dalam dua kalimat. Jangan menulis berkas apa pun." ;;
-    worker-daily)
-      echo "Laporkan tanggal dan waktu sekarang, lalu tulis satu baris catatan ke memory/lessons/worker-daily.md bahwa uji smoke berhasil." ;;
-    worker-discord)
+    pekerja-harian)
+      echo "Laporkan tanggal dan waktu sekarang, lalu tulis satu baris catatan ke memory/lessons/pekerja-harian.md bahwa uji smoke berhasil." ;;
+    pekerja-discord)
       echo "Buka https://discord.com dan laporkan judul halamannya. Jangan login dan jangan bergabung ke server mana pun." ;;
-    worker-monitor)
+    pekerja-pantau)
       echo "Baca berkas di knowledge/chains/ dan laporkan isinya sebagai satu tabel. Jangan menulis berkas apa pun." ;;
-    worker-onboard)
+    pekerja-daftar)
       echo "Buka https://example.com dan laporkan judul halamannya. Jangan mengisi form dan jangan menghubungkan wallet." ;;
-    worker-orchestrator)
+    pekerja-koordinator)
       echo "Sebutkan worker mana yang akan kamu delegasikan untuk tiga tugas ini: (a) register airdrop baru, (b) check-in harian, (c) mem-post di X. Jangan mengeksekusi atau mendelegasikan apa pun." ;;
-    worker-quests)
+    pekerja-quest)
       echo "Buka https://example.com dan laporkan judul halamannya. Jangan mengerjakan quest apa pun." ;;
-    worker-x)
+    pekerja-x)
       echo "Buka https://example.com dan laporkan judul halamannya. Jangan mem-post, mem-follow, atau me-like apa pun." ;;
     *) echo "" ;;
   esac

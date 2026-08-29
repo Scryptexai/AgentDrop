@@ -28,7 +28,7 @@ flowchart TD
     TNY -->|"tidak jawab"| WAIT(["tunggu — jangan berasumsi"])
     S2 -->|"tidak"| S3["3. CEK PENGETAHUAN<br/>knowledge/ + memory/lessons"]
 
-    S3 --> S4["4. ANALISIS KELAYAKAN<br/>delegate ke worker-analyzer"]
+    S3 --> S4["4. ANALISIS KELAYAKAN<br/>delegate ke pekerja-riset"]
     S4 --> S5{"5. PUTUSKAN"}
 
     S5 -->|"layak, risiko rendah"| S6
@@ -37,12 +37,12 @@ flowchart TD
     S5 -->|"tanda penipuan"| BAHAYA(["tolak + laporkan<br/>tanda-bahaya.md"])
     S5 -->|"tidak yakin"| TNY
 
-    S6 --> WA["worker-analyzer"]
-    S6 --> WQ["worker-quests"]
-    S6 --> WD["worker-daily"]
-    S6 --> WX["worker-x"]
-    S6 --> WDI["worker-discord"]
-    S6 --> WM["worker-monitor"]
+    S6 --> WA["pekerja-riset"]
+    S6 --> WQ["pekerja-quest"]
+    S6 --> WD["pekerja-harian"]
+    S6 --> WX["pekerja-x"]
+    S6 --> WDI["pekerja-discord"]
+    S6 --> WM["pekerja-pantau"]
 
     WA & WQ & WD & WX & WDI & WM --> S7["7. PANTAU & VERIFIKASI<br/>hasil child BUKAN bukti"]
     S7 -->|"status eksplisit + bukti"| S8["8. LAPORKAN & CATAT<br/>Telegram + memory/lessons"]
@@ -68,12 +68,12 @@ Tiap worker punya alurnya sendiri di `SOUL.md`. Ringkasnya:
 
 | Worker | Alur inti |
 |---|---|
-| `worker-analyzer` | fakta → cek knowledge → 4 dimensi → tanda bahaya → **verifikasi klaim** → verdict → tulis knowledge |
-| `worker-daily` | baca state → buka dashboard → **cek status dulu** → eksekusi → perbarui state → lapor |
-| `worker-quests` | baca **seluruh** daftar → peta syarat → urutkan dependensi → satu-satu → bukti → submit → verifikasi status |
-| `worker-x` | baca task → **tentukan metode verifikasi** → eksekusi → ambil URL dari halaman → submit → lapor |
-| `worker-discord` | **baca aturan server** → peta → cek role → verifikasi → terlibat → pastikan role bertambah |
-| `worker-monitor` | baca state → kumpulkan → **bandingkan dengan sebelumnya** → verifikasi bukti → deteksi anomali → lapor yang berubah |
+| `pekerja-riset` | fakta → cek knowledge → 4 dimensi → tanda bahaya → **verifikasi klaim** → verdict → tulis knowledge |
+| `pekerja-harian` | baca state → buka dashboard → **cek status dulu** → eksekusi → perbarui state → lapor |
+| `pekerja-quest` | baca **seluruh** daftar → peta syarat → urutkan dependensi → satu-satu → bukti → submit → verifikasi status |
+| `pekerja-x` | baca task → **tentukan metode verifikasi** → eksekusi → ambil URL dari halaman → submit → lapor |
+| `pekerja-discord` | **baca aturan server** → peta → cek role → verifikasi → terlibat → pastikan role bertambah |
+| `pekerja-pantau` | baca state → kumpulkan → **bandingkan dengan sebelumnya** → verifikasi bukti → deteksi anomali → lapor yang berubah |
 
 Yang dicetak tebal adalah langkah yang paling sering dilewati dan paling mahal
 akibatnya.
@@ -191,10 +191,10 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    C09["09:00 tiap hari<br/>worker-daily<br/>skill daily-executor"] --> V13
-    V13["13:00 tiap hari<br/>worker-monitor<br/>verifikasi aksi pagi"] --> R20
-    R20["20:00 tiap hari<br/>worker-monitor<br/>laporan harian"] --> W21
-    W21["Minggu 21:00<br/>worker-monitor<br/>ringkasan + LANJUT/EVALUASI/BERHENTI"]
+    C09["09:00 tiap hari<br/>pekerja-harian<br/>skill daily-executor"] --> V13
+    V13["13:00 tiap hari<br/>pekerja-pantau<br/>verifikasi aksi pagi"] --> R20
+    R20["20:00 tiap hari<br/>pekerja-pantau<br/>laporan harian"] --> W21
+    W21["Minggu 21:00<br/>pekerja-pantau<br/>ringkasan + LANJUT/EVALUASI/BERHENTI"]
     C09 --> L[("data/logs/<br/>data/campaigns/")]
     V13 --> L
     R20 --> L
@@ -234,7 +234,7 @@ Enam titik sempat ditandai tidak sesuai. **Lima sudah ditutup** (A, B, C, D, E) 
 
 ### ✅ A — Kontradiksi wallet: SELESAI
 
-`worker-orchestrator/SOUL.md` tidak lagi menulis "signature -> wajib operator"
+`pekerja-koordinator/SOUL.md` tidak lagi menulis "signature -> wajib operator"
 tanpa penjelasan. Yang menggantikannya **berubah lagi sejak K7**, jadi catatan
 aslinya perlu dibaca dengan hati-hati:
 
@@ -250,7 +250,7 @@ wallet. Ia cuma menyerahkan alamat publik, jadi masuk `auto`, bukan
 ### ✅ C — Skill dibatasi per profil: SELESAI
 
 `lib/30-hermes.sh` punya `declare -A PROFILE_SKILLS`. Slot terpasang
-turun dari **48 (6×8) menjadi 19**. `worker-discord` tidak lagi bisa memanggil
+turun dari **48 (6×8) menjadi 19**. `pekerja-discord` tidak lagi bisa memanggil
 `daily-executor`.
 
 Folder skill **dihapus lebih dulu** sebelum disalin, jadi mengeluarkan sebuah

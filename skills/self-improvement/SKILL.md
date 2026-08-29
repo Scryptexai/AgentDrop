@@ -63,7 +63,7 @@ diperkirakan.
 Tambahkan satu entri. Formatnya tetap supaya bisa dicari:
 
 ```markdown
-## 2026-08-26T14:03Z · worker-quests · galxe.com · GAGAL
+## 2026-08-26T14:03Z · pekerja-quest · galxe.com · GAGAL
 **Yang terjadi:** Tombol "Verify" tidak pernah aktif setelah tweet diposting.
 **Penyebab:** Verifikasi proyek berjalan lewat cron, bisa beberapa jam. Bukan
        kegagalan kita.

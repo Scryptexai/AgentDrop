@@ -32,7 +32,7 @@ yang didapat, dan syarat apa yang ternyata berlaku.
 native, tapi keduanya untuk **bot terdaftar**. Memakai akun pribadi operator
 sebagai bot melanggar ToS Discord dan berisiko ban permanen — yang menghancurkan
 seluruh farming, bukan cuma satu campaign. Karena itu toolset `discord` **tidak
-diaktifkan** di profil `worker-discord`; semua interaksi lewat browser.
+diaktifkan** di profil `pekerja-discord`; semua interaksi lewat browser.
 
 ## Apa yang dikerjakan
 
@@ -82,7 +82,7 @@ kontribusi bermakna per server per hari**.
 ## Kapan dipakai
 
 ```bash
-hermes --profile worker-discord chat -q "Cek server Discord <proyek>, baca diskusi terbaru, dan laporkan intel yang relevan"
+hermes --profile pekerja-discord chat -q "Cek server Discord <proyek>, baca diskusi terbaru, dan laporkan intel yang relevan"
 ```
 
 ## Output

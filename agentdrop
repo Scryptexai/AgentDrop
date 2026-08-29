@@ -115,8 +115,8 @@ cmd_stop() {
 # log audit yang sama. Selesaikan tiap agent satu per satu dulu; orkestrasi
 # baru masuk akal setelah masing-masing stabil.
 #
-#   agentdrop run worker-quests "Kerjakan quest Galxe proyek X, berhenti di popup"
-#   agentdrop run worker-analyzer "Analisis kelayakan https://..."
+#   agentdrop run pekerja-quest "Kerjakan quest Galxe proyek X, berhenti di popup"
+#   agentdrop run pekerja-riset "Analisis kelayakan https://..."
 #   agentdrop run --list
 cmd_run() {
   command -v hermes >/dev/null 2>&1 || _die "hermes tidak ada — jalankan ./install.sh"
@@ -198,15 +198,27 @@ cmd_model() {
              AGENTDROP_API_MODE AGENTDROP_MAX_TOKENS; do
       printf '  %-24s %s\n' "$k" "$(_env_get "$k")"
     done
-    echo
-    _log "Per worker (kosong = mengikuti global):"
-    local d n
-    for d in "$HERMES_HOME_DIR"/profiles/*/; do
-      [[ -f "${d}config.yaml" ]] || continue
-      n="$(basename "$d")"
-      printf '  %-22s %s\n' "$n" \
-        "$(grep -E '^  default:' "${d}config.yaml" | head -1 | cut -d'"' -f2)"
-    done
+      echo
+      # Tampilkan model per worker dari config TER-RENDER, bukan config repo.
+      # Kalau yang dibaca config repo, yang muncul adalah string mentah
+      # "${AGENTDROP_MODEL}" dan operator mengira var-nya belum di-set — padahal
+      # render terjadi saat install. Pemeriksaan ini harus membuktikan hasilnya,
+      # bukan mengulang placeholder yang sudah pasti ada di sumbernya.
+      _log "Model tiap worker (dari config ter-render):"
+      local d n m
+      for d in "$HERMES_HOME_DIR"/profiles/*/; do
+        [[ -f "${d}config.yaml" ]] || continue
+        n="$(basename "$d")"
+        # `|| true` wajib: di bawah `set -euo pipefail`, grep yang tidak cocok
+        # keluar dengan status 1 dan menular ke assignment — skrip mati tanpa
+        # pesan. Config tanpa baris `default:` adalah hal yang harus dilaporkan,
+        # bukan yang membunuh perintah.
+        m="$(grep -E '^  default:' "${d}config.yaml" 2>/dev/null | head -1 | cut -d'"' -f2 || true)"
+        case "$m" in
+          *'${'*) printf '  %-22s %s\n' "$n" "TIDAK TER-RENDER: $m" ;;
+          *)      printf '  %-22s %s\n' "$n" "$m" ;;
+        esac
+      done
     return 0
   fi
 
@@ -218,15 +230,15 @@ cmd_model() {
 
   local cur v
   cur="$(_env_get AGENTDROP_PROVIDER)"
-  read -r -p "  provider [${cur:-openrouter}] (openrouter/custom/anthropic/...): " v
+  read -r -p "  provider [${cur:-custom}] (custom/openrouter/anthropic/...): " v
   [[ -n "$v" ]] && _env_set AGENTDROP_PROVIDER "$v"
 
   cur="$(_env_get AGENTDROP_BASE_URL)"
-  read -r -p "  base_url [${cur:-https://openrouter.ai/api/v1}]: " v
+  read -r -p "  base_url [${cur:-https://api.hcnsec.cn/v1}]: " v
   [[ -n "$v" ]] && _env_set AGENTDROP_BASE_URL "$v"
 
   cur="$(_env_get AGENTDROP_MODEL)"
-  read -r -p "  model [${cur:-anthropic/claude-sonnet-4}]: " v
+  read -r -p "  model [${cur:-Qwen3.8-27B}]: " v
   [[ -n "$v" ]] && _env_set AGENTDROP_MODEL "$v"
 
   cur="$(_env_get AGENTDROP_API_MODE)"

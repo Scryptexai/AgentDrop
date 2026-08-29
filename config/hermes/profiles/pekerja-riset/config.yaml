@@ -1,27 +1,32 @@
 # ============================================================================
-# WORKER: QUESTS — eksekusi campaign multi-langkah (Galxe, Layer3, Zealy, dll.)
+# WORKER: ANALYZER — filter proyek 4 dimensi (Sniper approach)
 # ============================================================================
-# Dipasang ke: ~/.hermes/profiles/worker-quests/config.yaml
-# Profil = HERMES_HOME terpisah penuh. Tidak mewarisi config utama.
+# Dipasang ke: ~/.hermes/profiles/pekerja-riset/config.yaml
+#
+# PENTING: `hermes --profile <name>` menyetel HERMES_HOME ke
+# ~/.hermes/profiles/<name>/ (lihat hermes_cli/main.py:_apply_profile_override).
+# Profil adalah HERMES_HOME TERPISAH PENUH — file ini TIDAK mewarisi
+# ~/.hermes/config.yaml. Key yang tidak diset di sini jatuh ke default
+# bawaan Hermes, bukan ke config utama.
 # ============================================================================
 
 model:
-  # Variabel model worker INI, bukan global. menavigasi dApp dengan wallet; keandalan paling mahal di sini.
+  # Variabel model worker INI, bukan global. tugas membaca + meringkas; konteks besar lebih penting dari kecepatan.
   # Kosongkan salah satu di .env untuk memakai nilai global
   # (AGENTDROP_MODEL dst.) — install.sh yang menyelesaikan
   # fallback-nya, karena Hermes tidak punya sintaks default
   # untuk ${VAR} (config.py:2767 membiarkannya verbatim).
-  # Eksekusi campaign = banyak keputusan navigasi. Butuh model kuat.
-  default: "${AGENTDROP_MODEL_WORKER_QUESTS}"
+  # Tugas analisis butuh penalaran kuat. Jalankan `hermes model` untuk slug valid.
+  default: "${AGENTDROP_MODEL}"
   # "openrouter", BUKAN "auto". "auto" tidak pernah menyelesaikan ke OpenRouter
   # (hermes_cli/auth.py:2268 memeriksa PROVIDER_REGISTRY, dan "auto" tidak ada
   # di sana; config.py:2990 memperingatkan "auto" justru membuat model dirutekan
   # lewat provider yang salah). Gejalanya: model custom tidak termuat dan UI
   # hanya menampilkan model/provider bawaan Hermes. Penjelasan panjang ada di
   # config/hermes/config.yaml.
-  provider: "${AGENTDROP_PROVIDER_WORKER_QUESTS}"
-  base_url: "${AGENTDROP_BASE_URL_WORKER_QUESTS}"
-  max_tokens: "${AGENTDROP_MAX_TOKENS_WORKER_QUESTS}"
+  provider: "${AGENTDROP_PROVIDER}"
+  base_url: "${AGENTDROP_BASE_URL}"
+  max_tokens: "${AGENTDROP_MAX_TOKENS}"
 
 
 # Provider OpenAI-compatible. Dirender dari .env saat install.
@@ -37,17 +42,18 @@ custom_providers:
     key_env: "CUSTOM_API_KEY"
     api_mode: "__AGENTDROP_API_MODE__"
     models:
-      "${AGENTDROP_MODEL_WORKER_QUESTS}": {}
+      "${AGENTDROP_MODEL}": {}
 toolsets:
   - hermes-cli
   - browser
-  - file
   - web
-  - todo
+  - file
+  - memory
 
 agent:
-  # Campaign multi-langkah dengan banyak halaman. 60 turn realistis.
+  # Riset mendalam satu proyek: butuh ruang untuk membaca banyak halaman.
   max_turns: 60
+  # Analisis 4 dimensi adalah pekerjaan penalaran, bukan eksekusi.
   reasoning_effort: "high"
   # MATIKAN SHELL — lihat penjelasan di akhir file.
   disabled_toolsets: [terminal, code_execution]
@@ -58,7 +64,6 @@ browser:
   # bisa tertutup di tengah rangkaian aksi.
   inactivity_timeout: 1800
   command_timeout: 30
-  # Halaman quest sering panjang (daftar task, syarat, footer).
   # 15000 = default Hermes (browser_tool.py:290). Jangan dinaikkan tanpa bukti:
   # angka ini adalah "per-page budget" yang masuk ke KONTEKS MODEL di setiap
   # snapshot (browser_tool.py:285-289), dan satu task browser melakukan banyak
@@ -66,7 +71,6 @@ browser:
   # yang terpotong tetap disimpan utuh ke cache/web dan bisa dibaca lewat
   # read_file. Penjelasan panjang di config/hermes/config.yaml.
   snapshot_threshold: 15000
-  record_sessions: false
   allow_private_urls: false
 
   # headed HANYA berlaku untuk browser lokal Hermes (agent-browser), BUKAN
@@ -112,11 +116,7 @@ compression:
 
 tool_loop_guardrails:
   warnings_enabled: true
-  hard_stop_enabled: true
-  warn_after:
-    exact_failure: 2
-    same_tool_failure: 3
-    idempotent_no_progress: 2
+  hard_stop_enabled: false
 
 # ---------------------------------------------------------------------------
 # MEMORY LOOP

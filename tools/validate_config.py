@@ -79,7 +79,7 @@ TOP_LEVEL_KEYS = {
 # bahkan punya validator khusus (hermes_cli/config.py:2405
 # validate_platform_toolsets) dan ditulis oleh setup wizard (config.py:1999).
 #
-# Bug ini ditemukan saat config worker-orchestrator memakai platform_toolsets
+# Bug ini ditemukan saat config pekerja-koordinator memakai platform_toolsets
 # dan validator menolaknya sebagai "tidak dikenal" — false positive.
 TOP_LEVEL_KEYS_ONLY_IN_EXAMPLE = {
     "platform_toolsets",
@@ -721,9 +721,9 @@ def check_delegation_architecture() -> None:
     workflow yang dijanjikan README tidak akan jalan."""
     global checks
     checks += 1
-    orch = REPO / "config/hermes/profiles/worker-orchestrator/config.yaml"
+    orch = REPO / "config/hermes/profiles/pekerja-koordinator/config.yaml"
     if not orch.exists():
-        err("profil worker-orchestrator tidak ada — tidak ada pintu masuk Telegram")
+        err("profil pekerja-koordinator tidak ada — tidak ada pintu masuk Telegram")
         return
     data = yaml.safe_load(orch.read_text()) or {}
 
@@ -733,9 +733,9 @@ def check_delegation_architecture() -> None:
     # toolset. Pemeriksaan lama menuntut keduanya, sehingga justru memaksa
     # nilai yang tidak valid masuk ke config.
     if "delegation" not in ts:
-        err("worker-orchestrator: toolset 'delegation' tidak ada — tidak bisa mendelegasikan")
+        err("pekerja-koordinator: toolset 'delegation' tidak ada — tidak bisa mendelegasikan")
     if "delegate_task" in ts:
-        err("worker-orchestrator: 'delegate_task' dipakai sebagai id toolset. "
+        err("pekerja-koordinator: 'delegate_task' dipakai sebagai id toolset. "
             "Id-nya 'delegation'; 'delegate_task' adalah nama tool di dalamnya.")
 
     # Guard regresi: pintu masuk Telegram adalah satu-satunya jalan operator
@@ -744,43 +744,43 @@ def check_delegation_architecture() -> None:
     # pun — dan kegagalannya sunyi, karena tool-nya memang tidak pernah ada.
     pt = (data.get("platform_toolsets") or {}).get("telegram")
     if isinstance(pt, list) and "delegation" not in pt:
-        err("worker-orchestrator: platform_toolsets.telegram tanpa 'delegation' — "
+        err("pekerja-koordinator: platform_toolsets.telegram tanpa 'delegation' — "
             "orchestrator bisa menerima task dari Telegram tapi tidak bisa "
             "mendelegasikannya ke worker")
 
     d = data.get("delegation")
     if not isinstance(d, dict):
-        err("worker-orchestrator: blok 'delegation' tidak ada")
+        err("pekerja-koordinator: blok 'delegation' tidak ada")
     else:
         if d.get("orchestrator_enabled") is not True:
-            err("worker-orchestrator: delegation.orchestrator_enabled bukan true")
+            err("pekerja-koordinator: delegation.orchestrator_enabled bukan true")
         depth = d.get("max_spawn_depth")
         if depth != 1:
-            warn(f"worker-orchestrator: delegation.max_spawn_depth={depth}. "
+            warn(f"pekerja-koordinator: delegation.max_spawn_depth={depth}. "
                  f"Nilai >1 mengizinkan delegasi berantai — biaya bisa meledak.")
         if d.get("subagent_auto_approve") is True:
-            err("worker-orchestrator: subagent_auto_approve=true — child bisa "
+            err("pekerja-koordinator: subagent_auto_approve=true — child bisa "
                 "menyetujui aksinya sendiri tanpa manusia")
 
     # Pintu masuk publik tidak boleh punya shell
     pt = data.get("platform_toolsets") or {}
     tg = pt.get("telegram") or []
     if "terminal" in tg:
-        err("worker-orchestrator: platform_toolsets.telegram memuat 'terminal' — "
+        err("pekerja-koordinator: platform_toolsets.telegram memuat 'terminal' — "
             "pintu masuk Telegram tidak boleh punya akses shell")
 
     # Setiap worker harus disebut di routing orchestrator. Profil yang terpasang
-    # tapi tidak pernah dirutekan tidak akan pernah dipakai — worker-x sempat
+    # tapi tidak pernah dirutekan tidak akan pernah dipakai — pekerja-x sempat
     # lolos dari sini karena ditambahkan ke setup.sh tapi tidak ke SOUL.md.
-    soul = REPO / "config/hermes/profiles/worker-orchestrator/SOUL.md"
+    soul = REPO / "config/hermes/profiles/pekerja-koordinator/SOUL.md"
     if soul.exists():
         checks += 1
         soul_text = soul.read_text()
         workers = [p.name for p in sorted((REPO / "config/hermes/profiles").iterdir())
-                   if p.is_dir() and p.name != "worker-orchestrator"]
+                   if p.is_dir() and p.name != "pekerja-koordinator"]
         for w in workers:
             if f"`{w}`" not in soul_text:
-                err(f"worker-orchestrator/SOUL.md tidak merutekan ke '{w}' — "
+                err(f"pekerja-koordinator/SOUL.md tidak merutekan ke '{w}' — "
                     f"profil terpasang tapi tidak akan pernah didelegasikan")
 
 
@@ -824,7 +824,7 @@ def check_setup_coverage() -> None:
 
     # ---- Pemetaan skill per profil -----------------------------------------
     # Tanpa pemetaan, setup.sh menyalin semua skill ke semua profil dan Hermes
-    # tidak membatasi apa yang boleh dipanggil — worker-discord bisa
+    # tidak membatasi apa yang boleh dipanggil — pekerja-discord bisa
     # menjalankan daily-executor.
     checks += 1
     m_map = re.search(r"declare -A PROFILE_SKILLS=\((.*?)\n\)", text, re.DOTALL)
@@ -1050,7 +1050,7 @@ def check_custom_providers_block(configs: list[Path]) -> None:
     TIDAK PERNAH sampai ke worker mana pun — worker tetap ke provider lama.
 
     Itu sudah terjadi: operator menyetel DeepSeek lewat `hermes model`, lalu
-    worker-onboard tetap meminta anthropic/claude-sonnet-4 ke OpenRouter.
+    pekerja-daftar tetap meminta anthropic/claude-sonnet-4 ke OpenRouter.
     """
     global checks
     print("\n[30] Blok custom_providers")
@@ -1110,7 +1110,7 @@ def check_render_config() -> None:
          expansion"        (hermes_cli/config.py:3366-3372)
 
     profiles.py:756 _read_config_model() memakainya, sehingga `hermes profile
-    list` dan dashboard menampilkan "${AGENTDROP_MODEL_WORKER_X}" apa adanya.
+    list` dan dashboard menampilkan "${AGENTDROP_MODEL_PEKERJA_X}" apa adanya.
     doctor.py juga memakainya di beberapa tempat (1507, 1747, 1795, 3217).
 
     Karena itu config TERPASANG harus berisi nilai konkret, dan satu-satunya
@@ -1388,7 +1388,7 @@ def check_model_provider(configs: list[Path]) -> None:
         # "provider-nya openrouter", tapi "rujukannya benar dan .env mengisinya".
         # Memaksa literal di sini akan mengunci operator ke satu provider dan
         # mengembalikan cacat lama: install ulang menghapus setelan custom.
-        # Rujukan per worker: ${AGENTDROP_PROVIDER_WORKER_X}. Bentuk umumnya
+        # Rujukan per worker: ${AGENTDROP_PROVIDER_PEKERJA_X}. Bentuk umumnya
         # ${AGENTDROP_PROVIDER} atau ${AGENTDROP_PROVIDER_<WORKER>}.
         _m_prov = re.fullmatch(r"\$\{AGENTDROP_PROVIDER(?:_([A-Z0-9_]+))?\}", prov)
         if _m_prov:
@@ -1829,6 +1829,76 @@ def check_audit_log() -> None:
             "ketahuan di akhir run uji")
 
 
+def check_model_vars_and_delegation(configs: list[Path]) -> None:
+    global checks
+    print("\n[31] Tidak ada variabel model per-worker")
+    # Keputusan operator: lapisan per-worker DIHAPUS. Alasannya spesifik dan
+    # sudah terjadi di mesin operator:
+    #
+    # config.yaml tiap profil merujuk ${AGENTDROP_MODEL_WORKER_X}. Variabel itu
+    # TIDAK PERNAH ada di .env.example -- hanya dibuat saat install. Kalau satu
+    # langkah install terlewat, Hermes membiarkan rujukan itu verbatim
+    # (config.py:2767: "missing vars stay verbatim"), jadi model.default menjadi
+    # string "${AGENTDROP_MODEL_WORKER_X}" apa adanya. Endpoint custom terpasang
+    # di config tapi tidak pernah dipakai, tanpa error yang jelas.
+    #
+    # Satu variabel global tidak punya cara gagal seperti itu.
+    for cfg in configs:
+        if not cfg.exists():
+            continue
+        checks += 1
+        isi = cfg.read_text()
+        m = re.search(r"\$\{AGENTDROP_(?:MODEL|PROVIDER|BASE_URL|MAX_TOKENS|API_MODE)_PEKERJA_[A-Z_]+\}", isi)
+        if m:
+            # Potong "${" (2 karakter) dan buang "_PEKERJA_<NAMA>" untuk
+            # menampilkan bentuk global yang seharusnya dipakai.
+            _global = "${" + m.group(0)[2:].split("_PEKERJA_")[0] + "}"
+            err(f"{cfg.relative_to(REPO)}: masih merujuk variabel per-worker "
+                f"{m.group(0)}. Semua profil harus memakai variabel global "
+                f"{_global}. Variabel per-worker tidak ada di .env.example, "
+                f"jadi kalau install terlewat rujukannya tetap verbatim "
+                f"(config.py:2767) dan endpoint tidak pernah dipakai.")
+
+    print("\n[32] Profil default bisa mendelegasikan")
+    # Keluhan operator: "telegram juga worker nya masih default agent hermes
+    # bukan worker yang di buat yg tersambung ke situ".
+    #
+    # Penyebabnya terverifikasi di repo: gateway multiplex melayani profil
+    # DEFAULT lebih dulu (hermes_cli/profiles.py:1105 profiles_to_serve
+    # (multiplex=True) -- "the default profile is always served"), jadi profil
+    # default-lah yang memegang TELEGRAM_BOT_TOKEN dan menjawab pesan Telegram.
+    # Tanpa toolset `delegation` di config utama, tidak ada jalan dari Telegram
+    # ke pekerja mana pun.
+    root = REPO / "config" / "hermes" / "config.yaml"
+    if root.exists():
+        checks += 1
+        data = yaml.safe_load(root.read_text()) or {}
+        ts = data.get("toolsets") or []
+        if "delegation" not in ts:
+            err("config/hermes/config.yaml: toolset 'delegation' tidak ada. "
+                "Gateway multiplex melayani profil default lebih dulu "
+                "(profiles.py:1105), jadi profil default yang menjawab Telegram. "
+                "Tanpa delegate_task di sana, tidak ada jalan dari Telegram ke "
+                "pekerja mana pun.")
+        checks += 1
+        # terminal di root config bertentangan dengan penolakan CodeAct: semua
+        # pekerja mematikannya, jadi menaruhnya di root berarti satu profil --
+        # justru yang paling sering dipakai lewat Telegram -- punya kemampuan
+        # yang operator larang.
+        if "terminal" in ts:
+            err("config/hermes/config.yaml: toolset 'terminal' masih ada di "
+                "profil default padahal semua pekerja mematikannya "
+                "(disabled_toolsets: [terminal, code_execution]). Profil "
+                "default adalah yang menjawab Telegram.")
+        checks += 1
+        agent = data.get("agent") or {}
+        dis = agent.get("disabled_toolsets") or []
+        if "terminal" not in dis or "code_execution" not in dis:
+            err(f"config/hermes/config.yaml: agent.disabled_toolsets={dis} "
+                f"harus memuat terminal dan code_execution. CodeAct ditolak "
+                f"operator dan berlaku di semua profil termasuk default.")
+
+
 def main() -> int:
     print("=" * 62)
     print("  AgentDrop — validator statis")
@@ -1878,7 +1948,7 @@ def main() -> int:
 
     print("\n[8] Arsitektur delegasi (orchestrator -> worker)")
     check_delegation_architecture()
-    print("  · worker-orchestrator")
+    print("  · pekerja-koordinator")
 
     print("\n[9] Cakupan setup.sh (guard drift)")
     check_setup_coverage()
@@ -1932,6 +2002,8 @@ def main() -> int:
     check_knowledge_references()
 
     print("\n" + "=" * 62)
+    check_model_vars_and_delegation(configs)
+
     print(f"  {checks} file diperiksa")
     if warnings:
         print(f"  {len(warnings)} peringatan:")

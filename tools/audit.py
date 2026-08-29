@@ -74,7 +74,7 @@ PLAYBOOK = [
         "fix": "agentdrop browser-status",
         "where": [
             "config/extensions.yaml                          (wallet yang dipasang)",
-            "config/hermes/profiles/worker-orchestrator/SOUL.md  (aturan approval)",
+            "config/hermes/profiles/pekerja-koordinator/SOUL.md  (aturan approval)",
         ],
         "hint": "Wallet resmi dipegang manusia: approval ditandatangani lewat "
                 "noVNC, bukan oleh agent. Kalau popup tidak muncul, ekstensi "
@@ -85,7 +85,7 @@ PLAYBOOK = [
         "cause": "Delegasi ke worker gagal",
         "fix": "python3 tools/validate_config.py",
         "where": [
-            "config/hermes/profiles/worker-orchestrator/SOUL.md  (tabel routing)",
+            "config/hermes/profiles/pekerja-koordinator/SOUL.md  (tabel routing)",
             "config/hermes/profiles/*/config.yaml                (delegation)",
         ],
         "hint": "Pastikan profil tujuan ada di tabel routing orchestrator dan "
@@ -96,7 +96,7 @@ PLAYBOOK = [
         "cause": "Masalah di portal (Telegram)",
         "fix": "hermes gateway status",
         "where": [
-            "config/hermes/profiles/worker-orchestrator/config.yaml  (platform.telegram)",
+            "config/hermes/profiles/pekerja-koordinator/config.yaml  (platform.telegram)",
             ".env                                                     (TELEGRAM_*)",
         ],
         "hint": "Task masuk lewat orchestrator. Kalau tidak ada baris "

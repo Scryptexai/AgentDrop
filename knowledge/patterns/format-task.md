@@ -16,13 +16,13 @@ Baca ini di langkah klasifikasi, sebelum membuka browser.
 
 | | |
 |---|---|
-| Worker | `worker-daily` + cron |
+| Worker | `pekerja-harian` + cron |
 | Bukti | status di dashboard, kadang tx hash |
 | Risiko | klaim dua kali → akun ditandai bot |
 | Titik henti | login ulang, CAPTCHA |
 
 **Yang membuat ini berbahaya:** berjalan tanpa operator yang menonton. Aturan
-`worker-daily` lebih ketat karena itu — kalau ada yang berubah dari kemarin,
+`pekerja-harian` lebih ketat karena itu — kalau ada yang berubah dari kemarin,
 berhenti dan lapor, jangan menebak.
 
 ## 2. Quest platform (Galxe, QuestN, Layer3, Zealy)
@@ -32,7 +32,7 @@ quest.
 
 | | |
 |---|---|
-| Worker | `worker-quests` (+ `worker-x` untuk task sosial di dalamnya) |
+| Worker | `pekerja-quest` (+ `pekerja-x` untuk task sosial di dalamnya) |
 | Bukti | tx hash, URL post, screenshot |
 | Risiko | dependensi antar quest; verifikasi manual yang butuh berhari-hari |
 | Titik henti | approve wallet, KYC |
@@ -51,7 +51,7 @@ Galxe berlaku di tempat lain.
 
 | | |
 |---|---|
-| Worker | `worker-x`, `worker-discord` |
+| Worker | `pekerja-x`, `pekerja-discord` |
 | Bukti | URL post, daftar role |
 | Risiko | akun di-ban karena melanggar aturan server / rate limit |
 | Titik henti | akun terkunci, verifikasi email/telepon |
@@ -66,7 +66,7 @@ membaca satu URL post spesifik. Salah pilih = quest gagal meski postnya benar.
 
 | | |
 |---|---|
-| Worker | `worker-quests` (eksekusi) + `worker-monitor` (verifikasi) |
+| Worker | `pekerja-quest` (eksekusi) + `pekerja-pantau` (verifikasi) |
 | Bukti | tx hash di explorer |
 | Risiko | **dana nyata**, approve yang tidak bisa diurungkan |
 | Titik henti | **setiap approve dan setiap signature** — approval wallet oleh manusia lewat noVNC |
@@ -80,7 +80,7 @@ manusia; popup konfirmasi disetujui manusia lewat noVNC.
 
 | | |
 |---|---|
-| Worker | `worker-monitor` (memantau), bukan eksekusi |
+| Worker | `pekerja-pantau` (memantau), bukan eksekusi |
 | Bukti | dashboard uptime, log |
 | Risiko | IP datacenter didiskualifikasi |
 

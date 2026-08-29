@@ -31,7 +31,7 @@ task mana yang berhasil, mana yang gagal dan kenapa, bukti apa yang terkumpul.
 
 
 ```bash
-hermes --profile worker-quests chat -q "Kerjakan campaign ini: https://app.galxe.com/quest/..."
+hermes --profile pekerja-quest chat -q "Kerjakan campaign ini: https://app.galxe.com/quest/..."
 ```
 
 ## Langkah 0 — verifikasi alamat sebelum bertindak

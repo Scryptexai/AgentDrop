@@ -12,7 +12,7 @@
 #   ./scripts/burn-in.sh --with-wallet   # tambahkan Uji 5 (connect wallet)
 #   ./scripts/burn-in.sh --with-social   # tambahkan Uji 6 (alur sosial nyata)
 #   ./scripts/burn-in.sh --all           # Uji 1-6
-#   ./scripts/burn-in.sh --profile worker-quests   # pakai profil lain
+#   ./scripts/burn-in.sh --profile pekerja-quest   # pakai profil lain
 #
 # Uji 5 dan 6 sengaja TIDAK jalan secara default: keduanya menyentuh wallet dan
 # akun sosial Anda. Keduanya butuh flag eksplisit.
@@ -25,7 +25,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-PROFILE="worker-daily"
+PROFILE="pekerja-harian"
 WALLET=0
 SOCIAL=0
 ONLY=""
