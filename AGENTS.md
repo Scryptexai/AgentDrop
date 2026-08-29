@@ -1838,3 +1838,90 @@ soal prosedur, bukan ukuran berkas.
 **Pelajaran:** saya dua kali menghitung biaya konteks dari ukuran berkas di
 repo, dan dua kali pula hasilnya salah karena tidak memeriksa apa yang
 benar-benar dikirim. Ukuran berkas bukan ukuran prompt.
+
+---
+
+## Arc 25 — Perintah yang hilang: tidak ada cara menyetel model untuk worker
+
+### Bukti dari log operator bahwa jalurnya sebenarnya berfungsi
+
+Operator melaporkan setup "sama sekali tidak berjalan". Log-nya berkata lain,
+dan angka di dalamnya yang membuktikannya:
+
+```
+You requested up to 8192 tokens, but can only afford 2666
+```
+
+**8192, bukan 64000.** 64000 adalah ceiling native `claude-sonnet-4`
+(`anthropic_adapter.py:175`); 8192 adalah `AGENTDROP_MAX_TOKENS` default kita.
+Artinya `.env` dibaca, `${VAR}` di-render, dan config terpasang dipakai. Yang
+tidak berubah adalah `AGENTDROP_MODEL` dan `AGENTDROP_PROVIDER` — karena
+keduanya masih bernilai default.
+
+### Akar sebenarnya: tidak ada perintah untuk menggantinya
+
+`hermes model` menulis ke profil **default** (`main.py:4957` → `save_config` →
+`config.py:4023` menulis `~/.hermes/config.yaml`). Worker punya config sendiri.
+Dan AgentDrop **tidak menyediakan perintah apa pun** untuk menyetel model —
+satu-satunya jalan adalah menyunting `.env` dengan tangan, yang tidak diketahui
+operator.
+
+Jadi operator memakai satu-satunya perintah yang terlihat (`hermes model`),
+perintah itu berhasil ke tempat yang salah, dan tidak ada pesan apa pun yang
+menunjuk penyebabnya.
+
+Ditambahkan **`agentdrop model`**:
+
+- menanyakan provider, base_url, model, api_mode, max_tokens, dan
+  `CUSTOM_API_KEY` kalau provider-nya `custom`
+- menyamakan variabel per-worker dengan global
+- memanggil `_render_all_configs()` sehingga config utama + 8 profil dirender
+  ulang tanpa harus menjalankan `./install.sh` penuh
+- `agentdrop model --show` menampilkan yang aktif sekarang
+
+Diuji dengan tty buatan (`script -qec`), karena perintah ini membaca stdin dan
+tidak bisa diuji lewat pipe:
+
+```
+sebelum : default: "anthropic/claude-sonnet-4"
+sesudah : default: "Qwen3.8-27B"   provider: "custom"
+          base_url: "https://api.hcnsec.cn/v1"   max_tokens: "4096"
+```
+
+Dan diverifikasi dengan `load_config()` Hermes sendiri pada tiga profil:
+
+```
+worker-onboard   Qwen3.8-27B  custom  max=4096  api_mode=chat_completions
+worker-x         Qwen3.8-27B  custom  max=4096  api_mode=chat_completions
+worker-quests    Qwen3.8-27B  custom  max=4096  api_mode=chat_completions
+```
+
+Satu cacat di versi pertama: kondisi `[[ "${1:-}" == "--show" || $# -eq 0 && ! -t 0 ]]`
+membuat `agentdrop model` tanpa argumen selalu mencetak tampilan read-only,
+karena `&&` mengikat lebih erat dari `||`. Diperbaiki dengan pengelompokan
+eksplisit.
+
+### `agentdrop audit timing` memberi putusan yang menyesatkan
+
+Untuk task yang mati di panggilan API pertama, alat itu tetap mencetak
+*"kandidat kuat latensi PROVIDER"* — padahal tidak ada satu pun tool call, jadi
+tidak ada yang diukur. Itu mengarahkan diagnosis ke tempat yang salah pada
+kasus yang paling sering terjadi.
+
+Sekarang kasus `pre_tool_call == 0` ditangani **sebelum** pemecahan waktu, dan
+menyebut kesalahan yang tercatat:
+
+```
+tidak ada satu pun tool call — agent tidak pernah sempat bertindak.
+Jadi ini bukan soal kecepatan browser atau jumlah putaran; task-nya gagal di awal.
+kesalahan tercatat:
+  07:07:03  api_request_error  HTTP 402: ... can only afford 2666.
+```
+
+Keempat kasus diuji ulang dan semuanya memberi putusan berbeda: 0 tool call →
+gagal di awal; 40 putaran → pangkas prosedur; 6 putaran jeda besar → provider;
+tool lambat → browser/CDP.
+
+**Pelajaran:** alat diagnosis yang memberi verdict harus diuji pada kasus
+*gagal*, bukan hanya kasus *lambat*. Versi pertama hanya diuji pada tiga
+bentuk kelambatan, jadi cabang kegagalan tidak pernah terlihat salah.

@@ -446,12 +446,57 @@ def cmd_timing(args):
         rs = groups[key]
         ts_list = [x for x in (_parse_ts(r.get("ts")) for r in rs) if x]
         if len(ts_list) < 2:
-            print(DIM(f"=== {key}: terlalu sedikit baris untuk diukur ==="))
+            # Jangan hanya bilang "tidak bisa diukur" — sebut KENAPA. Kasus
+            # nyata: task mati di panggilan API pertama (HTTP 402), jadi tidak
+            # ada satu pun tool call dan tidak ada yang bisa diukur. Pesan lama
+            # membuat operator mengira alatnya rusak, padahal yang rusak adalah
+            # provider/modelnya.
+            err_ev = [r for r in rs if r.get("level") == "error"]
+            n_pre = sum(1 for r in rs if r.get("event") == "pre_tool_call")
+            print(BOLD(f"=== task {key} ==="))
+            if n_pre == 0:
+                print(YELLOW("  tidak ada satu pun tool call — task mati sebelum "
+                             "agent sempat bertindak."))
+                print(DIM("  Ini hampir selalu soal model/provider, bukan "
+                          "kecepatan browser."))
+            else:
+                print(DIM(f"  hanya {len(rs)} baris; butuh lebih banyak untuk "
+                          f"memecah waktu."))
+            if err_ev:
+                print("  kesalahan tercatat:")
+                for r in err_ev[:3]:
+                    msg = (r.get("msg") or "")[:150]
+                    print(f"    {r.get('ts','')[11:19]}  "
+                          f"{r.get('event','?')}  {msg}")
+                print(DIM("  Perbaiki itu dulu, lalu jalankan ulang task-nya."))
+            print()
             continue
         dinding = (max(ts_list) - min(ts_list)).total_seconds()
 
         pre = [r for r in rs if r.get("event") == "pre_tool_call"]
         post = [r for r in rs if r.get("event") == "post_tool_call"]
+
+        # Kalau tidak ada satu pun tool call, ini BUKAN soal kecepatan dan
+        # memecah waktu tidak ada artinya. Kasus nyata: task mati di panggilan
+        # API pertama (HTTP 402) sehingga agent tidak pernah bertindak. Pesan
+        # lama tetap mencetak "kandidat kuat latensi PROVIDER" untuk kasus itu,
+        # yang mengarahkan diagnosis ke tempat yang salah.
+        if not pre:
+            err_ev = [r for r in rs if r.get("level") == "error"]
+            print(BOLD(f"=== task {key} ==="))
+            print(YELLOW("  tidak ada satu pun tool call — agent tidak pernah "
+                         "sempat bertindak."))
+            print(DIM("  Jadi ini bukan soal kecepatan browser atau jumlah "
+                      "putaran; task-nya gagal di awal."))
+            if err_ev:
+                print("  kesalahan tercatat:")
+                for r in err_ev[:3]:
+                    print(f"    {r.get('ts','')[11:19]}  "
+                          f"{r.get('event','?')}  {(r.get('msg') or '')[:150]}")
+            print(DIM("  Perbaiki itu dulu, lalu jalankan ulang task-nya dan "
+                      "ulangi `agentdrop audit timing`."))
+            print()
+            continue
         dalam = sum(float(r.get("ms") or 0) for r in post) / 1000.0
         luar = max(0.0, dinding - dalam)
 

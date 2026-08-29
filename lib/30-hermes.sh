@@ -75,6 +75,26 @@ _render_config() {  # _render_config SRC DST LABEL
   mv "$_tmp" "$_dst"
 }
 
+_render_all_configs() {  # render ulang config utama + semua profil dari .env
+  # Dipanggil `agentdrop model` sesudah .env berubah, supaya operator tidak
+  # harus menjalankan ./install.sh penuh hanya untuk mengganti provider.
+  # Tanpa ini, .env berubah tapi config terpasang masih memegang nilai lama —
+  # dan gejalanya persis yang sudah terjadi: provider disetel, worker tetap
+  # memakai yang lama, tanpa pesan error apa pun.
+  local _d _n
+  if [[ -f "$REPO_ROOT/config/hermes/config.yaml" ]]; then
+    _render_config "$REPO_ROOT/config/hermes/config.yaml" \
+                   "$HERMES_HOME_DIR/config.yaml" "config utama"
+  fi
+  for _d in "$REPO_ROOT"/config/hermes/profiles/*/; do
+    [[ -f "${_d}config.yaml" ]] || continue
+    _n="$(basename "$_d")"
+    mkdir -p "$HERMES_HOME_DIR/profiles/$_n"
+    _render_config "${_d}config.yaml" \
+                   "$HERMES_HOME_DIR/profiles/$_n/config.yaml" "$_n"
+  done
+}
+
 hermes_install() {
   _log "Config utama"
   mkdir -p "$HERMES_HOME_DIR"

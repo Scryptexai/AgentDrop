@@ -168,6 +168,101 @@ cmd_run() {
   return $rc
 }
 
+# agentdrop model — setel provider/model untuk SEMUA worker sekaligus.
+#
+# Kenapa perintah ini perlu ada: `hermes model` menulis ke config profil
+# DEFAULT (hermes_cli/main.py:4957 -> save_config -> config.py:4023 menulis
+# ~/.hermes/config.yaml). Profil worker punya config.yaml sendiri di
+# ~/.hermes/profiles/<nama>/, dan tidak ada mekanisme Hermes yang menyalin
+# setelan default ke sana. Jadi operator bisa menyetel provider dengan benar
+# lewat `hermes model` dan setiap worker tetap memakai provider lama — tanpa
+# pesan error apa pun yang menunjuk penyebabnya.
+#
+# Satu-satunya tempat yang dibaca semua worker adalah .env, karena config
+# setiap profil merujuk ${AGENTDROP_*} dan install merendernya dari sana.
+# Perintah ini menulis .env lalu merender ulang config, jadi satu perintah
+# cukup untuk delapan profil.
+cmd_model() {
+  local ENV_FILE="$HERMES_HOME_DIR/.env"
+  [[ -f "$ENV_FILE" ]] || _die ".env tidak ada di $ENV_FILE — jalankan ./install.sh"
+
+  # --show eksplisit, ATAU stdin bukan terminal (dipanggil dari skrip/cron).
+  # Tanpa `! -t 0` di dalam tanda kurung, operator yang menjalankan
+  # `agentdrop model` di terminal ikut mendapat tampilan read-only dan tidak
+  # pernah bisa menyetel apa pun.
+  if [[ "${1:-}" == "--show" ]] || { [[ $# -eq 0 ]] && [[ ! -t 0 ]]; }; then
+    _log "Model saat ini (dari $ENV_FILE)"
+    local k
+    for k in AGENTDROP_MODEL AGENTDROP_PROVIDER AGENTDROP_BASE_URL \
+             AGENTDROP_API_MODE AGENTDROP_MAX_TOKENS; do
+      printf '  %-24s %s\n' "$k" "$(_env_get "$k")"
+    done
+    echo
+    _log "Per worker (kosong = mengikuti global):"
+    local d n
+    for d in "$HERMES_HOME_DIR"/profiles/*/; do
+      [[ -f "${d}config.yaml" ]] || continue
+      n="$(basename "$d")"
+      printf '  %-22s %s\n' "$n" \
+        "$(grep -E '^  default:' "${d}config.yaml" | head -1 | cut -d'"' -f2)"
+    done
+    return 0
+  fi
+
+  [[ -t 0 ]] || _die "stdin bukan terminal. Pakai: agentdrop model --set KEY=VALUE ..."
+
+  _log "Provider untuk SEMUA worker"
+  _warn "hermes model HANYA menyetel profil default, bukan worker."
+  echo
+
+  local cur v
+  cur="$(_env_get AGENTDROP_PROVIDER)"
+  read -r -p "  provider [${cur:-openrouter}] (openrouter/custom/anthropic/...): " v
+  [[ -n "$v" ]] && _env_set AGENTDROP_PROVIDER "$v"
+
+  cur="$(_env_get AGENTDROP_BASE_URL)"
+  read -r -p "  base_url [${cur:-https://openrouter.ai/api/v1}]: " v
+  [[ -n "$v" ]] && _env_set AGENTDROP_BASE_URL "$v"
+
+  cur="$(_env_get AGENTDROP_MODEL)"
+  read -r -p "  model [${cur:-anthropic/claude-sonnet-4}]: " v
+  [[ -n "$v" ]] && _env_set AGENTDROP_MODEL "$v"
+
+  cur="$(_env_get AGENTDROP_API_MODE)"
+  echo "  api_mode: auto | chat_completions | codex_responses | anthropic_messages"
+  read -r -p "  api_mode [${cur:-auto}] (salah pilih = tool calling gagal): " v
+  [[ -n "$v" ]] && _env_set AGENTDROP_API_MODE "$v"
+
+  cur="$(_env_get AGENTDROP_MAX_TOKENS)"
+  read -r -p "  max_tokens [${cur:-8192}] (kecilkan kalau HTTP 402): " v
+  [[ -n "$v" ]] && _env_set AGENTDROP_MAX_TOKENS "$v"
+
+  if [[ "$(_env_get AGENTDROP_PROVIDER)" == "custom" ]]; then
+    cur="$(_env_get CUSTOM_API_KEY)"
+    if [[ -z "$cur" ]]; then
+      read -r -s -p "  CUSTOM_API_KEY (endpoint custom): " v; echo
+      [[ -n "$v" ]] && _env_set CUSTOM_API_KEY "$v"
+    else
+      _ok "CUSTOM_API_KEY sudah ada"
+    fi
+  fi
+
+  # Per-worker ikut global kecuali operator sudah menyetelnya sendiri.
+  _log "Menyamakan per-worker dengan global"
+  local prof kunci k glob
+  for prof in $(cd "$HERMES_HOME_DIR/profiles" 2>/dev/null && ls -d */ | tr -d '/'); do
+    kunci="${prof//-/_}"; kunci="${kunci^^}"
+    for k in MODEL PROVIDER BASE_URL MAX_TOKENS; do
+      glob="AGENTDROP_${k}"
+      _env_set "AGENTDROP_${k}_${kunci}" "$(_env_get "$glob")"
+    done
+  done
+
+  _log "Merender ulang config"
+  _render_all_configs
+  _ok "selesai — semua worker sekarang memakai $(_env_get AGENTDROP_MODEL)"
+}
+
 cmd_status()   { verify_run "${1:-}"; }
 cmd_audit()    { "$(_pyu)" "$ROOT/tools/audit.py" "$@"; }
 cmd_cron()     { bash "$ROOT/scripts/install-cron.sh" "$@"; }
@@ -184,6 +279,7 @@ main() {
     browser-status) browser_status ;;
     run)          cmd_run "$@" ;;
     status)       cmd_status "$@" ;;
+    model)        cmd_model "$@" ;;
     extensions)   browser_install_extensions "$@" ;;
     audit)        cmd_audit "$@" ;;
     logs)         cmd_logs "$@" ;;

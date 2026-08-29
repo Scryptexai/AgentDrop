@@ -188,6 +188,8 @@ membuat atau mengimpor wallet di browser, dan login visual sekali per platform.
 
 ```bash
 agentdrop status          periksa kesiapan — lakukan ini lebih dulu
+agentdrop model           setel provider/model untuk SEMUA worker sekaligus
+agentdrop model --show    lihat model yang aktif sekarang
 agentdrop browser         nyalakan Chrome for Testing (jendela asli, atau noVNC)
 agentdrop extensions      cetak tautan Chrome Web Store untuk wallet resmi
 agentdrop start           nyalakan gateway Telegram (agent berjalan di atasnya)
