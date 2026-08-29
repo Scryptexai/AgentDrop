@@ -1889,6 +1889,47 @@ def check_model_vars_and_delegation(configs: list[Path]) -> None:
                     f"otomatis untuk semua pekerja; kelas human:wallet dihapus. "
                     f"Yang tetap human hanya CAPTCHA, 2FA, OTP, KYC.")
 
+    print("\n[35] Peringatan restart gateway setelah install")
+    # Hermes memindai skill menjadi perintah /nama-skill, tapi cache-nya hanya
+    # di-refresh kalau platform atau HERMES_HOME berubah
+    # (agent/skill_commands.py:565-568) -- bukan kalau isi folder skill berubah.
+    #
+    # Sudah dibuktikan: skill yang ditambahkan saat proses hidup tetap tidak
+    # ter-resolve. Gateway yang sudah berjalan tidak akan pernah melihat skill
+    # baru, jadi /riset dan /quest dibalas "Unknown command" walau skill-nya ada
+    # di disk. Persis keluhan operator: "semua command unknown di telegram".
+    #
+    # Karena itu install.sh wajib menyuruh operator me-restart gateway, dan
+    # `agentdrop status` wajib memeriksa kondisi itu. Tanpa keduanya operator
+    # tidak punya cara membedakan "skill belum terpasang" dari "gateway belum
+    # di-restart" -- keduanya terlihat identik di Telegram.
+    inst = REPO / "install.sh"
+    if inst.exists():
+        checks += 1
+        isi_inst = inst.read_text()
+        if "agentdrop stop && agentdrop start" not in isi_inst:
+            err("install.sh tidak menyuruh me-restart gateway. Skill baru tidak "
+                "terlihat oleh gateway yang sudah hidup (cache di "
+                "skill_commands.py:565-568 tidak di-refresh oleh perubahan "
+                "folder), jadi perintah /riset dst akan dibalas Unknown command.")
+    ver = REPO / "lib" / "50-verify.sh"
+    if ver.exists():
+        checks += 1
+        isi_ver = ver.read_text()
+        if "Pintasan Telegram" not in isi_ver:
+            err("lib/50-verify.sh tidak memeriksa pintasan Telegram. Tanpa ini "
+                "operator tidak bisa membedakan 'skill belum terpasang' dari "
+                "'gateway belum di-restart' -- keduanya terlihat identik.")
+        checks += 1
+        # `stat -c %Y /proc/<pid>` memberi waktu AKSES, bukan waktu mulai proses,
+        # dan sudah pernah membuat pemeriksaan ini selalu lolos. Yang benar
+        # `ps -o lstart=`. Aturan ini ada karena cacat itu lolos satu putaran uji.
+        if "stat -c %Y \"/proc/" in isi_ver:
+            err("lib/50-verify.sh memakai `stat -c %Y /proc/<pid>` untuk waktu "
+                "mulai proses. Itu waktu AKSES, bukan waktu mulai, dan membuat "
+                "pemeriksaan selalu menyimpulkan 'gateway hidup setelah skill "
+                "terpasang'. Pakai `ps -o lstart=`.")
+
     print("\n[34] Pintasan Telegram terdaftar sebagai skill perintah")
     # Hermes tidak punya perintah Telegram untuk berpindah profil:
     #   - /profile hanya MELIHAT (gateway/slash_commands.py:355)

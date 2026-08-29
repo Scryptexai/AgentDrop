@@ -342,6 +342,17 @@ cat <<'EOF'
     3. agentdrop burn-in       uji stabilisasi browser SEBELUM agent dipercaya
     4. agentdrop start         nyalakan gateway Telegram
 
+  PENTING — kalau gateway SEDANG jalan, hentikan dulu sebelum start:
+
+    agentdrop stop && agentdrop start
+
+  Alasannya spesifik: Hermes memindai skill menjadi perintah /nama-skill, tapi
+  cache-nya hanya di-refresh kalau platform atau HERMES_HOME berubah
+  (agent/skill_commands.py:565-568) — BUKAN kalau isi folder skill berubah.
+  Gateway yang sudah hidup tidak akan pernah melihat skill yang baru dipasang,
+  jadi perintah seperti /riset dan /quest akan dibalas "Unknown command" walau
+  skill-nya ada di disk. `agentdrop status` memeriksa kondisi ini.
+
   Langkah 3 bukan formalitas. Tanpanya kegagalan pertama baru terlihat saat
   agent sedang mengerjakan campaign sungguhan, dan gejalanya akan terlihat
   seperti kesalahan proyek — bukan seperti browser yang belum stabil.

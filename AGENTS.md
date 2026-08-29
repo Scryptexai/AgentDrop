@@ -2318,3 +2318,90 @@ Telegram. Resolusi perintah sudah terbukti lewat kode Hermes, tapi apakah
 gateway benar-benar meneruskannya ke koordinator, dan apakah `delegate_task`
 menjawab dalam waktu yang wajar lewat chat — itu hanya bisa dipastikan dengan
 bot yang berjalan di mesin operator.
+
+## Arc 30 — "Semua command unknown di telegram": cache skill tidak di-refresh
+
+Operator melaporkan **semua** pintasan Arc 29 dibalas "Unknown command". Saya
+sudah menandai risiko ini di akhir Arc 29 sebagai hal yang tidak bisa diverifikasi
+dari sandbox — tapi menandainya bukan berarti menemukannya. Penyebabnya sekarang
+ketemu, dan **bukan** di skill-nya.
+
+### Mekanisme yang benar, dan satu syarat yang terlewat
+
+Skill memang terdaftar sebagai perintah `/nama-skill`, dan itu sudah diverifikasi
+(Arc 29: 8/8 resolve). Tapi ada syarat yang baru terlihat saat gejalanya muncul:
+
+```
+agent/skill_commands.py:550  get_skill_commands()
+    is_fresh = bool(commands)
+               and _skill_commands_platform == current_platform
+               and _skill_commands_home     == current_home
+```
+
+Cache hanya di-refresh kalau **platform** atau **HERMES_HOME** berubah —
+**bukan kalau isi folder skill berubah** (`:565-568`).
+
+**Dibuktikan, bukan disimpulkan:** skill baru ditambahkan ke `~/.hermes/skills`
+saat proses hidup, lalu `resolve_skill_command_key()` dipanggil lagi — tetap
+`None`. 18 perintah sebelum, 18 sesudah.
+
+Jadi: `install.sh` menyalin skill baru, tapi gateway yang **sudah hidup** tidak
+pernah melihatnya. Perintah itu baru ada setelah gateway di-restart.
+
+Yang membuat ini lolos dari Arc 29: semua pengujian saya menjalankan scanner
+dalam **proses baru**, yang selalu memindai ulang dari disk. Gateway operator
+adalah proses **lama** yang masih memegang cache. Pengujian saya menguji hal
+yang benar dengan cara yang tidak mewakili keadaan sebenarnya.
+
+### Perbaikan
+
+1. **`agentdrop status` bagian `[5] Pintasan Telegram`** — memisahkan dua
+   kegagalan yang gejalanya identik di Telegram:
+   - skill belum tersalin → `./install.sh`
+   - skill ada tapi gateway belum di-restart → `agentdrop stop && agentdrop start`
+
+   Tanpa pemisahan ini operator tidak punya cara membedakan keduanya.
+
+2. **`install.sh` menyuruh restart** kalau gateway sedang jalan, dengan alasan
+   mekanismenya tertulis — bukan sekadar "restart dulu".
+
+### Cacat di pemeriksaan baru saya sendiri, dan jenisnya berbahaya
+
+Versi pertama memakai `stat -c %Y "/proc/<pid>"` sebagai waktu mulai proses.
+**Itu waktu AKSES, bukan waktu mulai** — berubah setiap kali ada yang membaca
+direktori itu. Dibuktikan: proses yang baru dimulai dan berkas yang disentuh
+dua detik sebelumnya menghasilkan angka yang sama.
+
+Akibatnya pemeriksaan **selalu** menyimpulkan "gateway hidup setelah skill
+terpasang" — termasuk pada kasus yang justru harus ditangkap. Ini lolos satu
+putaran uji penuh karena saya mengujinya hanya pada kondisi yang seharusnya
+lulus.
+
+Ketahuan saat saya menjalankan kondisi sebaliknya. Diganti `ps -o lstart=`, lalu
+**keempat** kondisi diuji:
+
+| Kondisi | Hasil |
+|---|---|
+| skill terpasang, gateway mati | ✓ + peringatan nyalakan |
+| gateway hidup **sebelum** skill (kasus operator) | ✗ + perintah restart |
+| gateway hidup **setelah** skill | ✓ |
+| skill belum terpasang | ✗ + `./install.sh` |
+
+### Validator: 367 → 370
+
+`[35]` menegakkan tiga hal: `install.sh` memuat perintah restart, `verify.sh`
+punya bagian Pintasan Telegram, dan **tidak** memakai pola `stat -c %Y "/proc/`
+yang sudah terbukti salah. Ketiga cabang diuji dengan injeksi nyata.
+
+Aturan ketiga itu ada justru karena cacatnya sendiri lolos satu putaran —
+mengunci pelajaran, bukan hanya perbaikannya.
+
+### Verifikasi
+
+`tools/validate_config.py` → **370 checks, SEMUA LOLOS**, `[35]` diuji tiga
+injeksi. Empat kondisi `agentdrop status` diuji dan hasilnya sesuai tabel.
+`agentdrop test-workers` → **8 lulus, 0 gagal**.
+
+**Tetap tidak bisa diverifikasi dari sandbox:** apakah setelah restart gateway
+benar-benar meneruskan `/riset` ke koordinator dan `delegate_task` menjawab
+lewat Telegram. Resolusi perintah sudah terbukti; pengirimannya belum.

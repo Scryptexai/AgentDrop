@@ -70,7 +70,65 @@ verify_run() {  # verify_run [--strict]
   curl -fsS --max-time 3 "http://127.0.0.1:${CDP_PORT}/json/version" >/dev/null 2>&1 \
     && _vok "CDP menjawab di ${CDP_PORT}" || _vwn "CDP tidak menjawab — ./agentdrop browser"
 
-  _vsc "[5] Repo"
+  _vsc "[5] Pintasan Telegram"
+  # Operator melaporkan semua perintah /riset /quest dst dibalas "Unknown
+  # command". Penyebabnya bukan di skill-nya: Hermes memindai skill menjadi
+  # perintah /nama-skill (agent/skill_commands.py:424 scan_skill_commands),
+  # tapi cache-nya hanya di-refresh kalau PLATFORM atau HERMES_HOME berubah
+  # (skill_commands.py:565-568) — BUKAN kalau isi folder skill berubah.
+  #
+  # Akibatnya: install.sh menyalin skill baru ke ~/.hermes/skills, tapi gateway
+  # yang sudah hidup tidak pernah melihatnya. Perintah itu baru ada setelah
+  # gateway di-restart. Ini sudah dibuktikan: skill yang ditambahkan saat
+  # proses hidup tetap tidak ter-resolve.
+  #
+  # Jadi pemeriksaan ini memisahkan dua kegagalan yang gejalanya sama:
+  #   skill belum tersalin  -> jalankan ./install.sh
+  #   skill ada tapi gateway belum di-restart -> jalankan agentdrop stop && start
+  local _sk _ada=0 _hilang=""
+  for _sk in panggil-pekerja riset harian quest daftar x discord pantau; do
+    if [[ -f "$HERMES_HOME_DIR/skills/$_sk/SKILL.md" ]]; then
+      _ada=$((_ada+1))
+    else
+      _hilang="$_hilang $_sk"
+    fi
+  done
+  if [[ "$_ada" -eq 8 ]]; then
+    _vok "8 skill pintasan terpasang di ~/.hermes/skills"
+  else
+    _vbd "skill pintasan belum terpasang:$_hilang"
+    echo "        jalankan: ./install.sh"
+  fi
+
+  # Gateway yang hidup saat install dijalankan TIDAK melihat skill baru.
+  # PID_DIR hanya didefinisikan di CLI `agentdrop`, bukan di lib/*.sh, dan
+  # verify_run bisa dipanggil dari install.sh yang tidak punya variabel itu.
+  # Karena itu dihitung ulang dari STATE_DIR, dengan fallback kalau kosong.
+  local _piddir="${PID_DIR:-$STATE_DIR/run}"
+  if [[ -f "$_piddir/gateway.pid" ]] && kill -0 "$(cat "$_piddir/gateway.pid")" 2>/dev/null; then
+    local _pid _mulaipid _skillbaru
+    _pid="$(cat "$_piddir/gateway.pid")"
+    # Waktu mulai proses gateway vs waktu skill terakhir diubah.
+    # `stat -c %Y /proc/<pid>` TIDAK memberi waktu mulai proses — ia memberi
+    # waktu AKSES, yang berubah setiap kali ada yang membaca direktori itu.
+    # Versi pertama pemeriksaan ini memakainya dan karena itu selalu menyimpulkan
+    # "gateway hidup setelah skill terpasang", termasuk pada kasus yang justru
+    # harus ditangkap. `ps -o lstart=` adalah waktu mulai yang sebenarnya.
+    _mulaipid="$(date -d "$(ps -o lstart= -p "$_pid" 2>/dev/null)" +%s 2>/dev/null || echo 0)"
+    _skillbaru="$(stat -c %Y "$HERMES_HOME_DIR/skills/panggil-pekerja/SKILL.md" 2>/dev/null || echo 0)"
+    if [[ "${_mulaipid:-0}" -gt 0 && "$_skillbaru" -gt "$_mulaipid" ]]; then
+      _vbd "gateway (pid $_pid) dimulai SEBELUM skill terpasang — perintah /riset dst akan dibalas Unknown command"
+      echo "        cache skill Hermes tidak di-refresh oleh perubahan folder"
+      echo "        (agent/skill_commands.py:565-568). Jalankan:"
+      echo "          agentdrop stop && agentdrop start"
+    else
+      _vok "gateway hidup setelah skill terpasang"
+    fi
+  else
+    _vwn "gateway tidak jalan — nyalakan dengan: agentdrop start"
+  fi
+
+  _vsc "[6] Repo"
   if "$(_pyu)" "$REPO_ROOT/tools/validate_config.py" >/tmp/ad-val.txt 2>&1; then
     _vok "validator lolos ($(grep -oE '[0-9]+ file diperiksa' /tmp/ad-val.txt | head -1))"
   else _vbd "validator GAGAL:"; tail -6 /tmp/ad-val.txt | sed 's/^/      /'; fi
