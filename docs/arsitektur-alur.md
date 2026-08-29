@@ -118,47 +118,65 @@ non-official terdeteksi sebagai klien asing, berisiko di-ban proyek, ditolak
 sebagian dApp, dan menghasilkan sidik jari gas yang seragam untuk semua
 pemakainya.
 
-Yang sekarang: **wallet resmi di browser, kunci dipegang manusia.**
+Yang sekarang: **wallet resmi di browser, kunci dipegang manusia, tombol popup
+ditekan agent.**
+
+Pemisahan ini penting dan mudah tercampur. K7 melarang **ekstensi bikinan
+sendiri** — itu tetap berlaku. Yang berubah di Arc 28 adalah **siapa yang
+menekan `Confirm`**, bukan siapa yang memegang kunci.
 
 ```mermaid
 flowchart TD
     SITE(["Website airdrop minta signature"]) -->|"window.ethereum"| WALLET["MetaMask / OKX / Phantom<br/>ekstensi RESMI di Chrome for Testing"]
     WALLET --> POPUP["Popup konfirmasi<br/>muncul di browser"]
-    POPUP --> NOVNC["noVNC :6080"]
-    NOVNC --> H{"Manusia memeriksa"}
-
-    H -->|"paham & setuju"| OK["tanda tangan<br/>oleh wallet"]
-    H -->|"tidak paham / tidak setuju"| NO(["tolak"])
-    H -->|"butuh penjelasan"| TNYA(["tanya operator di Telegram"])
-
-    OK --> VERIF["agent verifikasi hasilnya<br/>tx hash di explorer"]
-    NO --> STOP(["berhenti, laporkan"])
+    POPUP --> BACA["AGENT membaca isi popup<br/>kontrak · jumlah · jaringan · fungsi"]
+    BACA --> CATAT["catat ke laporan:<br/>apa yang disetujui"]
+    CATAT --> TEKAN["agent tekan Confirm/Sign/Approve"]
+    TEKAN --> VERIF["verifikasi hasilnya<br/>status berubah / tx hash / saldo"]
+    VERIF -->|"halaman & popup tidak cocok"| WARN(["catat peringatan,<br/>teruskan ke operator"])
+    VERIF -->|"popup tidak muncul"| FAIL(["kegagalan untuk dilaporkan"])
 ```
+
+### Kenapa agent yang menekan, bukan manusia
+
+Aritmetika, bukan preferensi. 10 proyek sehari dengan 10-20 task chain
+masing-masing berarti **~200 approval sehari**. Operator membangun sistem ini
+supaya tetap berjalan saat ia offline; menyerahkan setiap popup ke manusia
+membuatnya tidak berguna. Risikonya tidak hilang — ia **dipindahkan ke kualitas
+catatan agent**, karena itu catatan wajib, bukan opsional.
 
 ### Konsekuensinya
 
 | | |
 |---|---|
 | Kunci | **dipegang manusia**, di dalam wallet. Agent tidak punya dan tidak boleh mencari |
-| Approval | **ditandatangani manusia** lewat noVNC |
-| Peran agent | menyiapkan transaksi sampai popup muncul, lalu **berhenti dan menyerahkan** |
+| Approval | **ditekan agent**, setelah membaca isi popup |
+| `approve` unlimited | **boleh** — banyak dApp memintanya. Catat token + spender untuk revoke |
+| Halaman ≠ popup | **catat peringatan, terus jalan.** Sinyal situs mencurigakan, bukan alasan berhenti |
+| Wajib dicatat | fungsi, kontrak/spender, jumlah, chain — untuk **setiap** approval |
 | Kalau popup tidak muncul | itu **kegagalan untuk dilaporkan**, bukan sesuatu yang diakali |
 
 ### Yang tidak boleh dilakukan agent
 
 - Mencari, membaca, atau meminta private key, seed phrase, atau keystore
 - Mengetik seed phrase ke halaman web mana pun, termasuk halaman "recover"
-- Menyetujui transaksi yang tidak dipahami tujuannya
-- Mengulang persetujuan yang sudah ditolak manusia
+- Menandatangani transaksi yang **mengirim dana keluar** kecuali task memintanya
+  eksplisit. Approve bukan transfer
+- Melewati CAPTCHA, 2FA, OTP, atau KYC — itu tetap kelas `human`
 
 ### Kenapa tidak ada policy engine lagi
 
-Policy engine berguna kalau **agent** yang memutuskan. Dengan wallet resmi,
-keputusannya ada di tangan manusia yang melihat popup — dan itu justru lebih
-kuat dari policy engine mana pun, karena manusia melihat konteks yang tidak
-terbaca dari calldata.
+Policy engine membaca **selector 4-byte dari calldata** untuk memutuskan. Itu
+tidak pernah cukup: untuk Solana tidak ada padanannya sama sekali (instruksinya
+program ID + index dalam `VersionedTransaction` yang sudah terserialisasi), dan
+`SetAuthority` di Solana — memindahkan kepemilikan token account, lebih parah
+dari unlimited allowance dan tidak bisa dicabut dengan revoke — tidak punya
+analog di sisi EVM.
 
-Daemon dan policy engine masih bisa dipulihkan kalau suatu saat dibutuhkan:
+Yang menggantikannya lebih sederhana dan lebih jujur: agent **membaca popup
+wallet-nya langsung**, bukan menebak dari calldata. Popup menunjukkan apa yang
+sebenarnya akan ditandatangani. Daemon dan policy engine masih bisa dipulihkan
+kalau suatu saat dibutuhkan:
 
 ```bash
 git checkout 81417dc -- tools/signing_daemon.py tools/signing_policy.py
@@ -240,12 +258,18 @@ aslinya perlu dibaca dengan hati-hati:
 
 - Dulu keputusannya diserahkan ke policy engine (`auto:wallet` jalan terus,
   `human:wallet` hanya kalau engine menjawab `ESCALATE`/`DENY`).
-- **Sekarang policy engine sudah dihapus.** Wallet resmi dipegang manusia dan
-  setiap approval ditandatangani manusia lewat noVNC. Lihat bagian 3 di atas.
+- **Policy engine sudah dihapus** (K7 — tidak ada ekstensi bikinan sendiri, jadi
+  tidak ada pemanggilnya).
+- **Keputusan operator (Arc 28): tidak ada lagi kelas `human:wallet`.** Semua
+  task wallet masuk kelas `wallet` dan dikerjakan agent sampai selesai,
+  termasuk menekan `Confirm`/`Sign`/`Approve`. Alasannya aritmetika: 10 proyek
+  sehari × 10-20 task chain = ~200 approval, dan sistem ini dibangun supaya
+  tetap berjalan saat operator offline. Yang tetap dipegang manusia adalah
+  **kunci**, bukan tombol di popup. CAPTCHA, 2FA, OTP, dan KYC tetap `human`.
 
 Yang **tetap benar** dari temuan ini: `Submit EVM Address` bukan tindakan
-wallet. Ia cuma menyerahkan alamat publik, jadi masuk `auto`, bukan
-`human:wallet`. Koreksi itu masih berlaku.
+wallet. Ia cuma menyerahkan alamat publik, jadi masuk `auto`, bukan `wallet`.
+Koreksi itu masih berlaku.
 
 ### ✅ C — Skill dibatasi per profil: SELESAI
 

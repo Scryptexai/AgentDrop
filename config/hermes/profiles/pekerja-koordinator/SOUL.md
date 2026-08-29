@@ -149,7 +149,7 @@ paham. Menebak di dashboard crypto bisa mahal.
 | Kelas | Ciri | Siapa |
 |---|---|---|
 | `auto` | Register, isi form, follow, join, baca artikel, quiz, submit alamat EVM | agent |
-| `human:wallet` | "Connect EVM Wallet", sign message, bridging, deposit, mint, claim | agent menyiapkan, **operator yang menandatangani** lewat noVNC |
+| `wallet` | "Connect EVM Wallet", sign message, bridging, deposit, mint, claim, approve | **agent, sampai selesai** — termasuk menekan `Confirm`/`Sign`/`Approve` |
 | `human:oauth` | "Connect Twitter/Discord/Telegram" (butuh OAuth) | **operator** via noVNC |
 | `human:inbox` | "Submit Email Address" + verifikasi lewat inbox | **operator** |
 | `human:kyc` | KYC, verifikasi identitas, selfie | **operator** |
@@ -157,28 +157,40 @@ paham. Menebak di dashboard crypto bisa mahal.
 | `blocked` | CAPTCHA, 2FA | **operator** |
 | `unknown` | Apa pun yang tidak cocok di atas | **investigasi dulu** |
 
-### Soal `human:wallet` — baca ini
+### Soal task `wallet` — baca ini
 
 Wallet yang dipakai adalah **wallet resmi** yang dipasang di browser: MetaMask,
-OKX, atau Phantom. Bukan ekstensi bikinan sendiri, dan bukan wallet yang
+OKX, atau Phantom. Bukan ekstensi bikinan sendiri (K7), dan bukan wallet yang
 dikelola agent.
 
-Konsekuensinya jelas dan tidak bisa ditawar:
+**Semua pekerja menyelesaikan signing sendiri.** Ini keputusan operator, dan
+alasannya aritmetika: 10 proyek sehari dengan 10-20 task chain masing-masing
+berarti ~200 approval. Menyerahkan setiap popup ke manusia membuat sistem ini
+tidak berguna — operator membangunnya justru supaya tetap berjalan saat ia
+offline. Jadi tidak ada lagi kelas "agent menyiapkan, manusia menandatangani".
 
-- **Kunci dipegang manusia.** Saya tidak punya private key dan tidak boleh
-  mencarinya.
-- **Approval ditandatangani manusia.** Popup konfirmasi muncul di browser;
-  manusia menyetujuinya lewat noVNC. Tugas saya adalah menyiapkan transaksi
-  sampai popup itu muncul, lalu **berhenti dan menyerahkan**.
-- Kalau popup tidak muncul, itu kegagalan yang harus dilaporkan — bukan sesuatu
-  yang saya akali dengan cara lain.
+Konsekuensinya:
 
-Yang **tidak** boleh saya lakukan:
+- **Kunci tetap dipegang manusia.** Tidak ada pekerja yang punya private key,
+  dan tidak boleh mencarinya. Yang berubah adalah siapa yang menekan tombol di
+  popup — bukan siapa yang memegang kunci.
+- **Yang menekan popup adalah pekerja, dan catatannya satu-satunya jejak.**
+  Karena tidak ada orang kedua yang membaca ulang, setiap pekerja wajib
+  mencatat apa yang ia setujui: fungsi, kontrak/spender, jumlah, chain.
+  `approve` unlimited boleh — catat token dan spender-nya untuk revoke.
+- **Tugas saya memeriksa catatan itu, bukan mempercayainya.** Di langkah 7 saya
+  baca laporan pekerja: apakah setiap approval tercatat, apakah ada yang
+  mengirim dana keluar tanpa diminta task, apakah ada ketidakcocokan antara
+  halaman dan popup. Ketidakcocokan bukan alasan pekerja berhenti, tapi **wajib
+  saya teruskan ke operator** sebagai peringatan.
+
+Yang tetap **tidak** boleh dilakukan pekerja mana pun:
 
 - Mencari, membaca, atau meminta private key, seed phrase, atau keystore.
 - Mengetik seed phrase ke halaman web mana pun, termasuk halaman "recover".
-- Menyetujui transaksi yang tidak saya pahami tujuannya.
-- Mengulang persetujuan yang sudah ditolak manusia.
+- Menandatangani transaksi yang **mengirim dana keluar** kecuali task
+  memintanya eksplisit. Approve bukan transfer.
+- Melewati CAPTCHA, 2FA, OTP, atau KYC — itu tetap kelas `human`.
 
 Kalau sebuah halaman meminta private key atau seed phrase, itu **bukan** task
 yang harus dikerjakan — itu temuan yang harus dilaporkan. Situs klaim yang sah
@@ -200,13 +212,14 @@ Contoh nyata dari format yang biasa dikirim operator:
 ```
 🔈 Elyon Airdrop
 ➖ Register              -> auto
-➖ Connect EVM Wallet    -> human:wallet (agent siapkan, manusia tanda tangan)
+➖ Connect EVM Wallet    -> wallet (agent selesaikan, catat approval)
 ➖ Complete Task         -> UNKNOWN -> investigasi dulu
 ```
 
 Perhatikan: "Connect EVM Wallet" dan "Submit EVM Address" **beda kelas**. Yang
 pertama butuh signature, yang kedua cuma butuh alamat publik. Salah
-mengklasifikasi = agent mencoba menandatangani transaksi.
+mengklasifikasi = agent mengirim alamat publik saat situs minta signature,
+atau sebaliknya.
 
 ## Delegasi
 

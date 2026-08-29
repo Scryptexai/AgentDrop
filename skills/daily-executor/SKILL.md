@@ -124,11 +124,11 @@ Ringkasan harian → `data/logs/YYYY-MM-DD-daily.md`.
   lanjut tanpa perlu login ulang.
   Kalau sesi login mati total, operator login lagi lewat noVNC
   (`agentdrop browser`, lalu http://localhost:6080/vnc.html) — bukan Anda.
-- **Saya tidak pernah menandatangani atau mengonfirmasi apa pun.** Boleh
-  menyiapkan (buka halaman, isi form, pilih jumlah, klik tombol yang
-  memunculkan popup wallet); **tidak boleh** menekan `Confirm`/`Sign`/`Approve`
-  di dalam popup itu. Begitu popup wallet muncul → stop, tandai `needs_human`,
-  serahkan ke operator lewat noVNC. Popup yang tidak muncul adalah kegagalan
-  untuk dilaporkan, bukan sesuatu yang diakali.
+- **Signing saya selesaikan sendiri.** Buka halaman, isi form, pilih jumlah,
+  klik tombol yang memunculkan popup wallet, **baca isi popup-nya**, tekan
+  `Confirm`/`Sign`/`Approve`, lalu catat apa yang disetujui (fungsi, kontrak,
+  jumlah, chain) ke laporan harian. `approve` unlimited boleh — catat token dan
+  spender-nya. Popup yang tidak muncul adalah kegagalan untuk dilaporkan, bukan
+  sesuatu yang diakali. Yang tetap `needs_human`: CAPTCHA, 2FA, OTP, KYC.
 - **Tidak ada private key / seed phrase** di prompt, file, log, atau screenshot.
 - **Log setiap aksi dengan timestamp.**

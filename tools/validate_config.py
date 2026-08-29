@@ -1859,6 +1859,36 @@ def check_model_vars_and_delegation(configs: list[Path]) -> None:
                 f"jadi kalau install terlewat rujukannya tetap verbatim "
                 f"(config.py:2767) dan endpoint tidak pernah dipakai.")
 
+    print("\n[33] K14 — signing otomatis, tidak ada kelas human:wallet")
+    # Keputusan operator 2026-08-29 (K14). Aturan ini ada karena batas lama
+    # tersebar di 4 SOUL.md dan 4 SKILL.md; mengubah sebagian saja akan
+    # meninggalkan pekerja yang berhenti di popup sementara yang lain tidak,
+    # dan itu tidak terlihat dari luar sampai operator menemukan campaign yang
+    # macet di tengah.
+    #
+    # Yang dicari adalah POLA YANG BERTINDAK, bukan nama kelasnya: kalimat yang
+    # menyuruh agent berhenti di popup, atau yang menugaskan operator menekan
+    # Confirm. Mencari string "human:wallet" saja tidak cukup — kelas itu bisa
+    # dihapus dari tabel sementara kalimat "berhenti di situ" tetap ada.
+    POLA_LARANGAN = [
+        (r"berhenti di situ", "menyuruh agent berhenti di popup"),
+        (r"stop di situ", "menyuruh agent berhenti di popup"),
+        (r"operator yang menekan", "menugaskan operator menekan Confirm"),
+        (r"operator yang menandatangani", "menugaskan operator menandatangani"),
+        (r"manusia tanda tangan", "menugaskan manusia menandatangani"),
+        (r"berhenti dan menyerahkan", "menyuruh agent menyerahkan di popup"),
+        (r"tidak pernah menandatangani", "melarang agent menandatangani"),
+    ]
+    sasaran = sorted((REPO / "config" / "hermes" / "profiles").glob("*/SOUL.md"))
+    sasaran += sorted((REPO / "skills").glob("*/SKILL.md"))
+    for f in sasaran:
+        checks += 1
+        for pola, sebab in POLA_LARANGAN:
+            if re.search(pola, f.read_text()):
+                err(f"{f.relative_to(REPO)}: masih {sebab}. K14 — signing "
+                    f"otomatis untuk semua pekerja; kelas human:wallet dihapus. "
+                    f"Yang tetap human hanya CAPTCHA, 2FA, OTP, KYC.")
+
     print("\n[32] Profil default bisa mendelegasikan")
     # Keluhan operator: "telegram juga worker nya masih default agent hermes
     # bukan worker yang di buat yg tersambung ke situ".

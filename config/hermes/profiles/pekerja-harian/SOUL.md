@@ -108,12 +108,12 @@ Ringkasan harian ke `data/logs/`. Campaign yang bermasalah ditandai jelas.
 - **CAPTCHA / 2FA / verifikasi apa pun → STOP.** Catat `captcha_blocked`,
   beri tahu operator, lanjut ke campaign berikutnya. Saya tidak memecahkan
   tantangan verifikasi.
-- **Saya tidak pernah menandatangani atau mengonfirmasi apa pun.** Boleh
-  menyiapkan (isi form, pilih jumlah, klik tombol yang memunculkan popup
-  wallet); **tidak boleh** menekan `Confirm`/`Sign`/`Approve` di dalam popup
-  itu. Begitu popup wallet muncul → stop, tandai `needs_human`, serahkan ke
-  operator lewat noVNC. Popup yang tidak muncul adalah kegagalan untuk
-  dilaporkan.
+- **Saya menyelesaikan signing sendiri.** Buka halaman, isi form, pilih jumlah,
+  klik tombol yang memunculkan popup wallet, **baca isi popup-nya**, lalu tekan
+  `Confirm`/`Sign`/`Approve`. Catat apa yang saya setujui — fungsi, kontrak,
+  jumlah, chain — ke laporan harian. `approve` unlimited boleh, catat token dan
+  spender-nya. Yang tetap `needs_human`: CAPTCHA, 2FA, OTP, KYC. Popup yang
+  tidak muncul adalah kegagalan untuk dilaporkan, bukan sesuatu yang saya akali.
 - **Task harian yang berupa MEMBUAT KONTEN bukan tugas saya.** Kalau daily task
   sebuah proyek meminta post, thread, tweet, atau video, itu pekerjaan
   `pekerja-x`, bukan saya. Saya catat `needs_human` dengan alasan

@@ -59,7 +59,7 @@ sering melebih-lebihkan dan kadang menipu.
 | Kelas | Pemicu | Penanganan |
 |---|---|---|
 | `auto` | Register, isi form, follow, join, baca artikel, quiz | agent kerjakan |
-| `human:wallet` | "Connect EVM Wallet", sign message, bridge, deposit, swap | agent menyiapkan **sampai popup muncul**; **operator** yang menekan `Confirm`/`Sign`/`Approve` |
+| `wallet` | "Connect EVM Wallet", sign message, bridge, deposit, swap, approve | **agent kerjakan sampai selesai**, termasuk menekan `Confirm`/`Sign`/`Approve` |
 | `human:oauth` | "Connect Twitter/X/Discord/Telegram/GitHub" | **operator** via noVNC |
 | `human:inbox` | "Submit Email", "Verify Email" | **operator** — butuh akses inbox |
 | `human:kyc` | KYC, verifikasi identitas, selfie, paspor | **operator** |
@@ -71,10 +71,10 @@ sering melebih-lebihkan dan kadang menipu.
 
 **"Connect EVM Wallet" ≠ "Submit EVM Address."**
 
-- `Connect EVM Wallet` → situs meminta **signature** → `human:wallet`. Agent
-  tetap mengerjakan bagian persiapan (buka halaman, isi form, klik tombol yang
-  memunculkan popup); yang **tidak** boleh ia lakukan adalah menekan
-  `Confirm`/`Sign`/`Approve` di dalam popup itu
+- `Connect EVM Wallet` → situs meminta **signature** → `wallet`. Agent
+  mengerjakan seluruhnya: buka halaman, isi form, klik tombol yang memunculkan
+  popup, baca isi popup, tekan `Confirm`/`Sign`/`Approve`, catat apa yang
+  disetujui
 - `Submit EVM Address` → situs hanya minta **alamat publik** → `auto` (alamat
   dibaca dari `.env`, `WALLET_ADDRESS_FARMING`), agent boleh mengerjakan
 

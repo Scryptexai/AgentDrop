@@ -48,13 +48,14 @@ Jangan perdebatkan ulang ini tanpa alasan baru yang eksplisit.
 | **K4** | Akses **shell dimatikan** di semua worker lewat `agent.disabled_toolsets` | Bundle `hermes-cli` memuat `terminal` + `process` (`toolsets.py:31-35`). Tanpa ini agent membuka browser sendiri lewat shell. |
 | **K5** | Log audit dibangun di atas **hook Hermes**, bukan wrapper | Gateway hooks + shell hooks (`VALID_HOOKS`, 77 event). |
 | **K6** | Wallet = **MetaMask / OKX / Phantom yang diunduh**, manusia memegang kunci | Lihat K7. |
-| **K7** | **TIDAK ADA ekstensi bikinan sendiri** | Provider non-official terdeteksi sebagai klien asing → risiko di-ban proyek; sebagian dApp menolak provider yang bukan wallet resmi; chain baru butuh `wallet_addEthereumChain` yang sudah ditangani wallet resmi. Konsekuensinya: signing daemon + policy engine ikut dihapus karena tidak punya pemanggil lagi. |
+| **K7** | **TIDAK ADA ekstensi bikinan sendiri.** Keputusan ini tentang *ekstensi*, bukan tentang siapa yang menekan `Confirm` — lihat K14 | Provider non-official terdeteksi sebagai klien asing → risiko di-ban proyek; sebagian dApp menolak provider yang bukan wallet resmi; chain baru butuh `wallet_addEthereumChain` yang sudah ditangani wallet resmi. Konsekuensinya: signing daemon + policy engine ikut dihapus karena tidak punya pemanggil lagi. |
 | **K8** | Skrip = **`install.sh` sebagai index** yang me-source `lib/*.sh`, plus **satu CLI `agentdrop`** | Operator bingung dengan 11 skrip yang tumpang tindih. |
 | **K9** | Gateway dan agent **satu perintah** | Agent berjalan di atas gateway; memisahkannya membingungkan. |
 | **K10** | Private key **tidak pernah** masuk `.env` | `.env` tersalin ke setiap profil → satu key jadi ada di tujuh tempat. Pakai `AGENTDROP_KEY_FILE` (berkas 0600). |
 | **K11** | **Docker bukan dependensi** | Camofox satu-satunya pemakainya dan sudah dihapus. Chrome for Testing + Xvfb + noVNC jalan langsung di host. |
 | **K12** | Knowledge = direktori `knowledge/` **terpisah**, per domain, dibaca **dan ditulis** agent | Berbeda dari `docs/` yang statis dan ditulis manusia. `knowledge/` dikembangkan agent lewat memory loop. |
 | **K13** | Prompt system = **`SOUL.md` per profil**, sudah cukup | Tidak perlu lapisan prompt tambahan. Installer hanya memasangnya ke tempat yang benar. |
+| **K14** | **Signing otomatis untuk semua pekerja.** Agent menekan `Confirm`/`Sign`/`Approve` sendiri; kelas `human:wallet` **dihapus** | Keputusan operator 2026-08-29. Aritmetikanya: 10 proyek/hari × 10-20 task chain = ~200 approval/hari — menyerahkannya ke manusia membuat sistem tidak berguna, padahal tujuannya berjalan saat operator offline. **Kunci tetap dipegang manusia** (K10); yang berpindah hanya tombol di popup. Pengganti lapisannya: baca isi popup sebelum menekan, catat setiap approval (fungsi/kontrak/jumlah/chain), `approve` unlimited boleh tapi dicatat untuk revoke, ketidakcocokan halaman↔popup dicatat sebagai peringatan bukan penghenti. **Tetap `human`:** CAPTCHA, 2FA, OTP, KYC. **Tetap dilarang:** private key/seed, dan transaksi yang mengirim dana keluar kecuali task memintanya eksplisit. |
 
 ---
 
@@ -2127,3 +2128,95 @@ diperbaiki dan diuji ulang dengan injeksi.
 **Pelajaran:** validator yang saya tulis untuk mencegah regresi pun mengandung
 cacat yang hanya terlihat saat dijalankan sampai akhir. Menambah aturan tidak
 cukup; aturannya harus dijalankan dan dilihat gagal.
+
+## Arc 28 — Signing otomatis untuk semua pekerja (K14)
+
+Operator membatalkan batas signing: *"disini agent kerjakan task sampai selesai
+tidak ada human approve … jika sehari ada 10 project dan masing punya task chain
+10-20 maka total sehari saya approve 200 kali, tidak bisa ditinggal. Saya bangun
+ini agar agent tetap work meski saya offline."*
+
+Aritmetikanya yang menentukan, bukan preferensi: **~200 approval sehari** membuat
+sistem tidak berguna kalau setiap popup diserahkan ke manusia, padahal tujuannya
+berjalan saat operator offline.
+
+### K7 tidak dilanggar — dan pembedaan ini penting
+
+K7 melarang **ekstensi bikinan sendiri**. Itu tentang *ekstensi*, bukan tentang
+siapa yang menekan `Confirm`. Selama arc 12-27 keduanya tercampur: "tidak ada
+ekstensi sendiri" ikut dibaca sebagai "manusia yang menandatangani". K7 sekarang
+diklarifikasi di tempatnya, dan keputusan baru ini jadi **K14**.
+
+Yang berpindah hanya **tombol di popup**. Kunci tetap di dalam wallet dan tidak
+pernah dipegang agent (K10 tetap berlaku).
+
+### Tiga keputusan operator, lewat pertanyaan eksplisit
+
+Saya tidak memutuskan sendiri, karena ketiganya mengubah isi aturan:
+
+1. **`approve` unlimited (`uint256 max`) → BOLEH.** Banyak dApp airdrop memang
+   memintanya dan menolak jumlah terbatas. Larangan lama justru akan
+   menghentikan agent di situs-situs itu — persis interupsi yang ingin
+   dihilangkan. Syaratnya: catat token dan spender-nya supaya bisa di-revoke.
+2. **Halaman ≠ popup → CATAT, TERUS JALAN.** Ketidakcocokan teks halaman dengan
+   isi popup adalah sinyal situs mencurigakan, dan itu **wajib diteruskan ke
+   operator** — tapi bukan alasan berhenti di tengah campaign.
+3. **CAPTCHA / 2FA / OTP / KYC → TETAP `human`.** Agent tidak memecahkan
+   tantangan verifikasi. Ini satu-satunya kelas yang masih menumpuk menunggu
+   operator, dan jumlahnya harus jauh lebih kecil dari sebelumnya.
+
+### Taksonomi berubah: `siapkan` / `human:wallet` → `wallet`
+
+Kelas lama `siapkan` ("agent menyiapkan sampai popup, operator menekan") dihapus
+dan diganti `wallet` ("agent kerjakan sampai selesai"). Berlaku di
+`pekerja-quest`, `pekerja-harian`, `pekerja-daftar`, `pekerja-koordinator`, dan
+skill `quest-executor`, `daily-executor`, `airdrop-intake`.
+
+`pekerja-daftar` bukan lagi pengecualian — dulu ia satu-satunya yang boleh
+signing, sekarang semua boleh, jadi bagian "ini penyimpangan sadar dari worker
+lain" di SOUL.md-nya ditulis ulang.
+
+### Pengganti lapisan pemeriksaan manusia
+
+Karena tidak ada orang kedua yang membaca ulang, risikonya **tidak hilang — ia
+dipindahkan ke kualitas catatan agent**. Karena itu catatan wajib, bukan
+opsional:
+
+- baca **isi popup** sebelum menekan (halaman bisa berbohong, popup tidak)
+- catat **setiap** approval: fungsi, kontrak/spender, jumlah, chain
+- popup tertutup **bukan** bukti berhasil — verifikasi status/tx hash/saldo
+- popup tidak muncul = kegagalan untuk dilaporkan, bukan diakali
+
+Yang tetap dilarang tanpa pengecualian: private key / seed phrase dalam bentuk
+apa pun; transaksi yang **mengirim dana keluar** kecuali task memintanya
+eksplisit (approve bukan transfer).
+
+### Validator: 285 → 303
+
+`[33]` memindai 8 SOUL.md + 10 SKILL.md untuk **pola yang bertindak** — tujuh
+regex: "berhenti di situ", "stop di situ", "operator yang menekan", "operator
+yang menandatangani", "manusia tanda tangan", "berhenti dan menyerahkan", "tidak
+pernah menandatangani".
+
+Sengaja mencari pola, bukan string `human:wallet`: kelas itu bisa dihapus dari
+tabel sementara kalimat "berhenti di situ" tetap ada di bawahnya, dan pencarian
+nama saja akan lolos. Diuji dengan injeksi — kalimat lama dikembalikan ke
+`daily-executor`, aturan menangkapnya, lalu dipulihkan.
+
+### Verifikasi
+
+Dijalankan, bukan dibaca: `tools/validate_config.py` → **303 checks, SEMUA
+LOLOS**. Install ulang → 8 profil terpasang. SOUL.md **ter-render** di
+`~/.hermes/profiles/` diperiksa: aturan signing baru ada di keempat profil yang
+disentuh, larangan lama nol. `quest-executor` terpasang punya langkah 3 baru dan
+nol larangan lama. `agentdrop test-workers` → **8 lulus, 0 gagal**.
+
+**Yang tidak bisa diverifikasi dari sandbox:** apakah `agent-browser` (binari
+eksternal, bukan bagian repo Hermes) benar-benar bisa menjangkau popup ekstensi
+wallet lewat CDP. Popup ekstensi adalah target terpisah di Chrome, dan saya
+tidak punya Chrome maupun display di sini. `browser_extension_router` di Hermes
+memang ada, tapi **off secara default** dan butuh gateway browser-controller —
+bukan jalur yang kita pakai. **Ini hanya bisa dipastikan dengan menjalankan satu
+task `connect wallet` sungguhan di mesin operator.** Kalau popup tidak
+terjangkau, gejalanya spesifik: agent melaporkan "popup tidak muncul" pada task
+yang seharusnya memunculkannya.

@@ -65,12 +65,13 @@ klasifikasikan tiap task:
 | Kelas | Contoh | Siapa |
 |---|---|---|
 | `auto` | follow Twitter, join Discord, baca artikel, jawab quiz | agent, sampai selesai |
-| `siapkan` | connect/sign wallet, bridging, deposit, swap, mint, claim | agent menyiapkan **sampai popup muncul**, operator yang menekan `Confirm`/`Sign`/`Approve` |
+| `wallet` | connect/sign wallet, bridging, deposit, swap, mint, claim, approve | **agent, sampai selesai** — termasuk menekan `Confirm`/`Sign`/`Approve` |
 | `human` | KYC, verifikasi identitas, login | **operator** — agent tidak menyentuh |
 | `blocked` | CAPTCHA, 2FA, verifikasi SMS | **operator** |
 
-Tuliskan rencana + jumlah `human` **sebelum** mulai. Ini yang membuat operator
-tahu sejak awal berapa banyak pekerjaan yang tersisa untuk mereka.
+Tuliskan rencana + jumlah `human` **sebelum** mulai. Jumlah `human` harus kecil
+— hanya KYC, CAPTCHA, 2FA, OTP, dan login. Kalau sebuah campaign ternyata punya
+banyak task `human`, laporkan itu sebagai temuan.
 
 ## Langkah 2 — Eksekusi task `auto`, satu per satu
 
@@ -81,15 +82,21 @@ tahu sejak awal berapa banyak pekerjaan yang tersisa untuk mereka.
 - Kalau sebuah task gagal: retry sekali, lalu lewati dan catat. Jangan biarkan
   satu task macet menghentikan seluruh campaign.
 
-## Langkah 3 — Siapkan task `siapkan`, berhenti di popup
+## Langkah 3 — Kerjakan task `wallet` sampai selesai
 
-Untuk setiap task `siapkan` (connect/sign wallet, bridging, deposit, swap,
-mint, claim):
+Untuk setiap task `wallet` (connect/sign wallet, bridging, deposit, swap, mint,
+claim, approve):
 
 1. Buka halaman, isi form, pilih jaringan dan jumlah.
-2. Klik tombol yang **memunculkan** popup wallet — **lalu berhenti di situ.**
-3. Tandai `needs_human` dan serahkan ke operator lewat noVNC.
-4. **Jangan pernah** menekan `Confirm`/`Sign`/`Approve` di dalam popup itu.
+2. Klik tombol yang memunculkan popup wallet.
+3. **Baca isi popup-nya** — kontrak, jumlah, jaringan, nama fungsi. Halaman bisa
+   berbohong; popup tidak.
+4. Tekan `Confirm`/`Sign`/`Approve`.
+5. **Catat apa yang disetujui** ke laporan: fungsi, kontrak/spender, jumlah,
+   chain. Untuk `approve` unlimited, catat token dan spender-nya supaya bisa
+   di-revoke nanti.
+6. **Verifikasi hasilnya** — status berubah, tx hash muncul, atau saldo bergerak.
+   Popup tertutup bukan bukti berhasil.
 
 Kalau popup tidak muncul, itu kegagalan untuk dilaporkan — bukan sesuatu yang
 diakali dengan cara lain.
@@ -101,17 +108,20 @@ mana, tombol mana, kenapa agent tidak boleh), lalu lanjut ke task berikutnya.
 
 ## Aturan keras
 
-- **Saya tidak pernah menandatangani atau mengonfirmasi apa pun.** Batas saya
-  tegas dan tidak bergeser:
-  - **Boleh** — menyiapkan: buka halaman, isi form, pilih jaringan/jumlah, klik
-    tombol yang **memunculkan** popup wallet (termasuk untuk bridge atau
-    deposit).
-  - **Tidak boleh** — menekan `Confirm`/`Sign`/`Approve` di dalam popup wallet
-    itu, atau menyentuh apa pun setelahnya.
-  - Begitu popup wallet muncul → **stop di situ**, tandai `needs_human`,
-    serahkan ke operator lewat noVNC.
-  - Kalau popup **tidak** muncul, itu kegagalan untuk dilaporkan — bukan
-    sesuatu yang diakali dengan cara lain.
+- **Signing saya selesaikan sendiri, jadi catatan saya satu-satunya jejak.**
+  Sistem ini dirancang berjalan saat operator offline; ~200 approval sehari
+  tidak mungkin diserahkan ke manusia. Konsekuensinya:
+  - **Baca popup sebelum menekan** — kontrak, jumlah, jaringan, nama fungsi.
+  - **Catat setiap approval** — fungsi, kontrak/spender, jumlah, chain.
+  - **`approve` unlimited boleh**, catat token dan spender-nya untuk revoke.
+  - **Halaman dan popup tidak cocok → catat sebagai peringatan, terus jalan.**
+    Itu sinyal situs mencurigakan yang harus terlihat di laporan, bukan alasan
+    berhenti di tengah campaign.
+  - **Popup tidak muncul → kegagalan untuk dilaporkan**, bukan diakali.
+
+  Yang tetap tidak boleh: private key / seed phrase dalam bentuk apa pun;
+  transaksi yang **mengirim dana keluar** kecuali task memintanya eksplisit
+  (approve bukan transfer); CAPTCHA, 2FA, OTP, KYC tetap milik operator.
 
   Kenapa batasnya di popup, bukan di awal: kalau saya berhenti sebelum mengisi
   form, operator harus mengulang seluruh langkah saya. Kalau saya menekan

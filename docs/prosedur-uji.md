@@ -71,8 +71,11 @@ Yang perlu dipastikan sebelum lanjut:
    butuh BNB, bukan ETH (lihat `knowledge/chains/`)
 3. Chain yang benar sudah terpilih di dalam wallet
 
-Approval dan signature ditandatangani **manusia** di jendela browser. Agent menyiapkan
-transaksi sampai popup muncul, lalu berhenti dan menyerahkan.
+Approval dan signature **ditekan agent sendiri** di jendela browser — agent
+membaca isi popup, mencatat apa yang disetujui, lalu menekan
+`Confirm`/`Sign`/`Approve`. Kunci tetap di dalam wallet dan tidak pernah
+dipegang agent. Karena tidak ada orang kedua yang memeriksa, **baca laporan
+approval-nya setelah uji selesai**: fungsi apa, kontrak mana, jumlah berapa.
 
 ## 4. Jalankan uji
 
