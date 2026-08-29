@@ -6,13 +6,16 @@ PROFILES=(pekerja-koordinator pekerja-riset pekerja-harian pekerja-daftar
 
 SKILLS=(browser-operation browser-burn-in airdrop-intake airdrop-analyzer
         daily-executor quest-executor discord-engager portfolio-tracker
-        x-engager self-improvement)
+        x-engager self-improvement panggil-pekerja
+        riset harian quest daftar x discord pantau)
 
 # Hermes tidak membatasi skill apa yang boleh dipanggil sebuah profil — apa pun
 # yang ada di foldernya bisa dipakai. Tanpa pemetaan ini, pekerja-discord bisa
 # memanggil daily-executor dan mengerjakan campaign yang bukan urusannya.
 declare -A PROFILE_SKILLS=(
-  [pekerja-koordinator]="browser-operation browser-burn-in airdrop-intake airdrop-analyzer self-improvement"
+  # panggil-pekerja hanya di koordinator: dialah yang menghadap Telegram, jadi
+  # hanya dia yang menerima perintah /panggil-pekerja dari operator.
+  [pekerja-koordinator]="browser-operation browser-burn-in airdrop-intake airdrop-analyzer self-improvement panggil-pekerja riset harian quest daftar x discord pantau"
   [pekerja-riset]="browser-operation browser-burn-in airdrop-analyzer self-improvement"
   [pekerja-harian]="browser-operation browser-burn-in daily-executor self-improvement"
   # onboard = register + connect wallet di SITUS PROYEK (bukan platform quest).

@@ -1889,6 +1889,45 @@ def check_model_vars_and_delegation(configs: list[Path]) -> None:
                     f"otomatis untuk semua pekerja; kelas human:wallet dihapus. "
                     f"Yang tetap human hanya CAPTCHA, 2FA, OTP, KYC.")
 
+    print("\n[34] Pintasan Telegram terdaftar sebagai skill perintah")
+    # Hermes tidak punya perintah Telegram untuk berpindah profil:
+    #   - /profile hanya MELIHAT (gateway/slash_commands.py:355)
+    #   - gateway.profile_routes dibaca saat gateway start, bukan runtime
+    #   - /p/<profile>/ hanya untuk HTTP API (platforms/api_server.py:35-36)
+    #   - / yang tidak dikenal tidak diteruskan ke model (run.py:18847)
+    #
+    # Yang dipakai adalah mekanisme resmi: skill terdaftar sebagai perintah
+    # /nama-skill (agent/skill_commands.py, dipanggil run.py:18749). Aturan ini
+    # memastikan pintasan yang dijanjikan ke operator benar-benar ada sebagai
+    # skill, terdaftar di SKILLS, dan dipetakan ke profil yang menghadap
+    # Telegram -- tanpa ketiganya perintah itu tidak akan pernah muncul.
+    PINTASAN = ["panggil-pekerja", "riset", "harian", "quest", "daftar",
+                "x", "discord", "pantau"]
+    lib = REPO / "lib" / "30-hermes.sh"
+    isi_lib = lib.read_text() if lib.exists() else ""
+    for nama in PINTASAN:
+        checks += 1
+        if not (REPO / "skills" / nama / "SKILL.md").exists():
+            err(f"skills/{nama}/SKILL.md tidak ada. Pintasan Telegram /{nama} "
+                f"tidak akan terdaftar sebagai perintah.")
+            continue
+        # Ambil SELURUH isi array SKILLS=( ... ) lalu pecah jadi token.
+        # Mencocokkan per baris salah: array bash boleh terpecah beberapa baris,
+        # dan versi pertama aturan ini melaporkan positif palsu untuk semua
+        # pintasan yang kebetulan tidak berada di awal baris.
+        m_arr = re.search(r"^SKILLS=\(([^)]*)\)", isi_lib, re.M | re.S)
+        daftar_skills = m_arr.group(1).split() if m_arr else []
+        if nama not in daftar_skills:
+            err(f"skills/{nama} tidak terdaftar di SKILLS (lib/30-hermes.sh) -- "
+                f"tidak akan tersalin saat install, jadi /{nama} tidak muncul.")
+        m = re.search(r'\[pekerja-koordinator\]="([^"]+)"', isi_lib)
+        checks += 1
+        if not m or nama not in m.group(1).split():
+            err(f"skills/{nama} tidak dipetakan ke pekerja-koordinator di "
+                f"PROFILE_SKILLS. Koordinator adalah profil yang menghadap "
+                f"Telegram, jadi tanpa pemetaan ini /{nama} tidak tersedia "
+                f"di chat.")
+
     print("\n[32] Profil default bisa mendelegasikan")
     # Keluhan operator: "telegram juga worker nya masih default agent hermes
     # bukan worker yang di buat yg tersambung ke situ".

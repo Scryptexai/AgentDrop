@@ -2220,3 +2220,101 @@ bukan jalur yang kita pakai. **Ini hanya bisa dipastikan dengan menjalankan satu
 task `connect wallet` sungguhan di mesin operator.** Kalau popup tidak
 terjangkau, gejalanya spesifik: agent melaporkan "popup tidak muncul" pada task
 yang seharusnya memunculkannya.
+
+## Arc 29 — Kendali dari Telegram: pintasan pekerja, model, dan sesi
+
+Operator meminta: *"telegram bot agar saya bisa atur dan ganti-ganti worker di
+telegram dan juga provider, model, dan ketika ganti worker muat sesi baru."*
+
+### Empat jalan buntu, diverifikasi di repo Hermes sebelum menulis apa pun
+
+Sebelum membangun, saya cari apakah Hermes sudah menyediakannya. Tidak:
+
+1. **`/profile` hanya MELIHAT** (`gateway/slash_commands.py:355` — "show the
+   profile serving this source and its home"). Tidak ada perintah ganti profil.
+2. **`gateway.profile_routes`** (`gateway/profile_routing.py`) merutekan
+   chat → profil, tapi dibaca **saat gateway start** (`gateway/run.py:29064`
+   membaca `config.profile_routes`). Menggantinya butuh restart.
+3. **`/p/<profile>/`** hanya untuk HTTP API
+   (`gateway/platforms/api_server.py:35-36`), bukan Telegram.
+4. **Perintah `/` yang tidak dikenal tidak diteruskan ke model** — gateway
+   membalas "Unknown command" (`gateway/run.py:18847`). Jadi membuat perintah
+   sendiri lewat teks biasa tidak mungkin.
+
+### Yang dipakai: mekanisme resmi skill-perintah
+
+Hermes mendaftarkan **setiap skill sebagai perintah `/nama-skill`**
+(`agent/skill_commands.py`, dipanggil dari `gateway/run.py:18749`). Ini jalur
+resmi, bukan akalan. Jadi pintasan dibangun sebagai skill tipis:
+
+`/riset` `/harian` `/quest` `/daftar` `/x` `/discord` `/pantau` — masing-masing
+mendelegasikan ke pekerja yang sesuai — plus `/panggil-pekerja` yang memuat
+protokol lengkapnya (peta nama, cara verifikasi, batas). Ketujuh pintasan
+sengaja **tidak menduplikasi** protokol itu; mereka menunjuk ke sana, supaya
+keduanya tidak bisa berbeda.
+
+Semua dipetakan ke `pekerja-koordinator`, karena dialah yang menghadap Telegram.
+
+**Diverifikasi dengan kode Hermes asli, bukan dengan membaca config:**
+`get_skill_commands()` mengembalikan 18 perintah, dan
+`resolve_skill_command_key()` me-resolve **8/8** pintasan — termasuk bentuk
+underscore `/panggil_pekerja`, karena Telegram melarang tanda hubung di nama
+perintah bot (`agent/skill_commands.py:649-650`).
+
+### Provider/model: pakai `/model` bawaan, dan satu jebakan yang harus diketahui
+
+Operator memilih `/model` bawaan. Ia memang sudah ada
+(`hermes_cli/commands.py:257`) dan **sadar profil** di gateway multiplex
+(`gateway/slash_commands.py:1775-1778` menyelesaikan `config_path` dalam scope
+profil yang melayani chat) — jadi ia menulis ke profil yang benar, bukan ke
+profil default.
+
+**Jebakan yang saya temukan saat memverifikasi:** `/model --global` menulis
+`model_cfg["default"] = result.new_model` langsung ke config.yaml
+(`gateway/slash_commands.py:2397`), yang **menimpa rujukan `${AGENTDROP_MODEL}`**
+di profil itu. Setelah itu `agentdrop model` di terminal tidak lagi menjangkau
+profil tersebut. Itu bukan bug Hermes — itu memang arti "persist to config" —
+tapi operator perlu tahu profil itu lepas dari `.env`. Dicatat di skill.
+
+Tanpa `--global`, ganti model hanya berlaku untuk sesi itu dan disimpan di
+session DB (`:2283`); bertahan setelah restart gateway tapi tidak menjangkau
+pekerja lain.
+
+### Sesi
+
+Operator memilih **sesi per pekerja yang bertahan**. Ini sudah otomatis:
+`delegate_task` memberi tiap subagent `task_id` sendiri
+(`tools/delegate_tool.py:165-177`), jadi memanggil pekerja yang sama dua kali
+melanjutkan konteksnya. `/new` bawaan Hermes (`gateway/slash_commands.py:145` →
+`reset_session()`) tersedia kalau operator ingin mulai bersih.
+
+### Validator: 351 → 367
+
+`[34]` memastikan tiap pintasan (a) punya `SKILL.md`, (b) terdaftar di array
+`SKILLS`, dan (c) dipetakan ke `pekerja-koordinator`. Ketiga cabang diuji dengan
+injeksi nyata: buang dari `SKILLS` → tertangkap; buang dari `PROFILE_SKILLS` →
+tertangkap; hapus folder skill → tertangkap.
+
+**Cacat di aturan baru saya sendiri, dan jenisnya baru:** versi pertama
+mencocokkan nama skill **per baris** dengan `re.M`, padahal array bash
+`SKILLS=( ... )` terpecah empat baris. Hasilnya **positif palsu** — lima dari
+delapan pintasan dilaporkan "tidak terdaftar" padahal ada. `riset` lolos hanya
+karena kebetulan berada di awal baris. Diperbaiki dengan membaca seluruh isi
+array lalu memecahnya jadi token.
+
+Ini kebalikan dari cacat yang biasanya saya buat: bukan lolos palsu, tapi
+**gagal palsu** — dan keduanya sama berbahayanya, karena yang satu membuat
+operator memperbaiki hal yang tidak rusak.
+
+### Verifikasi
+
+`tools/validate_config.py` → **367 checks, SEMUA LOLOS**. Install ulang →
+koordinator punya 13 skill, total 18 perintah terdaftar.
+`resolve_skill_command_key()` → **8/8**. `agentdrop test-workers` → **8 lulus,
+0 gagal**.
+
+**Yang tidak bisa diverifikasi dari sandbox:** perilaku nyata perintah ini di
+Telegram. Resolusi perintah sudah terbukti lewat kode Hermes, tapi apakah
+gateway benar-benar meneruskannya ke koordinator, dan apakah `delegate_task`
+menjawab dalam waktu yang wajar lewat chat — itu hanya bisa dipastikan dengan
+bot yang berjalan di mesin operator.
