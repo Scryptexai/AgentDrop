@@ -1,0 +1,21 @@
+name: agentdrop-browser
+version: 1.0.0
+author: AgentDrop (Fase 2 — 2026-08-30)
+description: >
+  Batch browser tool untuk mengurangi putaran LLM.
+  Menerima daftar aksi (click, type, navigate, scroll) dan
+  mengeksekusinya dalam satu pemanggilan tool, mengembalikan
+  satu snapshot akhir. Menyertakan enumerasi chrome-extension
+  untuk popup wallet.
+requires:
+  hermes: ">=0.9"
+  python: ">=3.9"
+platforms: [linux, macos]
+registration:
+  tools:
+    - name: browser_act
+      override: false
+      description: >
+        Menjalankan N aksi browser dalam satu putaran LLM,
+        mengembalikan satu snapshot akhir. Mengurangi 5 putaran
+        (pre-flight + aksi + verifikasi) menjadi 1.

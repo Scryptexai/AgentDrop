@@ -112,6 +112,11 @@ hermes_install() {
   _ok "~/.hermes/config.yaml"
 
   _log "Profil worker"
+  # REBUILD BERSIH (Opsi A) — hapus profil lama sebelum membuat ulang.
+  if [[ -n "${HERMES_HOME_DIR:-}" && "$HERMES_HOME_DIR" == *".hermes"* && -d "$HERMES_HOME_DIR/profiles" ]]; then
+    rm -rf "$HERMES_HOME_DIR/profiles/"*
+    _ok "Profil lama di $HERMES_HOME_DIR/profiles dibersihkan (rebuild bersih)"
+  fi
   for p in "${PROFILES[@]}"; do
     src="$REPO_ROOT/config/hermes/profiles/$p"
     dst="$HERMES_HOME_DIR/profiles/$p"

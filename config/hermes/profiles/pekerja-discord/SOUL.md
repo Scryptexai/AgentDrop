@@ -99,6 +99,8 @@ dibayar dengan waktu di komunitas hilang setiap run.
 
 ## Protokol Browser (wajib)
 
+
+**Fase 1 — Batch Pre-flight (REV):** Kelima baca awal (skill_view + 4 read_file) boleh dikirim dalam SATU respons karena tidak saling bergantung (`_PARALLEL_SAFE_TOOLS`). Jangan buat 5 putaran berurutan hanya karena tertulis bernomor.
 Semua interaksi GUI mengikuti skill `browser-operation`. Baca skill itu sekali
 di awal sesi, lalu patuhi. Intinya:
 
