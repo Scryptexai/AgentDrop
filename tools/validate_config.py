@@ -1926,6 +1926,106 @@ def check_model_vars_and_delegation(configs: list[Path]) -> None:
                     f"otomatis untuk semua pekerja; kelas human:wallet dihapus. "
                     f"Yang tetap human hanya CAPTCHA, 2FA, OTP, KYC.")
 
+    print("\n[37] Setiap worker punya SATU skill yang tidak dimiliki worker lain")
+    # Operator meminta batas cakupan yang tegas: "setiap agent punya spesifikasi
+    # dan scope tugasnya masing-masing, tidak boleh bercampur". Pemetaan skill
+    # adalah salah satu dari dua penegak batas itu (satunya lagi toolset).
+    #
+    # Tanpa aturan ini dua profil sempat berbagi seluruh isi skill-nya:
+    # pekerja-riset hanya punya airdrop-analyzer (yang juga dipegang koordinator)
+    # dan pekerja-daftar hanya punya airdrop-intake (sama). Keduanya tidak punya
+    # satu pun prosedur yang khusus miliknya, jadi tidak ada yang membedakan
+    # pekerjaan mereka selain kalimat di SOUL.md.
+    checks += 1
+    _p30 = REPO / "lib" / "30-hermes.sh"
+    isi_lib = _p30.read_text() if _p30.exists() else ""
+    m_pmap = re.search(r"declare -A PROFILE_SKILLS=\((.*?)^\)", isi_lib, re.M | re.S)
+    if not m_pmap:
+        err("lib/30-hermes.sh: PROFILE_SKILLS tidak ditemukan")
+    else:
+        peta = {k: set(v.split())
+                for k, v in re.findall(r'\[([\w-]+)\]="([^"]*)"', m_pmap.group(1))}
+        for prof, punya in sorted(peta.items()):
+            if prof == "pekerja-koordinator":
+                continue          # koordinator memang memegang pintasan delegasi
+            lain = set().union(*[v for k, v in peta.items() if k != prof]) if len(peta) > 1 else set()
+            khusus = punya - lain
+            if not khusus:
+                err(f"lib/30-hermes.sh: '{prof}' tidak punya satu pun skill khusus — "
+                    f"seluruh skill-nya dimiliki profil lain, jadi tidak ada yang "
+                    f"membedakan cakupan kerjanya")
+            else:
+                checks += 1
+
+    print("\n[38] Skill bawaan Hermes ditolak di home utama dan setiap profil")
+    # Hermes mengirim 58 skill bawaan (13 kategori di hermes-agent/skills/), dan
+    # sync_skills() menyuntikkannya ke HERMES_HOME saat install, `hermes update`,
+    # maupun sync langsung. Tanpa penolakan, worker yang tadinya membawa 3 skill
+    # bisa berakhir membawa 61 -- dan manifest skill masuk system prompt di
+    # SETIAP putaran.
+    #
+    # Mekanismenya resmi: berkas `.no-bundled-skills` di root HERMES_HOME membuat
+    # sync_skills() hanya men-seed ESSENTIAL_SKILLS
+    # (tools/skills_sync.py:99-105, :728; agent/skill_utils.py:443).
+    checks += 1
+    if '.no-bundled-skills' not in isi_lib:
+        err("lib/30-hermes.sh tidak pernah menulis `.no-bundled-skills`. Hermes "
+            "akan menyuntikkan 58 skill bawaannya ke home utama dan ke setiap "
+            "profil pada install/update berikutnya.")
+    else:
+        # harus ditulis untuk PROFIL (di dalam loop) dan untuk HOME UTAMA
+        checks += 1
+        if not re.search(r'>\s*"\$dst/\.no-bundled-skills"', isi_lib):
+            err("lib/30-hermes.sh tidak menulis `.no-bundled-skills` ke direktori "
+                "profil ($dst) — hanya home utama yang terlindungi")
+        checks += 1
+        if not re.search(r'>\s*"\$HERMES_HOME_DIR/\.no-bundled-skills"', isi_lib):
+            err("lib/30-hermes.sh tidak menulis `.no-bundled-skills` ke HERMES_HOME "
+                "utama — padahal home utama adalah profil default yang memegang "
+                "TELEGRAM_BOT_TOKEN (profiles.py:1105)")
+
+    print("\n[39] SOUL tidak merujuk skill yang tidak terpasang di profilnya")
+    # SOUL.md adalah system prompt. Kalau ia menyuruh agent mengikuti sebuah
+    # skill yang tidak disalin ke profil itu, agent memanggil skill_view untuk
+    # berkas yang tidak ada -- lalu entah berhenti, entah mengarang isinya.
+    #
+    # Polanya sengaja sempit: hanya `<S|s>kill \`nama\`` yang dihitung sebagai
+    # arahan. Versi yang mencocokkan SEMUA nama skill dalam backtick menembak
+    # sebutan biasa ("`daily-executor` membaca berkas itu") yang bukan arahan
+    # sama sekali.
+    checks += 1
+    semua_skill = {q.name for q in (REPO / "skills").iterdir() if q.is_dir()}
+    for _f in sorted((REPO / "config/hermes/profiles").glob("*/SOUL.md")):
+        _prof = _f.parent.name
+        _punya = set(peta.get(_prof, set()))
+        for _i, _b in enumerate(_f.read_text().splitlines(), 1):
+            for _r in re.findall(r"[Ss]kill\s+`([a-z][a-z0-9-]+)`", _b):
+                if _r in semua_skill and _r not in _punya:
+                    err(f"{_f.relative_to(REPO)}:{_i} menyuruh mengikuti skill "
+                        f"'{_r}' yang tidak dipetakan ke {_prof} — agent akan "
+                        f"memanggil skill yang tidak ada")
+
+    print("\n[40] Setiap SOUL menyatakan apa yang TIDAK ia kerjakan")
+    # Operator: "setiap agent punya spesifikasi dan scope tugasnya masing-masing
+    # khusus, tidak boleh agent a kerjakan tugas agent b". Toolset dan pemetaan
+    # skill menegakkan batas itu secara struktural; SOUL menegakkannya di kepala
+    # model. Tanpa keduanya agent mengambil pekerjaan worker lain dan
+    # menghasilkan dua pekerjaan setengah jadi yang saling menimpa.
+    #
+    # Pernah terjadi: pekerja-quest dan pekerja-riset tidak punya satu pun
+    # pernyataan batas, padahal keduanya paling rawan tumpang tindih.
+    checks += 1
+    POLA_BATAS = re.compile(
+        r"(?i)(bukan (?:tugas|urusan|peran|pekerjaan) saya"
+        r"|yang tidak saya lakukan|TIDAK saya kerjakan"
+        r"|saya tidak (?:mengerjakan|mengeksekusi)"
+        r"|TIDAK punya tool|bukan saya)")
+    for _f in sorted((REPO / "config/hermes/profiles").glob("*/SOUL.md")):
+        if not POLA_BATAS.search(_f.read_text()):
+            err(f"{_f.relative_to(REPO)} tidak menyatakan apa yang TIDAK ia "
+                f"kerjakan. Tanpa batas eksplisit, worker ini bisa mengambil "
+                f"pekerjaan worker lain.")
+
     print("\n[36] Login dan OAuth BUKAN kelas `human`")
     # Bug yang membuat operator melaporkan "agent menentang instruksi, bilang
     # tidak bisa login / connect wallet". Akun yang dipakai agent memang dibuat

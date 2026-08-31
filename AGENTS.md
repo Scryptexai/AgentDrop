@@ -2571,3 +2571,133 @@ kedua kondisi. `bash -n` bersih untuk `agentdrop`, `lib/30-hermes.sh`,
 **Tidak bisa diverifikasi dari sandbox:** unduhan Chrome for Testing (egress
 diblokir), prosedur popup wallet pada MetaMask sungguhan, dan apakah kecepatan
 yang dirasakan operator benar-benar membaik — itu butuh mesinnya.
+
+## Arc 33 — Audit skill & SOUL: dua worker tanpa skill khusus, dan 58 skill bawaan Hermes
+
+Sebelum operator pull ulang, ia meminta kepastian: tidak ada berkas kosong atau
+gap, **setiap worker punya skill khusus yang tidak dimiliki worker lain**, prompt
+system eksplisit, dan **tidak ada skill bawaan Hermes yang ikut terbawa**.
+
+Semuanya diaudit terhadap hasil install yang sebenarnya, bukan terhadap repo.
+Tiga dari empat permintaan itu menemukan masalah nyata.
+
+### Temuan 1 — 58 skill bawaan Hermes bisa masuk ke profil, dan kita tidak menolaknya
+
+Ini yang paling serius. Hermes mengirim **58 skill bawaan** dalam 13 kategori
+(`hermes-agent/skills/`: apple, autonomous-ai-agents, creative, devops, email,
+media, note-taking, productivity, research, social-media, software-development,
+web). `sync_skills()` menyuntikkannya ke HERMES_HOME saat install, saat
+`hermes update`, dan saat sync langsung.
+
+`install.sh` kita **tidak pernah** menolak — `grep no-bundled-skills` di seluruh
+repo menghasilkan **0**.
+
+Hermes menyediakan mekanisme resminya:
+
+```
+tools/skills_sync.py:99-105
+  Marker file written by `hermes profile create --no-skills` ...
+  When present in HERMES_HOME, sync_skills() is a no-op so neither the
+  installer, `hermes update`, nor a direct sync re-injects bundled skills.
+
+tools/skills_sync.py:728
+  essential_only = (_hermes_home() / NO_BUNDLED_SKILLS_MARKER).exists()
+```
+
+Dengan penanda itu, yang tetap di-seed hanya `ESSENTIAL_SKILLS` =
+`{"hermes-agent"}` (`agent/skill_utils.py:443`).
+
+**Perbaikan:** `lib/30-hermes.sh` sekarang menulis `.no-bundled-skills` ke
+**setiap profil** dan ke **HERMES_HOME utama**, setiap kali install — bukan
+sekali, karena operator bisa menghapusnya dan `hermes update` berikutnya akan
+menyuntikkan 58 skill lagi. Diverifikasi sesudah install: 9 berkas penanda ada.
+
+Dibandingkan nama per nama terhadap 58 skill bawaan: **bocoran 0**, 20 skill
+terpasang semuanya milik AgentDrop.
+
+### Temuan 2 — dua worker tidak punya satu pun skill khusus
+
+| Profil | Skill khusus sebelum | Sesudah |
+|---|---|---|
+| pekerja-riset | **— tidak ada —** (`airdrop-analyzer` juga dipegang koordinator) | `riset-executor` |
+| pekerja-daftar | **— tidak ada —** (`airdrop-intake` juga dipegang koordinator) | `onboard-executor` |
+| 5 worker lain | sudah punya | tidak berubah |
+
+Keduanya tidak punya satu pun prosedur yang khusus miliknya, jadi tidak ada yang
+membedakan pekerjaannya selain kalimat di SOUL.md.
+
+`riset-executor` sengaja dibedakan dari `airdrop-analyzer`: yang pertama menilai
+dari **sumber primer yang dikunjungi sendiri** untuk memutuskan layak difarming,
+yang kedua menilai dari teks pengumuman untuk memutuskan delegasi atau tidak.
+`onboard-executor` berisi batas situs-proyek vs platform-quest, prosedur popup
+wallet lewat `browser_cdp`, dan syarat verifikasi "form terkirim ≠ terdaftar".
+
+### Temuan 3 — dua SOUL tanpa pernyataan batas sama sekali
+
+Operator: *"tidak boleh agent a kerjakan tugas agent b."* Diukur dengan mencari
+pernyataan batas eksplisit:
+
+```
+pekerja-quest   0x   ← paling rawan tumpang tindih dengan pekerja-daftar
+pekerja-riset   0x   ← paling rawan tumpang tindih dengan koordinator
+6 lainnya       1–3x
+```
+
+Keduanya diberi bagian `## Yang TIDAK saya kerjakan` yang menyebut worker lain
+berdasarkan nama, dan menutup dengan: kalau task-nya masuk wilayah worker lain,
+**hentikan dan laporkan** — jangan dikerjakan.
+
+### Temuan 4 — satu gap rujukan skill
+
+`pekerja-riset/SOUL.md:60` menulis `` `daily-executor` membaca berkas itu`` —
+merujuk skill yang tidak terpasang di profil itu. Secara makna benar (ia
+menyebut siapa yang *membaca* berkas), tapi memakai nama skill dalam backtick
+membuatnya terlihat seperti arahan. Diganti jadi nama profilnya.
+
+### Yang ternyata sudah benar
+
+- **Tidak ada berkas kosong.** 18 SKILL.md: semuanya ≥854 byte, punya
+  frontmatter, `name:`, dan `description:`.
+- **Tidak ada SOUL kosong.** 8 SOUL.md: 9.458–16.459 byte, 10–12 bagian, dan
+  kedelapannya punya bagian `## Akun ini milik saya/agent`.
+- Tujuh bagian wajib (peran, akun milik agent, aturan, output, memory loop,
+  injeksi=data) ada di semua profil — sebagian di bawah judul berbeda, dan itu
+  tidak masalah.
+
+### Validator 370 → 395
+
+Empat aturan baru, semuanya diuji injeksi:
+
+- **`[37]`** setiap worker wajib punya ≥1 skill yang tidak dimiliki profil lain.
+- **`[38]`** `.no-bundled-skills` wajib ditulis ke **profil** dan ke **home
+  utama** — tiga injeksi terpisah (buang semua / buang profil saja / buang home
+  utama saja), ketiganya tertangkap.
+- **`[39]`** SOUL tidak boleh menyuruh mengikuti skill yang tidak terpasang di
+  profilnya. Polanya sengaja sempit (`Skill \`nama\``): versi yang mencocokkan
+  semua nama skill dalam backtick menembak sebutan biasa. Diuji false-positive:
+  0 error pada baris yang sah.
+- **`[40]`** setiap SOUL wajib menyatakan apa yang TIDAK ia kerjakan.
+
+### Cacat saya sendiri di arc ini
+
+1. **`isi_lib` belum terdefinisi** saat aturan `[37]` memakainya →
+   `UnboundLocalError`. Ketujuh kalinya kelas kesalahan ini muncul.
+2. **Skill baru saya sendiri menembak aturan `[36]`.** Kalimatnya
+   *"Login dan approval wallet bukan pekerjaan operator"* — maksudnya kebalikan
+   dari yang dilarang, tapi polanya cocok. Diperbaiki dengan menulis ulang
+   kalimatnya, bukan dengan melonggarkan aturannya.
+3. **`/tmp/fix` dan `/tmp/fakebin` hilang saat reprovision** dan saya menulis
+   skrip ke direktori yang tidak ada — `cat` gagal, lalu `bash -n` di baris
+   berikutnya tetap mencetak OK sehingga terlihat sukses.
+
+### Verifikasi
+
+`tools/validate_config.py` → **395 checks, SEMUA LOLOS**. Install bersih di
+`/tmp/hh2`: tiap worker 3–4 skill, koordinator 11, home utama 12; **9 marker
+`.no-bundled-skills` ada**; **0 bocoran** dari 58 skill bawaan; **0 gap** rujukan
+skill; **0 cacat isi**. `agentdrop test-workers` → **8 lulus, 0 gagal**.
+`bash -n` bersih untuk semua skrip.
+
+**Tidak bisa diverifikasi dari sandbox:** perilaku `hermes update` sungguhan
+terhadap marker itu (Hermes tidak terpasang di sini), dan apakah model benar
+mematuhi batas cakupan yang baru ditulis.

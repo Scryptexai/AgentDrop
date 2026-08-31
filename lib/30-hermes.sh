@@ -39,12 +39,12 @@ declare -A PROFILE_SKILLS=(
   # pemasangan (dijalankan `agentdrop burn-in` dari home utama), bukan prosedur
   # kerja harian. Membawanya ke tujuh worker hanya menambah prosedur yang bisa
   # diikuti di saat yang salah.
-  [pekerja-riset]="browser-operation airdrop-analyzer self-improvement"
+  [pekerja-riset]="browser-operation riset-executor airdrop-analyzer self-improvement"
   [pekerja-harian]="browser-operation daily-executor self-improvement"
   # onboard = register + connect wallet di SITUS PROYEK (bukan platform quest).
   # quest-executor tidak dipetakan ke sini: alurnya berbeda dan mencampurnya
   # membuat pekerja-daftar mengerjakan campaign yang bukan urusannya.
-  [pekerja-daftar]="browser-operation airdrop-intake self-improvement"
+  [pekerja-daftar]="browser-operation onboard-executor airdrop-intake self-improvement"
   [pekerja-quest]="browser-operation quest-executor self-improvement"
   [pekerja-discord]="browser-operation discord-engager self-improvement"
   [pekerja-pantau]="browser-operation portfolio-tracker self-improvement"
@@ -196,6 +196,29 @@ hermes_install() {
     #    Jadi nilainya dirender DI SINI, dari .env, saat install. Runtime dan
     #    tampilan jadi sama-sama benar, dan config terpasang tetap bisa dibaca
     #    manusia tanpa harus membuka .env.
+    # ---------------------------------------------------------------------
+    # TOLAK SKILL BAWAAN HERMES MASUK KE PROFIL INI.
+    #
+    # Hermes mengirim 58 skill bawaan (13 kategori di hermes-agent/skills/).
+    # sync_skills() menyuntikkannya ke HERMES_HOME saat install, saat
+    # `hermes update`, dan saat sync langsung. Tanpa penolakan, profil worker
+    # yang tadinya hanya membawa 3 skill tiba-tiba membawa 61 -- dan manifest
+    # skill masuk ke system prompt setiap putaran.
+    #
+    # Mekanismenya resmi, bukan akal-akalan: berkas penanda
+    # `.no-bundled-skills` di root profil membuat sync_skills() hanya men-seed
+    # ESSENTIAL_SKILLS (agent/skill_utils.py:443 = {"hermes-agent"}).
+    # Lihat tools/skills_sync.py:99-105 dan :728, serta
+    # hermes_cli/profiles.py:145-158 dan :1337-1343.
+    #
+    # Dibuat SETIAP install, bukan sekali: operator bisa menghapusnya, dan
+    # `hermes update` berikutnya akan menyuntikkan 58 skill lagi.
+    # ---------------------------------------------------------------------
+    printf '%s\n' \
+      "Profil ini menolak penyemaian skill bawaan Hermes." \
+      "Dibuat oleh install.sh AgentDrop." \
+      > "$dst/.no-bundled-skills"
+
     _render_config "$src/config.yaml" "$dst/config.yaml" "$p"
     [[ -f "$src/SOUL.md" ]] && cp "$src/SOUL.md" "$dst/SOUL.md"
 
@@ -222,6 +245,14 @@ hermes_install() {
     [[ ${#dipasang[@]} -gt 0 ]] || _warn "profil $p tidak mendapat skill"
     _ok "$p — ${#dipasang[@]} skill"
   done
+
+  # Penolakan yang sama untuk home utama. Home utama adalah profil DEFAULT, dan
+  # profil default-lah yang memegang TELEGRAM_BOT_TOKEN (profiles.py:1105) --
+  # jadi justru di sinilah 58 skill bawaan paling mahal harganya.
+  printf '%s\n' \
+    "Home utama ini menolak penyemaian skill bawaan Hermes." \
+    "Dibuat oleh install.sh AgentDrop." \
+    > "$HERMES_HOME_DIR/.no-bundled-skills"
 
   _log "Skill di HERMES_HOME utama"
   rm -rf "$HERMES_HOME_DIR/skills"; mkdir -p "$HERMES_HOME_DIR/skills"
