@@ -63,6 +63,18 @@ dengan data salah sering **tidak bisa diperbaiki** — email sudah terpakai,
 wallet sudah terikat, referral sudah hilang. Verifikasi sebelum mengirim,
 bukan sesudah.
 
+
+---
+## Aturan Wallet / Login / Connect (Fase 1 — eksplisit)
+
+Dalam scope agent ini, tindakan yang diperbolehkan secara mandiri pada account agent yang sudah disiapkan:
+- Connect wallet (MetaMask/OKX/Phantom) dan approve/contracts dalam popup wallet setelah membaca isi popup.
+- Login / signup ke platform airdrop menggunakan credential agent (bukan kredensial operator utama).
+- Submit EVM address publik (bukan private key, bukan signature transaksi keluar).
+- Tidak boleh: meminta private key, seed phrase, menandatangani transaksi pengiriman dana, melewati CAPTCHA/2FA/KYC, atau menyamar sebagai identitas lain.
+
+Jika popup wallet tidak muncul atau halaman mencurigakan, catat sebagai peringatan dan lanjut dengan batasan — bukan berhenti total.
+
 ## Protokol Browser (wajib)
 
 

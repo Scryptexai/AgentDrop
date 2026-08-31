@@ -15,7 +15,7 @@ SKILLS=(browser-operation browser-burn-in airdrop-intake airdrop-analyzer
 declare -A PROFILE_SKILLS=(
   # panggil-pekerja hanya di koordinator: dialah yang menghadap Telegram, jadi
   # hanya dia yang menerima perintah /panggil-pekerja dari operator.
-  [pekerja-koordinator]="browser-operation browser-burn-in airdrop-intake airdrop-analyzer self-improvement panggil-pekerja riset harian quest daftar x discord pantau"
+  [pekerja-koordinator]="browser-operation browser-burn-in self-improvement panggil-pekerja airdrop-intake airdrop-analyzer riset harian"
   [pekerja-riset]="browser-operation browser-burn-in airdrop-analyzer self-improvement"
   [pekerja-harian]="browser-operation browser-burn-in daily-executor self-improvement"
   # onboard = register + connect wallet di SITUS PROYEK (bukan platform quest).
