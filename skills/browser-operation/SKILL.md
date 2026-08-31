@@ -128,7 +128,7 @@ SEBELUM lanjut ke aksi berikutnya, jawab tiga hal:
 **Optimasi Fase 1 — Verifikasi terintegrasi:**
 Verifikasi tetap wajib setelah aksi, tapi bentuknya disesuaikan:
 - **Jika menggunakan langkah tunggal:** jawab tiga hal (berhasil/gagal/tidak diketahui + bukti + rencana) dalam respons yang sama — bukan putaran tambahan.
-- **Jika menggunakan tool batch (`browser_act`, Fase 2):** verifikasi = bagian dari respons batch (snapshot akhir mengandung semua state setelah N aksi). Tidak perlu `browser_snapshot` terpisah setelah tiap aksi kecil jika halaman tidak berubah navigasi.
+- **Jika menggunakan tool batch (plugin agentdrop-browser, Fase 2):** verifikasi = bagian dari respons batch (snapshot akhir mengandung semua state setelah N aksi). Tidak perlu `browser_snapshot` terpisah setelah tiap aksi kecil jika halaman tidak berubah navigasi.
 
 Aturan tetap: **kalau tidak ada bukti → aksi itu GAGAL.** Laporkan gagal.
 
