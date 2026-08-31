@@ -556,9 +556,36 @@ def check_browser_access(configs: list[Path]) -> None:
         name = c.parent.name
 
         ts = data.get("toolsets") or []
-        if "browser" not in ts:
-            err(f"{rel}: worker '{name}' tidak punya toolset 'browser' — "
-                f"tidak bisa mengerjakan task GUI airdrop")
+        # KOORDINATOR sengaja TIDAK punya tool browser: ia mendelegasikan, tidak
+        # mengeksekusi. Batas itu ditegakkan oleh skema tool, bukan hanya oleh
+        # kalimat di SOUL.md. Untuk semua worker lain, browser wajib ada.
+        if name == "pekerja-koordinator":
+            if "browser" in ts:
+                err(f"{rel}: koordinator punya toolset 'browser' — ia tidak boleh "
+                    f"mengeksekusi; cabut agar batasnya ditegakkan oleh skema tool")
+            if "delegation" not in ts:
+                err(f"{rel}: koordinator tidak punya toolset 'delegation' — "
+                    f"ia tidak bisa mendelegasikan ke worker mana pun")
+        else:
+            if "browser" not in ts:
+                err(f"{rel}: worker '{name}' tidak punya toolset 'browser' — "
+                    f"tidak bisa mengerjakan task GUI airdrop")
+            if "delegation" in ts:
+                err(f"{rel}: worker '{name}' punya toolset 'delegation' — worker "
+                    f"adalah leaf; mencabutnya membuat batas leaf struktural")
+        # Entri duplikat lolos dari YAML tanpa error, jadi harus diperiksa di sini.
+        # Pernah terjadi: `todo` dan `delegation` terdaftar dua kali karena sebuah
+        # suntingan menyisipkan daftar baru di atas baris komentar yang memisahkan
+        # entri lama. Tidak merusak, tapi membuat config bohong tentang isinya.
+        if len(ts) != len(set(ts)):
+            dobel = sorted({x for x in ts if ts.count(x) > 1})
+            err(f"{rel}: toolset terdaftar lebih dari sekali: {', '.join(dobel)}")
+        # `hermes-cli` memuat seluruh _HERMES_CORE_TOOLS = 53 tool (toolsets.py:478-481),
+        # termasuk 14 kanban + 4 Home Assistant yang tak dipakai airdrop farming.
+        # Semuanya masuk skema tool di SETIAP putaran.
+        if "hermes-cli" in ts:
+            err(f"{rel}: '{name}' masih memuat toolset 'hermes-cli' — itu menarik "
+                f"53 tool inti (termasuk kanban/homeassistant/tts) ke setiap putaran")
 
         br = data.get("browser")
         if not isinstance(br, dict):
@@ -812,9 +839,17 @@ def check_setup_coverage() -> None:
     for missing in sorted(on_disk_profiles - listed_profiles):
         err(f"setup.sh: profil '{missing}' ada di disk tapi tidak ada di PROFILES=() "
             f"— tidak akan pernah terpasang")
-    for missing in sorted(on_disk_skills - listed_skills):
+    # Skill boleh terpasang lewat DUA jalur: SKILLS=() (HERMES_HOME utama) atau
+    # PROFILE_SKILLS[<profil>] (per worker). Sejak pool global dihapus, sebagian
+    # besar skill hanya ada di PROFILE_SKILLS — dan itu memang tujuannya.
+    m_map0 = re.search(r"declare -A PROFILE_SKILLS=\((.*?)\n\)", text, re.DOTALL)
+    _mapped0 = set()
+    if m_map0:
+        for _s in re.findall(r"\[([\w-]+)\]=\"([^\"]*)\"", m_map0.group(1)):
+            _mapped0.update(_s[1].split())
+    for missing in sorted(on_disk_skills - listed_skills - _mapped0):
         err(f"setup.sh: skill '{missing}' ada di disk tapi tidak ada di SKILLS=() "
-            f"— tidak akan pernah terpasang")
+            f"maupun PROFILE_SKILLS — tidak akan pernah terpasang")
     for ghost in sorted(listed_profiles - on_disk_profiles):
         err(f"setup.sh: PROFILES=() menyebut '{ghost}' tapi direktorinya tidak ada")
     for ghost in sorted(listed_skills - on_disk_skills):
@@ -845,12 +880,14 @@ def check_setup_coverage() -> None:
         mapped_skills.update(names)
         for ghost in sorted(set(names) - on_disk_skills):
             err(f"setup.sh: PROFILE_SKILLS[{p}] menyebut skill '{ghost}' yang tidak ada")
-        if "browser-operation" not in names:
+        # Koordinator tidak punya tool browser, jadi memberinya prosedur browser
+        # hanya menghasilkan halusinasi langkah.
+        if p != "pekerja-koordinator" and "browser-operation" not in names:
             err(f"setup.sh: PROFILE_SKILLS[{p}] tidak menyertakan 'browser-operation' "
-                f"— protokol browser wajib ada di setiap profil")
-    for orphan in sorted(on_disk_skills - mapped_skills):
-        err(f"setup.sh: skill '{orphan}' tidak dipetakan ke profil mana pun "
-            f"— tidak akan pernah terpasang")
+                f"— protokol browser wajib ada di setiap worker")
+    for orphan in sorted(on_disk_skills - mapped_skills - listed_skills):
+        err(f"setup.sh: skill '{orphan}' tidak dipetakan ke profil mana pun dan "
+            f"tidak ada di SKILLS=() — tidak akan pernah terpasang")
 
     # setup.sh harus benar-benar MEMAKAI pemetaannya, bukan cuma mendeklarasikannya.
     if "PROFILE_SKILLS[$p]" not in text:
@@ -1888,6 +1925,53 @@ def check_model_vars_and_delegation(configs: list[Path]) -> None:
                 err(f"{f.relative_to(REPO)}: masih {sebab}. K14 — signing "
                     f"otomatis untuk semua pekerja; kelas human:wallet dihapus. "
                     f"Yang tetap human hanya CAPTCHA, 2FA, OTP, KYC.")
+
+    print("\n[36] Login dan OAuth BUKAN kelas `human`")
+    # Bug yang membuat operator melaporkan "agent menentang instruksi, bilang
+    # tidak bisa login / connect wallet". Akun yang dipakai agent memang dibuat
+    # untuk agent dan kredensialnya tersedia, jadi login/signup/OAuth adalah
+    # pekerjaannya. Yang tetap milik manusia hanya CAPTCHA, 2FA, OTP, dan
+    # KYC/verifikasi identitas (keputusan Arc 28 `keep_human`).
+    #
+    # `login` pernah tercatat sebagai `human` di sembilan tempat berbeda, jadi
+    # setiap worker menolak masuk ke akun apa pun.
+    #
+    # Dua pemeriksaan, dan keduanya disengaja:
+    #
+    #   POSITIF — setiap SOUL.md harus menyatakan secara eksplisit bahwa login
+    #     adalah tugas agent. Model jauh lebih patuh pada pernyataan tegas
+    #     daripada pada tidak-adanya larangan.
+    #   NEGATIF — hanya pola yang TIDAK AMBIGU. Versi pertama aturan ini mencari
+    #     "login" berdekatan dengan CAPTCHA/2FA/OTP/KYC, dan itu menembak lima
+    #     baris yang tidak melarang apa pun: enum status, catatan tentang tab,
+    #     dan bahkan baris yang justru menulis "Login BUKAN human". False
+    #     failure sama berbahayanya dengan false pass, jadi keduanya harus nol.
+    checks += 1
+    PERNYATAAN = "Login, signup, dan OAuth"
+    for f in sorted((REPO / "config/hermes/profiles").glob("*/SOUL.md")):
+        if PERNYATAAN not in f.read_text():
+            err(f"{f.relative_to(REPO)} tidak menyatakan bahwa login/signup/OAuth "
+                f"adalah tugas agent. Tanpa pernyataan tegas, model kembali "
+                f"menganggap login sebagai tugas manusia.")
+    POLA_LOGIN = [
+        (re.compile(r"human:oauth", re.I), "kelas `human:oauth` sudah dihapus"),
+        (re.compile(r"[Jj]angan[^.\n]{0,35}login sendiri"),
+         "agent dilarang login sendiri"),
+        (re.compile(r"operator login", re.I), "login diserahkan ke operator"),
+        (re.compile(r"OAuth[^.\n]{0,25}(?:→|->)\s*operator"),
+         "OAuth diserahkan ke operator"),
+        (re.compile(r"approval wallet[^.\n]{0,45}(?:manusia|human|operator)", re.I),
+         "approval wallet masih diserahkan ke manusia -- melanggar K14"),
+    ]
+    berkas_prompt = sorted(
+        (REPO / "config/hermes/profiles").glob("*/SOUL.md")
+    ) + sorted((REPO / "skills").glob("*/SKILL.md"))
+    for f in berkas_prompt:
+        for i, baris in enumerate(f.read_text().splitlines(), 1):
+            for pola, sebab in POLA_LOGIN:
+                if pola.search(baris):
+                    err(f"{f.relative_to(REPO)}:{i} — {sebab}: {baris.strip()[:78]}")
+                    break
 
     print("\n[35] Peringatan restart gateway setelah install")
     # Hermes memindai skill menjadi perintah /nama-skill, tapi cache-nya hanya

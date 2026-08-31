@@ -140,6 +140,8 @@ cmd_run() {
 
   [[ -n "$profile" ]] || { _err "butuh nama profil. Lihat: agentdrop run --list"; return 1; }
 
+  browser_preflight
+
   # Tolak profil yang tidak terpasang SEBELUM hermes mengeluh dengan pesan
   # yang tidak menyebut daftar profil yang ada.
   if [[ ! -f "$HERMES_HOME_DIR/profiles/$profile/config.yaml" ]]; then
@@ -280,7 +282,7 @@ cmd_status()   { verify_run "${1:-}"; }
 cmd_audit()    { "$(_pyu)" "$ROOT/tools/audit.py" "$@"; }
 cmd_cron()     { bash "$ROOT/scripts/install-cron.sh" "$@"; }
 cmd_burnin()   { bash "$ROOT/scripts/burn-in.sh" "$@"; }
-cmd_testworkers() { bash "$ROOT/scripts/test-workers.sh" "$@"; }
+cmd_testworkers() { browser_preflight; bash "$ROOT/scripts/test-workers.sh" "$@"; }
 cmd_logs()     { bash "$ROOT/scripts/collect-logs.sh" "$@"; }
 
 main() {

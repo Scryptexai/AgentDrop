@@ -2405,3 +2405,169 @@ injeksi. Empat kondisi `agentdrop status` diuji dan hasilnya sesuai tabel.
 **Tetap tidak bisa diverifikasi dari sandbox:** apakah setelah restart gateway
 benar-benar meneruskan `/riset` ke koordinator dan `delegate_task` menjawab
 lewat Telegram. Resolusi perintah sudah terbukti; pengirimannya belum.
+
+## Arc 32 — "Agent menentang instruksi, bilang tidak bisa login": prompt-nya memang melarang
+
+Operator menguji `agentdrop test-workers` di mesinnya dan melaporkan empat hal:
+masih lambat, popup tidak terbuka, **agent menentang instruksi dan bilang tidak
+bisa login / connect wallet**, dan terlalu banyak tool serta skill yang dirender
+sekaligus. Ia juga menilai `install.sh` terus menambah skill tanpa menghapus
+yang lama, dan tidak ada cache.
+
+Tiga dari lima penilaian itu **saya verifikasi dan ternyata salah** — tapi
+gejala yang melatarinya nyata, dan penyebabnya berbeda dari yang diduga.
+
+### Penyebab #1 — `login` memang tercatat sebagai tugas manusia
+
+Ini bukan halusinasi model. `login` tertulis sebagai kelas `human` di **sembilan
+tempat berbeda**:
+
+```
+pekerja-quest/SOUL.md:72        `human` — ... CAPTCHA, 2FA, login, OTP SMS/email
+pekerja-harian/SOUL.md:65       Jangan mencoba login sendiri
+pekerja-koordinator/SOUL.md:120 Butuh manusia (login, CAPTCHA, KYC, approval wallet)
+pekerja-koordinator/SOUL.md:205 Connect Twitter -> human:oauth (operator login via noVNC)
+quest-executor/SKILL.md:69,73   `human` | KYC, verifikasi identitas, login
+browser-operation/SKILL.md:238  Butuh manusia — login, CAPTCHA, 2FA, KYC, approval wallet
+browser-operation/SKILL.md:303  OAuth → STOP. Butuh login akun operator
+daily-executor/SKILL.md:67      Jangan coba login sendiri
+airdrop-intake/SKILL.md:63,134  kelas `human:oauth`
+```
+
+Agent tidak "menentang instruksi" — ia **mematuhi** instruksi yang salah. Akun
+yang dipakai memang dibuat untuk agent dan kredensialnya tersedia, jadi login,
+signup, dan OAuth adalah pekerjaannya. Yang tetap milik manusia hanya empat:
+CAPTCHA, 2FA, OTP, dan KYC/verifikasi identitas.
+
+Baris `koordinator:120` dan `browser-operation:238` sekaligus **melanggar K14** —
+keduanya masih menyebut `approval wallet` sebagai titik henti manusia, padahal
+Arc 28 sudah mencabutnya. Aturan validator `[33]` tidak menangkapnya karena
+pola-pola yang dicocokkan berbeda dari kalimat ini.
+
+**Perbaikan:** sembilan tempat itu ditulis ulang, dan setiap SOUL.md diberi
+bagian baru `## Akun ini milik saya` yang menyatakan secara tegas bahwa login
+adalah tugas agent — ditutup dengan: *"Kalau saya mendapati diri menulis 'saya
+tidak bisa login' — itu salah."* Pernyataan tegas, bukan sekadar tidak adanya
+larangan, karena model jauh lebih patuh pada yang pertama.
+
+### Penyebab #2 — 53 tool di setiap putaran
+
+Operator benar bahwa terlalu banyak tool dirender. Penyebabnya satu baris di
+setiap profil: `toolsets:` dimulai dengan `hermes-cli`, dan
+`toolsets.py:478-481` memetakannya ke `_HERMES_CORE_TOOLS` = **53 tool**,
+termasuk **14 tool kanban**, **4 tool Home Assistant**, `text_to_speech`,
+`image_generate`, `session_search`, `cronjob`, dan `computer_use`. Tidak satu
+pun dipakai airdrop farming; semuanya masuk skema tool di setiap putaran.
+
+Diganti dengan toolset sempit, dan **toolset dipakai sebagai penegak batas**:
+
+| Profil | Sebelum | Sesudah | Yang dicabut |
+|---|---|---|---|
+| koordinator | 53 | **13** | `browser` (13) — ia tidak boleh mengeksekusi |
+| 7 worker | 53 | **25** | `delegation` — mereka leaf |
+
+Dihitung dari pemetaan `toolsets.py` yang asli, bukan perkiraan. Sekarang
+koordinator **secara struktural** tidak bisa membuka halaman, dan worker
+**secara struktural** tidak bisa mendelegasikan — batas itu tidak lagi bergantung
+pada kepatuhan model terhadap kalimat di SOUL.md.
+
+### Penyebab #3 — pool skill global
+
+`SKILLS=()` memuat **semua 18** skill dan disalin ke `~/.hermes/skills`. Itu
+adalah HERMES_HOME profil **default**, dan profil default-lah yang memegang
+`TELEGRAM_BOT_TOKEN` (`profiles.py:1105`). Jadi setiap pesan Telegram membuat
+koordinator melihat 18 prosedur — termasuk `quest-executor` yang bukan urusannya.
+
+Sekarang: pool global dihapus, HERMES_HOME utama hanya membawa milik koordinator,
+dan tiap worker membawa **3** skill (koordinator 11). `browser-burn-in` tidak
+dipetakan ke worker mana pun — itu alat uji pemasangan, bukan prosedur kerja.
+
+### Dua penilaian operator yang tidak terbukti
+
+Dicatat supaya tidak "diperbaiki" di arc berikutnya:
+
+1. **"install.sh terus menambah skill tanpa menghapus"** — tidak benar.
+   `lib/30-hermes.sh:188` melakukan `rm -rf "$dst/skills"` sebelum menyalin, dan
+   `:204` melakukan hal yang sama untuk home utama. Validator sudah punya aturan
+   yang menuntut kedua baris itu. Yang terlihat sebagai "13 skill di koordinator"
+   adalah **pemetaan yang memang memberi 13**, bukan tumpukan.
+2. **"Tidak ada cache"** — Hermes punya **tiga** lapisan cache:
+   `_SKILLS_PROMPT_CACHE` (`prompt_builder.py:1512`, LRU dalam proses) +
+   **snapshot disk** `.skills_prompt_snapshot.json` yang bertahan lintas restart
+   (`:1773`, path di `:1520`) + `_cached_system_prompt_static` (`system_prompt.py:1047`).
+
+   Tapi keluhan di baliknya **sah**, hanya penyebabnya berbeda: SOUL.md
+   menyuruh *"Baca skill `browser-operation` sekali di awal sesi"*, dan skill itu
+   **12.499 karakter**. Sekali dibuka, seluruhnya masuk riwayat dan ikut
+   terkirim ulang **di setiap putaran sesudahnya**. Enam aturan intinya sudah
+   tertulis inline di SOUL.md, jadi kewajiban itu pemborosan murni. Sekarang
+   `browser-operation` dinyatakan **rujukan, bukan bacaan wajib**.
+
+### Popup wallet — bisa dijangkau, dan Arc 31 salah soal ini
+
+Arc 31 menyimpulkan popup wallet "harus kode" — perlu plugin. **Itu keliru.**
+Tool `browser_cdp` sudah ada di toolset kita (lewat `_HERMES_CORE_TOOLS`) dan
+menerima `target_id`:
+
+```
+tools/browser_cdp_tool.py:266-273
+  When ``target_id`` is provided, we call ``Target.attachToTarget`` with
+  ``flatten=True`` ... then send ``method`` with that ``sessionId``.
+```
+
+Jadi `Target.getTargets` → saring `chrome-extension://` → `Runtime.evaluate`
+dengan `target_id` itu. Prosedurnya sekarang tertulis di
+`skills/browser-operation/SKILL.md`, lengkap dengan peringatan bahwa ia **belum
+diuji pada wallet sungguhan** (sandbox tidak punya Chrome).
+
+Yang juga diperbaiki: `browser-operation:306` selama ini menulis *"Popup wallet
+extension tidak bisa dikendalikan lewat DOM"* — klaim usang yang membuat agent
+menyerah sebelum mencoba.
+
+### `agentdrop` tidak pernah memeriksa apakah Chrome hidup
+
+Operator menjalankan `test-workers` dengan task "buka https://…", padahal tidak
+ada Chrome yang memegang port CDP. Tidak ada satu pun pesan yang menunjuk
+penyebabnya — yang terlihat hanyalah worker yang "lambat". Ditambahkan
+`browser_preflight()` di `lib/40-browser.sh`, dipanggil dari `agentdrop run` dan
+`agentdrop test-workers`. Sengaja **peringatan**, bukan berhenti keras:
+koordinator memang tidak punya tool browser. Kedua kondisi diuji.
+
+### Validator 370 → 370 checks, dua aturan baru, satu ditulis ulang
+
+- **`[36]` Login/OAuth bukan kelas `human`.** Versi pertama mencari "login"
+  berdekatan dengan CAPTCHA/2FA/OTP/KYC dan **menembak lima baris yang tidak
+  melarang apa pun** — enum status, catatan tentang tab, bahkan baris yang
+  justru menulis "Login BUKAN `human`". Persis cacat aturan `[34]` dulu. Ditulis
+  ulang jadi **pemeriksaan positif** (tiap SOUL.md wajib menyatakan login adalah
+  tugas agent) + **pola negatif sempit** yang tidak ambigu. Diuji empat injeksi
+  **dan** satu uji false-positive: 0 error pada baris yang sah.
+- **Aturan batas toolset.** `hermes-cli` ditolak; koordinator wajib tanpa
+  `browser` dan wajib dengan `delegation`; worker wajib dengan `browser` dan
+  wajib tanpa `delegation`. Empat injeksi, semuanya tertangkap.
+- **Duplikat toolset.** YAML menerima daftar duplikat tanpa error. Pernah
+  terjadi: `todo` dan `delegation` terdaftar dua kali karena suntingan menyisip
+  di atas baris komentar. Diuji injeksi.
+
+### Cacat saya sendiri di arc ini
+
+1. **Menambah skill `koordinator` ke `SKILLS=()` tanpa memeriksa direktorinya
+   ada.** Validator yang menangkap, bukan saya.
+2. **`err(f"...{sebut}...")` padahal variabelnya `sebab`** → `NameError`. Dan
+   yang lebih buruk: **grep saya menyembunyikan crash itu**, sehingga satu
+   putaran terlihat "lolos" padahal validator mati. Sudah keenam kalinya kelas
+   kesalahan ini muncul. **Baca ekor keluaran, jangan grep lalu percaya.**
+3. **Dua aturan validator menghasilkan false positive** sebelum diperketat.
+
+### Verifikasi
+
+`tools/validate_config.py` → **370 checks, SEMUA LOLOS**. Install bersih di
+`/tmp/hh2`: tiap worker **3 skill**, koordinator **11**, home utama **12**.
+Tool per profil dihitung dari `toolsets.py` asli: **13 / 25**.
+`agentdrop test-workers` → **8 lulus, 0 gagal**. `browser_preflight` diuji pada
+kedua kondisi. `bash -n` bersih untuk `agentdrop`, `lib/30-hermes.sh`,
+`lib/40-browser.sh`.
+
+**Tidak bisa diverifikasi dari sandbox:** unduhan Chrome for Testing (egress
+diblokir), prosedur popup wallet pada MetaMask sungguhan, dan apakah kecepatan
+yang dirasakan operator benar-benar membaik — itu butuh mesinnya.

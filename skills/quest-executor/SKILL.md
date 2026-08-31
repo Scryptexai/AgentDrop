@@ -66,11 +66,13 @@ klasifikasikan tiap task:
 |---|---|---|
 | `auto` | follow Twitter, join Discord, baca artikel, jawab quiz | agent, sampai selesai |
 | `wallet` | connect/sign wallet, bridging, deposit, swap, mint, claim, approve | **agent, sampai selesai** — termasuk menekan `Confirm`/`Sign`/`Approve` |
-| `human` | KYC, verifikasi identitas, login | **operator** — agent tidak menyentuh |
+| `auto` | login, signup, OAuth | **agent** — akun miliknya, kredensial tersedia |
+| `human` | KYC, verifikasi identitas, CAPTCHA, 2FA, OTP | **operator** — agent tidak menyentuh |
 | `blocked` | CAPTCHA, 2FA, verifikasi SMS | **operator** |
 
 Tuliskan rencana + jumlah `human` **sebelum** mulai. Jumlah `human` harus kecil
-— hanya KYC, CAPTCHA, 2FA, OTP, dan login. Kalau sebuah campaign ternyata punya
+— hanya KYC, CAPTCHA, 2FA, dan OTP. Login BUKAN `human`: akun yang dipakai
+agent memang dibuat untuknya. Kalau sebuah campaign ternyata punya
 banyak task `human`, laporkan itu sebagai temuan.
 
 ## Langkah 2 — Eksekusi task `auto`, satu per satu

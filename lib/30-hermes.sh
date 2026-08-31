@@ -4,28 +4,51 @@
 PROFILES=(pekerja-koordinator pekerja-riset pekerja-harian pekerja-daftar
           pekerja-quest pekerja-discord pekerja-pantau pekerja-x)
 
-SKILLS=(browser-operation browser-burn-in airdrop-intake airdrop-analyzer
-        daily-executor quest-executor discord-engager portfolio-tracker
-        x-engager self-improvement panggil-pekerja
+# ---------------------------------------------------------------------------
+# SKILLS di HERMES_HOME utama = HANYA milik koordinator.
+#
+# Dulu daftar ini memuat SEMUA 18 skill. Itu salah dua kali:
+#
+#   1. HERMES_HOME utama adalah profil DEFAULT, dan profil default-lah yang
+#      memegang TELEGRAM_BOT_TOKEN (profiles.py:1105 "the default profile is
+#      always served"). Jadi setiap kali Telegram berbicara, yang melihat 18
+#      skill itu adalah koordinator -- padahal ia tidak mengeksekusi apa pun.
+#   2. Manifest skill masuk ke system prompt setiap putaran. 18 nama + deskripsi
+#      bukan biaya besar, tapi 18 PROSEDUR yang bisa diikuti adalah permukaan
+#      kesalahan: koordinator bisa memutuskan mengikuti quest-executor sendiri.
+#
+# Jadi pool global dihapus. Setiap profil membawa skill-nya sendiri, dan
+# HERMES_HOME utama membawa milik koordinator saja. `browser-burn-in` tetap di
+# sini karena `agentdrop burn-in` menjalankannya dari home utama.
+# ---------------------------------------------------------------------------
+SKILLS=(airdrop-intake airdrop-analyzer self-improvement panggil-pekerja
+        browser-burn-in
         riset harian quest daftar x discord pantau)
 
 # Hermes tidak membatasi skill apa yang boleh dipanggil sebuah profil — apa pun
 # yang ada di foldernya bisa dipakai. Tanpa pemetaan ini, pekerja-discord bisa
 # memanggil daily-executor dan mengerjakan campaign yang bukan urusannya.
 declare -A PROFILE_SKILLS=(
-  # panggil-pekerja hanya di koordinator: dialah yang menghadap Telegram, jadi
-  # hanya dia yang menerima perintah /panggil-pekerja dari operator.
-  [pekerja-koordinator]="browser-operation browser-burn-in airdrop-intake airdrop-analyzer self-improvement panggil-pekerja riset harian quest daftar x discord pantau"
-  [pekerja-riset]="browser-operation browser-burn-in airdrop-analyzer self-improvement"
-  [pekerja-harian]="browser-operation browser-burn-in daily-executor self-improvement"
+  # KOORDINATOR: tidak punya tool browser (lihat toolsets di config.yaml), jadi
+  # browser-operation dan browser-burn-in TIDAK dipetakan ke sini. Memberinya
+  # prosedur browser tanpa tool browser hanya menghasilkan halusinasi langkah.
+  # panggil-pekerja hanya di sini: dialah yang menghadap Telegram.
+  [pekerja-koordinator]="airdrop-intake airdrop-analyzer self-improvement panggil-pekerja riset harian quest daftar x discord pantau"
+  # WORKER: masing-masing SATU skill prosedur + browser-operation + self-improvement.
+  # browser-burn-in sengaja tidak dipetakan ke worker mana pun: itu alat uji
+  # pemasangan (dijalankan `agentdrop burn-in` dari home utama), bukan prosedur
+  # kerja harian. Membawanya ke tujuh worker hanya menambah prosedur yang bisa
+  # diikuti di saat yang salah.
+  [pekerja-riset]="browser-operation airdrop-analyzer self-improvement"
+  [pekerja-harian]="browser-operation daily-executor self-improvement"
   # onboard = register + connect wallet di SITUS PROYEK (bukan platform quest).
   # quest-executor tidak dipetakan ke sini: alurnya berbeda dan mencampurnya
   # membuat pekerja-daftar mengerjakan campaign yang bukan urusannya.
-  [pekerja-daftar]="browser-operation browser-burn-in airdrop-intake self-improvement"
-  [pekerja-quest]="browser-operation browser-burn-in quest-executor self-improvement"
-  [pekerja-discord]="browser-operation browser-burn-in discord-engager self-improvement"
-  [pekerja-pantau]="browser-operation browser-burn-in portfolio-tracker self-improvement"
-  [pekerja-x]="browser-operation browser-burn-in x-engager self-improvement"
+  [pekerja-daftar]="browser-operation airdrop-intake self-improvement"
+  [pekerja-quest]="browser-operation quest-executor self-improvement"
+  [pekerja-discord]="browser-operation discord-engager self-improvement"
+  [pekerja-pantau]="browser-operation portfolio-tracker self-improvement"
+  [pekerja-x]="browser-operation x-engager self-improvement"
 )
 
 _render_config() {  # _render_config SRC DST LABEL

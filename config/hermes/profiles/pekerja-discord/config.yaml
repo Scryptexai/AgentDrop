@@ -42,11 +42,35 @@ custom_providers:
     api_mode: "__AGENTDROP_API_MODE__"
     models:
       "${AGENTDROP_MODEL}": {}
+# ---------------------------------------------------------------------------
+# TOOLSET = BATAS CAKUPAN, bukan sekadar daftar kemampuan.
+#
+# Dulu daftar ini dimulai dengan `hermes-cli`. Itu satu baris yang mahal:
+# toolsets.py:478-481 memetakan hermes-cli ke _HERMES_CORE_TOOLS, yang isinya
+# 53 tool -- termasuk 14 tool kanban, 4 tool Home Assistant, text_to_speech,
+# image_generate, session_search, cronjob, dan computer_use. Tidak satu pun
+# dipakai airdrop farming, tapi SEMUANYA masuk ke skema tool yang dikirim ke
+# model di SETIAP putaran.
+#
+# Jadi toolset sempit dipilih satu-satu. Dua akibat yang disengaja:
+#
+#   1. Koordinator TIDAK mendapat toolset `browser`. Ia memang tidak boleh
+#      mengeksekusi -- sekarang itu ditegakkan oleh skema tool, bukan hanya
+#      oleh kalimat di SOUL.md.
+#   2. Worker TIDAK mendapat toolset `delegation`. Mereka leaf; sekarang
+#      mereka secara struktural tidak bisa mendelegasikan ke profil lain.
+#
+# `terminal` dan `code_execution` tetap di disabled_toolsets di bawah sebagai
+# lapisan kedua, walau tanpa hermes-cli keduanya memang tidak pernah termuat.
+# ---------------------------------------------------------------------------
 toolsets:
-  - hermes-cli
   - browser
   - file
+  - web
+  - todo
   - memory
+  - skills
+  - clarify
 
 agent:
   max_turns: 40

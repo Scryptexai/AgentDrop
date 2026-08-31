@@ -63,8 +63,9 @@ Perhatikan `-q`. `hermes chat` **tidak menerima argumen posisional** — hanya
 > Jangan bertindak di atas halaman yang belum Anda pastikan identitasnya.
 
 1. Buka URL campaign dengan `browser_navigate`.
-2. **Verifikasi status login sebelum apa pun.** Sesi mati → hentikan campaign
-   itu, set `status: login_expired`, beri tahu operator. **Jangan coba login
+2. **Verifikasi status login sebelum apa pun.** Sesi mati → **login sendiri**
+   memakai kredensial yang tersedia, lalu lanjut. Set `status: login_expired`
+   hanya kalau login itu sendiri gagal. **Jangan coba mengakali
    sendiri** — kredensial bukan urusan agent.
 3. Lakukan aksi harian (check-in, claim, dsb).
 4. **Screenshot bukti** → `data/campaigns/<name>/screenshots/YYYY-MM-DD-<aksi>.png`.
@@ -122,7 +123,7 @@ Ringkasan harian → `data/logs/YYYY-MM-DD-daily.md`.
   yang Anda pakai — login tersimpan di profil Chrome
   (`~/.agentdrop/chrome-profile`), jadi setelah operator selesai Anda bisa
   lanjut tanpa perlu login ulang.
-  Kalau sesi login mati total, operator login lagi lewat noVNC
+  Kalau sesi login mati total, agent login sendiri lewat browser yang sama
   (`agentdrop browser`, lalu http://localhost:6080/vnc.html) — bukan Anda.
 - **Signing saya selesaikan sendiri.** Buka halaman, isi form, pilih jumlah,
   klik tombol yang memunculkan popup wallet, **baca isi popup-nya**, tekan

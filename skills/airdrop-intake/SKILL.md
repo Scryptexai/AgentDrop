@@ -60,7 +60,7 @@ sering melebih-lebihkan dan kadang menipu.
 |---|---|---|
 | `auto` | Register, isi form, follow, join, baca artikel, quiz | agent kerjakan |
 | `wallet` | "Connect EVM Wallet", sign message, bridge, deposit, swap, approve | **agent kerjakan sampai selesai**, termasuk menekan `Confirm`/`Sign`/`Approve` |
-| `human:oauth` | "Connect Twitter/X/Discord/Telegram/GitHub" | **operator** via noVNC |
+| `auto` | "Connect Twitter/X/Discord/Telegram/GitHub" (OAuth) | **agent** — akun miliknya, login sendiri |
 | `human:inbox` | "Submit Email", "Verify Email" | **operator** — butuh akses inbox |
 | `human:kyc` | KYC, verifikasi identitas, selfie, paspor | **operator** |
 | `recurring` | "Daily Mission", "Daily Check-in", "Daily Task" | agent + **buat cron job** |
@@ -82,7 +82,7 @@ Salah mengklasifikasi yang pertama sebagai `auto` berarti agent mencoba
 menandatangani transaksi. Itu batas yang tidak boleh dilewati.
 
 **"Connect Twitter" bukan `auto`.** Meski terdengar sederhana, ini alur OAuth
-di domain pihak ketiga — butuh login akun operator. Masuk `human:oauth`.
+di domain pihak ketiga — agent login sendiri, akun itu miliknya. Masuk `auto`.
 
 **"Complete Easy Task" / "Complete Task" selalu `unknown`.** Namanya tidak
 memberi informasi apa pun. Buka halamannya, baca syaratnya, baru klasifikasi.
@@ -95,7 +95,7 @@ Untuk setiap task `unknown`:
 2. `browser_snapshot`
 3. **Cocokkan URL + judul** dengan yang diharapkan — agent dan operator memakai
    **satu browser yang sama** lewat noVNC, jadi tab aktif bisa saja tab yang
-   dibuka operator untuk login, bukan tab campaign Anda
+   dibuka untuk login, bukan tab campaign Anda
 4. Baca syarat task itu
 5. Klasifikasi ulang berdasarkan apa yang **Anda baca**, bukan apa yang Anda
    duga
@@ -131,7 +131,7 @@ proyeknya.
   "source_claim": {"reward": "...", "status": "unverified_claim"},
   "tasks": [
     {"seq": 1, "raw": "Register", "class": "auto", "evidence": "form pendaftaran"},
-    {"seq": 2, "raw": "Connect Twitter", "class": "human:oauth", "evidence": "OAuth di x.com"},
+    {"seq": 2, "raw": "Connect Twitter", "class": "auto", "evidence": "OAuth di x.com, akun milik agent"},
     {"seq": 3, "raw": "Complete Easy Task", "class": "unknown", "evidence": "syarat ambigu setelah dibuka"}
   ],
   "counts": {"auto": 3, "human": 2, "recurring": 1, "unknown": 1},
@@ -161,7 +161,8 @@ Selalu sertakan `output_schema` agar jawaban child terstruktur.
 2. **`unknown` berarti investigasi, bukan tebakan.**
 3. **Tidak ada signature wallet, transaksi, bridging, deposit.**
 4. **Tidak ada private key / seed phrase** — alamat publik saja.
-5. **CAPTCHA / 2FA / OAuth → operator**, lewat `http://localhost:6080/vnc.html`.
+5. **CAPTCHA / 2FA / OTP / KYC → operator.** OAuth BUKAN titik henti — akun yang
+   dipakai adalah milik agent, jadi agent login sendiri.
 6. **Jangan pernah membuang kode referral** dari URL yang operator berikan.
 7. **Klaim reward adalah klaim**, bukan fakta. Selalu beri label `unverified`.
 8. **Confidence < 0.7 → minta klarifikasi operator**, jangan lanjut.

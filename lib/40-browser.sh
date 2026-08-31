@@ -232,6 +232,33 @@ browser_real_display() {
   esac
 }
 
+# ---------------------------------------------------------------------------
+# Pemeriksaan sebelum worker dijalankan.
+#
+# Celah yang nyata terjadi: operator menjalankan `agentdrop test-workers` dan
+# `agentdrop run` TANPA lebih dulu menjalankan `agentdrop browser`. Task-nya
+# berbunyi "buka https://..." tapi tidak ada Chrome yang memegang port CDP, jadi
+# browser_navigate gagal -- dan yang terlihat hanyalah worker yang "lambat" atau
+# "tidak mengerjakan apa-apa". Tidak ada satu pun pesan yang menunjuk penyebabnya.
+#
+# Karena itu diperiksa di sini, sebelum hermes dipanggil. Sengaja PERINGATAN
+# bukan _die: koordinator tidak punya tool browser sama sekali, dan task
+# tertentu (riset murni) memang tidak menyentuh halaman.
+# ---------------------------------------------------------------------------
+browser_preflight() {
+  local ws=""
+  ws="$(browser_ws || true)"
+  if [[ -n "$ws" ]]; then
+    _ok "Chrome for Testing hidup, CDP :${CDP_PORT} siap"
+    return 0
+  fi
+  _warn "Chrome for Testing TIDAK hidup — CDP :${CDP_PORT} tidak menjawab."
+  _warn "Task yang menyentuh halaman web akan gagal. Nyalakan dulu:"
+  _warn "    agentdrop browser"
+  _warn "(kalau jendela tidak muncul di mesin berlayar: BROWSER_MODE=native agentdrop browser)"
+  return 0
+}
+
 browser_start() {
   local a
   for a in "$@"; do

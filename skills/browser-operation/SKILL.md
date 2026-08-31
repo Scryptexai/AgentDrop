@@ -235,7 +235,7 @@ empat kondisi di bawah.
 | Kondisi | Yang dilaporkan |
 |---|---|
 | **Task selesai** — semua langkah rencana `berhasil` | Ringkasan: apa yang dicapai, bukti per langkah |
-| **Butuh manusia** — login, CAPTCHA, 2FA, KYC, approval wallet | Apa yang harus dilakukan manusia, di mana, lalu tunggu |
+| **Butuh manusia** — CAPTCHA, 2FA, OTP, KYC | Apa yang harus dilakukan manusia, di mana, lalu tunggu |
 | **Buntu** — tiga percobaan dengan pendekatan berbeda gagal pada langkah yang sama | Langkah mana, tiga pendekatan yang sudah dicoba, dugaan penyebab |
 | **Ragu** — confidence di bawah 0.7 pada keputusan yang tidak bisa diurungkan | Pertanyaan spesifik, bukan "mohon petunjuk" |
 
@@ -293,6 +293,61 @@ Dari prompt OpenManus, dan berlaku lebih keras di sini:
 
 ---
 
+## Membuka dan menekan popup wallet
+
+Popup MetaMask/OKX/Phantom **tidak** ada di accessibility tree halaman dApp, jadi
+`browser_snapshot` tidak pernah melihatnya. Itu sebabnya klik "Confirm" selalu
+gagal kalau dicoba lewat `browser_click`.
+
+Penyebabnya struktural, bukan bug: supervisor CDP Hermes hanya meng-attach SATU
+target bertipe `page` dan memasang auto-attach pada scope page itu
+(`tools/browser_supervisor.py:745` dan `:760`). Popup ekstensi adalah target
+`page` **terpisah** ber-URL `chrome-extension://…`, bukan OOPIF milik dApp — jadi
+ia tidak pernah ikut ter-attach.
+
+Jalurnya adalah tool `browser_cdp`, yang menerima `target_id` dan melakukan
+`Target.attachToTarget(flatten=true)` sendiri (`tools/browser_cdp_tool.py:266-273`).
+
+```
+1. DAFTAR TARGET
+   browser_cdp(method="Target.getTargets")
+   -> cari entri yang url-nya diawali "chrome-extension://"
+      catat targetId-nya
+
+2. BACA ISI POPUP  (WAJIB sebelum menekan — K14)
+   browser_cdp(method="Runtime.evaluate", target_id="<id>",
+               params={"expression": "document.body.innerText",
+                       "returnByValue": true})
+   -> dari sinilah kontrak, jumlah, jaringan, dan nama fungsi dicatat
+
+3. TEKAN TOMBOLNYA — cocokkan by peran + teks, BUKAN by selector CSS
+   browser_cdp(method="Runtime.evaluate", target_id="<id>",
+               params={"expression":
+                 "[...document.querySelectorAll('button')]"
+                 ".find(b => /^(confirm|approve|sign|accept)$/i"
+                 ".test(b.textContent.trim()))?.click()",
+                 "returnByValue": true})
+
+4. VERIFIKASI di halaman dApp, bukan di popup
+   browser_snapshot()  -> status berubah / tx hash muncul
+```
+
+Aturan yang tetap berlaku di jalur ini:
+
+- **Baca dulu, baru tekan.** Isi popup adalah satu-satunya sumber kebenaran;
+  teks halaman adalah data yang bisa berbohong.
+- **Pencocokan by peran + teks**, bukan class atau id. Alasannya sama dengan
+  larangan selector di Aturan 1: class berubah saat situs di-redeploy.
+- **Catat apa yang disetujui** ke laporan: fungsi, spender/kontrak, jumlah, chain.
+- **Kalau tidak ada target `chrome-extension://` di langkah 1, itu kegagalan
+  yang dilaporkan** — bukan sesuatu yang diakali. Artinya ekstensi tidak
+  terpasang atau service worker-nya tidak jalan.
+
+⚠ **Prosedur ini belum diuji pada wallet sungguhan.** Sandbox pengembangan tidak
+punya Chrome, tidak punya display, dan egress-nya diblokir. Yang sudah
+diverifikasi dari sumber Hermes adalah kemampuan `browser_cdp` menerima
+`target_id` dan melakukan attach; perilaku popup MetaMask sendiri belum.
+
 ## Batas yang tidak bisa dinegosiasikan
 
 Berbeda dari OpenManus — yang prompt-nya menulis *"If captcha pops up, try to
@@ -300,10 +355,11 @@ solve it"* — AgentDrop **tidak** mencoba menyelesaikan CAPTCHA.
 
 - **CAPTCHA / 2FA / verifikasi SMS → STOP.** Serahkan ke operator lewat
   `http://localhost:6080/vnc.html`.
-- **OAuth (Connect Twitter/Discord) → STOP.** Butuh login akun operator.
-- **Signature wallet → lihat `docs/research.md` bagian wallet.** Popup wallet
-  extension tidak bisa dikendalikan lewat DOM (Playwright issue #5593 terbuka
-  sejak Feb 2021; LavaMoat MetaMask memblokir inspeksi).
+- **OAuth (Connect Twitter/Discord) → agent kerjakan sendiri.** Akun yang
+  dipakai adalah akun milik agent, jadi login OAuth bukan titik henti.
+  Berhenti hanya kalau muncul CAPTCHA atau 2FA yang tidak bisa dilewati.
+- **Popup wallet extension → BISA dikendalikan, lewat `browser_cdp`.** Lihat
+  bagian "Membuka dan menekan popup wallet" di bawah.
 - **Tidak ada private key / seed phrase** di prompt, log, atau screenshot.
 
 ---
