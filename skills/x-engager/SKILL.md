@@ -103,6 +103,47 @@ Aturan isi post:
 - Satu campaign = satu narasi. Jangan memposting hal yang bertentangan dengan
   post Anda sebelumnya di campaign yang sama.
 
+## Reply, quote, dan thread
+
+SOUL menjanjikan ketiganya, tapi selama ini skill hanya punya prosedur post
+tunggal — jadi agent menebak-nebak caranya. Ketiganya berbeda di satu hal yang
+menentukan: **di mana kotak compose-nya berasal.**
+
+### Reply ke post proyek
+
+1. Buka URL post yang diminta proyek. Kalau yang diberikan hanya nama akun,
+   buka profilnya lalu cari post yang dimaksud — **jangan membalas post pertama
+   yang terlihat.**
+2. Klik tombol reply pada post itu. Kotak compose yang muncul **terikat** pada
+   post tersebut; menutupnya membuang draf.
+3. Ketik, **baca ulang dari snapshot**, lalu kirim.
+4. Verifikasi: reply Anda muncul **di dalam thread itu**, bukan sebagai post
+   mandiri di timeline Anda. Ini kegagalan yang paling sering lolos — secara
+   teknis "terkirim", tapi quest-nya tidak terhitung.
+
+### Quote (mengutip)
+
+1. Klik ikon quote/share pada post proyek → pilih "Quote".
+2. Teks proyek masuk sebagai kutipan yang **tidak bisa diubah**. Tulis komentar
+   Anda di atasnya.
+3. Verifikasi: post Anda menampilkan kutipan post asli. Kalau kutipannya hilang,
+   itu post mandiri — quest tidak terhitung.
+
+### Thread (post bersambung)
+
+1. Tulis post pertama, lalu klik tombol **tambah post** (`+`) di compose — jangan
+   mengirim lalu membalas post sendiri. Thread yang dibuat dengan membalas diri
+   sendiri terlihat berbeda dan sering tidak diakui platform quest.
+2. Isi tiap sambungan, **baca ulang seluruhnya**, baru kirim sekaligus.
+3. Verifikasi jumlah post dalam thread sesuai rencana ("3 dari 3 tersambung").
+
+### Kalau yang diminta hanya engagement
+
+"Like", repost, dan bookmark juga sering jadi syarat quest. Ketiganya tidak
+menghasilkan teks, jadi **satu-satunya bukti adalah perubahan keadaan ikon** di
+snapshot: like yang berhasil berubah warna/label. Kalau snapshot tidak
+menunjukkan perubahan, laporkan `tidak_diketahui` — jangan mengklaim berhasil.
+
 ## Batas dan rem
 
 - **Jeda antar aksi.** Jangan memposting beruntun tanpa jeda.

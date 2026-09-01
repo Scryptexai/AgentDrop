@@ -95,6 +95,7 @@ browser:
   # read_file. Penjelasan panjang di config/hermes/config.yaml.
   snapshot_threshold: 15000
   allow_private_urls: false
+  record_sessions: false
 
   # headed HANYA berlaku untuk browser lokal Hermes (agent-browser), BUKAN
   # mode CDP. GUI di setup ini datang dari noVNC
@@ -139,7 +140,11 @@ compression:
 
 tool_loop_guardrails:
   warnings_enabled: true
-  hard_stop_enabled: false
+  hard_stop_enabled: true
+  warn_after:
+    exact_failure: 2
+    same_tool_failure: 3
+    idempotent_no_progress: 2
 
 # ---------------------------------------------------------------------------
 # MEMORY LOOP

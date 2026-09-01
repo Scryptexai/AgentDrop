@@ -118,6 +118,23 @@ cmd_stop() {
 #   agentdrop run pekerja-quest "Kerjakan quest Galxe proyek X, berhenti di popup"
 #   agentdrop run pekerja-riset "Analisis kelayakan https://..."
 #   agentdrop run --list
+# _audit_counts — cetak "<jumlah pre_tool_call> <jumlah level=error>" di seluruh
+# log audit. Dipakai cmd_run untuk menilai hasil task dari BUKTI, bukan dari exit
+# code. Cermin dari hitung_total() di scripts/test-workers.sh; kalau log tidak
+# bisa dibaca, mencetak "0 0" supaya pemanggil tidak crash di bawah `set -u`.
+_audit_counts() {
+  PYTHONPATH="$ROOT/tools" "$(_pyu)" - <<'PY' 2>/dev/null || echo "0 0"
+import audit_log
+pre = err = 0
+for r in audit_log.read_all():
+    if r.get("event") == "pre_tool_call":
+        pre += 1
+    if r.get("level") == "error":
+        err += 1
+print(pre, err)
+PY
+}
+
 cmd_run() {
   command -v hermes >/dev/null 2>&1 || _die "hermes tidak ada — jalankan ./install.sh"
 
@@ -162,13 +179,46 @@ cmd_run() {
   # --profile adalah flag global pre-argparse, jadi harus di depan subcommand.
   # HERMES_HOME disetel eksplisit: tanpa itu get_hermes_home() jatuh ke default
   # dan profil yang dimaksud tidak dipakai sama sekali.
+  # ---------------------------------------------------------------------------
+  # rc=0 BUKAN bukti task berhasil.
+  #
+  # `hermes chat` mengembalikan 0 walau task-nya gagal total -- sudah terjadi di
+  # mesin operator: HTTP 402 dari endpoint, tidak ada satu pun tool terpanggil,
+  # dan rc tetap 0. Menilai dari rc berarti melaporkan "selesai" untuk pekerjaan
+  # yang tidak pernah terjadi. scripts/test-workers.sh sudah memakai penilaian
+  # yang benar (selisih jumlah baris audit, bukan exit code); cmd_run belum.
+  #
+  # Selisih jumlah, bukan filter waktu: date(1) GNU tidak punya %f, dan resolusi
+  # milidetik terlalu kasar untuk dua task yang berurutan cepat.
+  # ---------------------------------------------------------------------------
+  local _pre0 _err0 _pre1 _err1
+  read -r _pre0 _err1 <<< "$(_audit_counts)"
+  _err0="$_err1"
+
   HERMES_HOME="$HERMES_HOME_DIR" \
     hermes --profile "$profile" chat -q "$task"
   local rc=$?
+
+  read -r _pre1 _err1 <<< "$(_audit_counts)"
+  local _dpre=$(( ${_pre1:-0} - ${_pre0:-0} ))
+  local _derr=$(( ${_err1:-0} - ${_err0:-0} ))
   echo
-  if [[ $rc -eq 0 ]]; then _ok "$profile selesai (rc=0)"
-  else _err "$profile berhenti dengan rc=$rc"; fi
-  return $rc
+  if [[ $rc -ne 0 ]]; then
+    _err "$profile berhenti dengan rc=$rc"
+    return $rc
+  fi
+  if [[ $_derr -gt 0 ]]; then
+    _err "$profile rc=0 TAPI ada $_derr baris error di log audit — task GAGAL"
+    echo "       lihat: agentdrop audit errors"
+    return 1
+  fi
+  if [[ $_dpre -eq 0 ]]; then
+    _err "$profile rc=0 TAPI tidak ada satu pun tool terpanggil — task tidak dikerjakan"
+    echo "       penyebab paling umum: model/provider salah. Periksa: agentdrop model --show"
+    return 1
+  fi
+  _ok "$profile selesai — $_dpre tool call, tanpa error"
+  return 0
 }
 
 # agentdrop model — setel provider/model untuk SEMUA worker sekaligus.

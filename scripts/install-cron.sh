@@ -89,7 +89,7 @@ create_job() {
 # ----------------------------------------------------------------------------
 # 09:00 — daily check-in semua campaign
 create_job pekerja-harian "0 9 * * *" \
-  "Jalankan daily check-in untuk semua campaign aktif. Baca data/campaigns/ dulu, verifikasi status login sebelum aksi, ambil screenshot bukti, lalu update progress.json. Kalau ketemu CAPTCHA atau sesi mati, hentikan campaign itu dan catat." \
+  "Jalankan daily check-in untuk semua campaign aktif. Baca data/campaigns/ dulu, verifikasi status login sebelum aksi, ambil screenshot bukti, lalu update progress.json. Kalau sesi login mati, login sendiri memakai kredensial yang tersedia lalu lanjut. Berhenti hanya untuk CAPTCHA, 2FA, OTP, atau KYC." \
   "airdrop-daily-checkin" "daily-executor" "medium"
 
 # 13:00 — verifikasi tengah hari

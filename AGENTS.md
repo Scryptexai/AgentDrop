@@ -2701,3 +2701,140 @@ skill; **0 cacat isi**. `agentdrop test-workers` → **8 lulus, 0 gagal**.
 **Tidak bisa diverifikasi dari sandbox:** perilaku `hermes update` sungguhan
 terhadap marker itu (Hermes tidak terpasang di sini), dan apakah model benar
 mematuhi batas cakupan yang baru ditulis.
+
+## Arc 34 — Audit menyeluruh seluruh kode: enam gap nyata
+
+Operator meminta audit seluruh kode untuk memastikan tidak ada gap lagi. Delapan
+kelas pemeriksaan dijalankan terhadap repo **dan** terhadap hasil install.
+
+### Gap 1 — `cmd_run` menilai keberhasilan dari exit code *(cacat terbuka sejak Arc 20-an)*
+
+```
+agentdrop (sebelum)
+  hermes --profile X chat -q "..."
+  local rc=$?
+  if [[ $rc -eq 0 ]]; then _ok "$profile selesai (rc=0)"
+```
+
+`hermes chat` mengembalikan **0 walau task gagal total** — sudah terjadi di mesin
+operator: HTTP 402 dari endpoint, tidak ada satu tool pun terpanggil, rc tetap 0.
+Ini kelas cacat **S** yang tercatat di AGENTS.md tapi tidak pernah ditutup.
+`scripts/test-workers.sh` sudah memakai penilaian yang benar; `cmd_run` belum.
+
+**Perbaikan:** `cmd_run` sekarang menilai dari **selisih jumlah baris log audit**,
+cermin dari `hitung_total()` di test-workers. Tiga jalur, semuanya diuji:
+
+| Kondisi | Sebelum | Sesudah |
+|---|---|---|
+| rc=0, tool terpanggil, tanpa error | ✓ selesai | ✓ "1 tool call, tanpa error" |
+| rc=0, **tidak ada** tool terpanggil | ✓ selesai *(salah)* | ✗ "task tidak dikerjakan" + tunjuk `agentdrop model --show` |
+| rc=0, ada baris `level=error` | ✓ selesai *(salah)* | ✗ "task GAGAL" + tunjuk `agentdrop audit errors` |
+
+### Gap 2 — `x-engager` tidak punya prosedur reply/quote/thread
+
+SOUL `pekerja-x` menjanjikan "Post wajib quest (announce, **thread**, **quote**,
+**reply**)" dan "**Reply dan engagement** di thread proyek", tapi skillnya hanya
+punya satu bagian `## Membuat post`. Dihitung: `thread` **0** sebutan, `reply` 1,
+`quote` 1 — semuanya bukan prosedur.
+
+Ditambahkan prosedur untuk reply, quote, thread, dan engagement. Yang paling
+penting dari isinya adalah **cara verifikasinya**, karena ketiganya gagal dengan
+cara yang terlihat seperti berhasil:
+
+- reply yang nyasar jadi post mandiri → "terkirim", tapi quest tidak terhitung
+- quote yang kutipannya hilang → jadi post biasa
+- thread yang dibuat dengan membalas diri sendiri → sering tidak diakui platform
+
+### Gap 3 — `discord-engager` tidak punya prosedur join dan role gate
+
+SOUL menjanjikan delapan langkah (baca aturan → peta server → cek role → kerjakan
+verifikasi → verifikasi role). Skillnya hanya berisi **prinsip**, bukan langkah.
+Tidak ada cara masuk server lewat invite, tidak ada bentuk role gate, tidak ada
+cara memastikan role benar-benar bertambah.
+
+Ditambahkan, termasuk tabel empat bentuk role gate (reaction / bot command / form
+/ connected account) dan satu aturan verifikasi yang penting: **bot role gate
+sering membalas "verified" tapi gagal menetapkan role** karena konfigurasi
+servernya rusak. Tanpa memeriksa daftar role, agent melaporkan keberhasilan yang
+tidak terjadi.
+
+### Gap 4 — empat profil berbeda pada kunci yang tidak boleh berbeda
+
+Dibandingkan kunci per kunci di delapan `config.yaml`:
+
+| Kunci | Sebelum | Sesudah |
+|---|---|---|
+| `browser.record_sessions` | **7/8** — `pekerja-riset` tidak punya | 8/8 `false` |
+| `tool_loop_guardrails.warn_after.*` | **4/8** | 8/8 `2/3/2` |
+| `tool_loop_guardrails.hard_stop_enabled` | **7/8** — riset `false` tanpa satu pun komentar penjelas | 8/8 `true` |
+
+`pekerja-riset` tanpa `record_sessions: false` berarti ia merekam video WebM per
+sesi dan menyimpannya 72 jam sementara tujuh worker lain tidak. Tidak ada
+komentar yang menjelaskan perbedaan itu — murni drift.
+
+### Gap 5 — prompt cron masih menyuruh berhenti saat sesi mati
+
+`scripts/install-cron.sh:92` (job 09:00) menulis *"Kalau ketemu CAPTCHA atau
+**sesi mati, hentikan campaign itu**"* — bertentangan langsung dengan Arc 32 yang
+menjadikan login pekerjaan agent.
+
+**Yang membuatnya lolos:** aturan `[36]` hanya memindai `SOUL.md` dan `SKILL.md`.
+Prompt cron adalah instruksi yang benar-benar dikirim ke agent, tapi tidak
+pernah diperiksa. Cakupan aturan diperluas ke `scripts/install-cron.sh` dan pola
+baru ditambahkan; diuji injeksi.
+
+### Gap 6 — dua import tak terpakai
+
+`sys` di `tools/audit_log.py:45` dan `shutil` di `tools/validate_config.py:31`.
+Dihapus sesudah dipastikan nol pemakaian, lalu keduanya diuji masih bisa
+diimpor/dijalankan.
+
+### Yang diperiksa dan ternyata BERSIH
+
+- **Berkas yatim:** hanya `docs/analisis-bottleneck.md`. Lima `knowledge/chains/*`
+  yang tadinya terlihat yatim ternyata dirujuk **sebagai direktori** enam kali —
+  detektor saya yang terlalu ketat, bukan kodenya.
+- **Fungsi shell:** 35 fungsi terdeklarasi (dibuktikan dengan `declare -F` sesudah
+  sourcing semua `lib/*.sh`), tidak ada yang dipanggil tanpa definisi.
+- **Kelas cacat shell:** `VAR="$(cmd|cmd)"` di bawah `set -euo pipefail` → **0**;
+  baris terakhir fungsi berupa `[[ ]] && {}` → **0**; `grep -c … || echo 0` → 0
+  (hanya satu komentar yang menjelaskan jebakan itu); `~` di token kedua hook
+  `command:` → **0**; path `/home/<user>` hardcoded → **0** (satu-satunya
+  kemunculan adalah contoh di docstring `audit-log.py:18`).
+- **Rujukan path:** 5 kandidat, semuanya false positive — `.env` dan `data/audit`
+  dibuat saat runtime, `extensions/installed` dibuat `mkdir -p` di
+  `lib/40-browser.sh:137`, dan satu adalah string regex di validator.
+- **Flag `hermes cron create`:** kelima flag yang dipakai (`--name`, `--skill`,
+  `--workdir`, `--reasoning-effort`, `--deliver`) **diverifikasi ada** di
+  `hermes_cli/subcommands/cron.py`. Ini menutup sebagian dari "cron tidak pernah
+  diverifikasi" — eksekusinya tetap belum bisa diuji di sini.
+- **pyflakes** pada semua Python: bersih setelah gap 6.
+
+### Validator 396 checks
+
+Aturan baru **`[41]`** — delapan profil wajib seragam pada sepuluh kunci yang
+bukan selera per worker (`record_sessions`, `warn_after.*`, `inactivity_timeout`,
+`snapshot_threshold`, `backend`, `disabled_toolsets`). Diuji dua injeksi.
+Aturan `[36]` diperluas cakupannya + satu pola baru, diuji injeksi.
+
+### Cacat saya sendiri di arc ini
+
+1. **Menulis kata Cina `状态` ke dalam `x-engager`** saat menambahkan prosedur
+   reply — persis kelas kesalahan yang sudah terjadi empat kali. Tertangkap oleh
+   grep CJK yang memang dijalankan tiap kali, dan diganti sebelum commit.
+2. **Detektor berkas yatim saya menembak lima false positive** karena mencari
+   nama berkas persis, padahal `knowledge/chains/` dirujuk sebagai direktori.
+3. **`/tmp/fix` hilang lagi saat reprovision** — `cat` gagal, dan karena
+   `bash -n` di baris berikutnya tetap mencetak OK, satu putaran terlihat sukses.
+
+### Verifikasi
+
+`tools/validate_config.py` → **396 checks, SEMUA LOLOS**. `bash -n` bersih untuk
+12 skrip. `pyflakes` bersih. Install bersih → delapan profil seragam
+(skill khusus ada, SOUL 9.458–16.459 B, marker ada, 7 toolset, config seragam
+semua "YA"), home utama 12 skill + marker. `agentdrop test-workers` → **8 lulus,
+0 gagal**. Ketiga jalur penilaian `cmd_run` diuji dan hasilnya sesuai tabel.
+
+**Tidak bisa diverifikasi dari sandbox:** eksekusi `hermes cron` sungguhan,
+unduhan Chrome (egress diblokir), dan perilaku reply/quote/thread Discord serta X
+pada situs aslinya.

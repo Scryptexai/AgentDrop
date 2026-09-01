@@ -28,7 +28,6 @@ import ast
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -2026,6 +2025,36 @@ def check_model_vars_and_delegation(configs: list[Path]) -> None:
                 f"kerjakan. Tanpa batas eksplisit, worker ini bisa mengambil "
                 f"pekerjaan worker lain.")
 
+    print("\n[41] Delapan profil seragam pada kunci yang tidak boleh berbeda")
+    # Kunci-kunci ini bukan selera per worker; kalau berbeda, itu drift.
+    # Pernah terjadi: pekerja-riset tidak punya `browser.record_sessions: false`
+    # (jadi merekam video WebM per sesi dan menyimpannya 72 jam sementara tujuh
+    # worker lain tidak), `hard_stop_enabled: false` tanpa satu pun komentar
+    # penjelas, dan `warn_after` hilang di empat profil sehingga mereka memakai
+    # default Hermes yang belum tentu sama.
+    checks += 1
+    WAJIB_SAMA = {
+        ("browser", "record_sessions"): False,
+        ("tool_loop_guardrails", "warnings_enabled"): True,
+        ("tool_loop_guardrails", "hard_stop_enabled"): True,
+        ("tool_loop_guardrails", "warn_after", "exact_failure"): 2,
+        ("tool_loop_guardrails", "warn_after", "same_tool_failure"): 3,
+        ("tool_loop_guardrails", "warn_after", "idempotent_no_progress"): 2,
+        ("browser", "inactivity_timeout"): 1800,
+        ("browser", "snapshot_threshold"): 15000,
+        ("browser", "backend"): "off",
+        ("agent", "disabled_toolsets"): ["terminal", "code_execution"],
+    }
+    for _c in sorted((REPO / "config/hermes/profiles").glob("*/config.yaml")):
+        _d = yaml.safe_load(_c.read_text()) or {}
+        for _jalan, _harap in WAJIB_SAMA.items():
+            _simpul = _d
+            for _k in _jalan:
+                _simpul = (_simpul or {}).get(_k) if isinstance(_simpul, dict) else None
+            if _simpul != _harap:
+                err(f"{_c.relative_to(REPO)}: {'.'.join(_jalan)} = {_simpul!r}, "
+                    f"seharusnya {_harap!r} di SEMUA profil")
+
     print("\n[36] Login dan OAuth BUKAN kelas `human`")
     # Bug yang membuat operator melaporkan "agent menentang instruksi, bilang
     # tidak bisa login / connect wallet". Akun yang dipakai agent memang dibuat
@@ -2062,10 +2091,21 @@ def check_model_vars_and_delegation(configs: list[Path]) -> None:
          "OAuth diserahkan ke operator"),
         (re.compile(r"approval wallet[^.\n]{0,45}(?:manusia|human|operator)", re.I),
          "approval wallet masih diserahkan ke manusia -- melanggar K14"),
+        (re.compile(r"sesi (?:login )?mati[^.\n]{0,45}hentikan", re.I),
+         "sesi login mati disuruh menghentikan campaign -- padahal agent login sendiri"),
     ]
+    # scripts/install-cron.sh ikut dipindai: prompt cron adalah instruksi yang
+    # benar-benar dikirim ke agent, jadi ia tunduk pada aturan yang sama.
+    # Sempat lolos: prompt job 09:00 masih menulis "sesi mati -> hentikan
+    # campaign" padahal Arc 32 sudah menjadikan login pekerjaan agent. Aturan
+    # ini hanya memindai SOUL.md dan SKILL.md, jadi kontradiksi itu tidak
+    # pernah terlihat.
     berkas_prompt = sorted(
         (REPO / "config/hermes/profiles").glob("*/SOUL.md")
     ) + sorted((REPO / "skills").glob("*/SKILL.md"))
+    _cron = REPO / "scripts" / "install-cron.sh"
+    if _cron.exists():
+        berkas_prompt = berkas_prompt + [_cron]
     for f in berkas_prompt:
         for i, baris in enumerate(f.read_text().splitlines(), 1):
             for pola, sebab in POLA_LOGIN:
