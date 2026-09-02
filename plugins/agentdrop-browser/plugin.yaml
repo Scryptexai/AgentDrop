@@ -1,0 +1,11 @@
+name: agentdrop-browser
+label: AgentDrop Browser
+kind: tools
+version: 1.0.0
+description: >
+  Menggabungkan aksi browser dan pembacaan hasilnya dalam SATU panggilan.
+  Di Hermes bawaan, browser_click hanya membalas {"clicked": ref}
+  (tools/browser_tool.py:4608-4647) sehingga model harus memanggil
+  browser_snapshot terpisah untuk melihat akibatnya -- dua putaran LLM untuk
+  satu aksi logis. browser_act melakukan keduanya sekali jalan.
+author: AgentDrop

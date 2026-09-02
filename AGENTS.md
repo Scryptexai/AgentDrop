@@ -3134,3 +3134,90 @@ seperti Arc 35.
 PR dibuka atas permintaan operator: **https://github.com/Scryptexai/AgentDrop/pull/1**
 (mengarah ke `main`). Arahan lama adalah "push saja tanpa PR", jadi PR ini bisa
 ditutup kalau permintaannya ikut terpencet.
+
+## Arc 37 — Dua permintaan diuji dulu, keduanya tidak seperti perkiraan
+
+Operator memilih dua hal: lepas ikatan delegasi, dan pangkas biaya
+2-putaran-per-klik. Keduanya diperiksa terhadap kode sebelum satu baris pun
+diubah — dan **keduanya ternyata berbeda dari yang diperkirakan**. Rinciannya di
+`docs/temuan-delegasi-dan-klik.md`.
+
+### Ikatan delegasi yang mau dilepas sudah tidak ada di worker
+
+Diukur dari delapan config: **ketujuh worker sudah tidak punya `delegation`**, dan
+itu ditegakkan validator (`tools/validate_config.py:572`). Jadi "memanggil tiap
+worker satu per satu" **sudah bisa hari ini** lewat `/worker` (Arc 35) atau
+perintah `/` di Telegram (Arc 29).
+
+Yang masih punya delegasi hanya **koordinator** — dan delegasi adalah
+identitasnya: **14 sebutan** di SOUL, termasuk tugas pokok #3 (*"Mendelegasikan ke
+worker yang tepat"*) dan *"Setiap tugas yang menyentuh halaman web **harus** saya
+delegasikan"*. Koordinator juga **sengaja tidak punya `browser`** (validator
+`:561`).
+
+**Mencabut `delegation` dari koordinator membuatnya tidak punya browser DAN tidak
+punya delegasi** — ia hanya bisa bercakap-cakap. Itu bukan menyederhanakan, itu
+menghapus fungsinya. Jadi pilihannya bukan "lepas atau tidak" tapi **peran
+koordinator mau jadi apa**, dan itu belum perlu diputuskan sekarang: menulis
+ulang SOUL 16 KB untuk peran yang belum terbukti tidak diperlukan.
+
+**Tidak ada yang dicabut di arc ini.** Rekomendasi: biarkan koordinator, panggil
+worker langsung (sudah bisa), cabut nanti kalau ternyata koordinator memang tidak
+pernah dipakai.
+
+### Biaya 2-putaran-per-klik memang struktural
+
+- `browser_navigate` **sudah 1 putaran** — `tools/browser_tool.py:4478`:
+  *"Auto-take a compact snapshot so the model can act immediately"*
+- `browser_click` **2 putaran** — `:4608-4647`, seluruh badannya hanya membalas
+  `{"success": True, "clicked": ref}`
+- **Tidak ada knob config** untuk auto-snapshot sesudah klik. Yang ada hanya
+  `browser.snapshot_threshold` (`:367`) — batas **ukuran**, bukan saklar kapan
+- **Batch mustahil**: `_PARALLEL_SAFE_TOOLS`
+  (`agent/tool_dispatch_helpers.py`) berisi 12 tool dan **nol tool browser** —
+  diverifikasi dengan menghitung kemunculan "browser" di dalam frozenset itu: 0
+
+### Yang dibangun: plugin TAMBAHAN, bukan override
+
+Hermes menyediakan `register_tool(..., override=True)`
+(`hermes_cli/plugins.py:1778`) — docstring-nya sendiri mencontohkan *"swap the
+default `browser_navigate`"*. Tapi itu menaruh kode kita di jalur panas setiap
+klik **dan** butuh gate `allow_tool_override: true` (dipanggil di `:1806`, hanya
+ketika `override=True`).
+
+Karena integrasi dengan Hermes sungguhan belum bisa diuji dari sandbox, diambil
+jalur tambahan: **`plugins/agentdrop-browser/`** dengan tool baru `browser_act`
+yang melakukan aksi **lalu** snapshot dalam satu panggilan. Tool baru tidak butuh
+gate, dan kalau plugin gagal dimuat agent tetap punya seluruh tool browser
+aslinya — kegagalannya terbatas.
+
+Tujuh jalur diuji: click sukses (`click`+`snapshot`) · **click gagal → hanya
+`click`, snapshot tidak dipanggil** · **aksi OK tapi snapshot mati → aksi tetap
+dilaporkan + `snapshot_error`** · type sukses · press sukses · click tanpa `ref`
+(pesan jelas, nol panggilan) · action tidak dikenal (pesan jelas, nol panggilan).
+
+Dua yang di tengah adalah intinya: aksi gagal tidak membuang panggilan snapshot,
+dan keberhasilan aksi tidak dibuang hanya karena langkah keduanya gagal.
+
+**Plugin ini belum dipasang ke config profil mana pun** — langkah pemasangannya
+(direktori plugin yang dicari Hermes, cara menambah toolset `agentdrop-browser`)
+belum diverifikasi dari sandbox dan harus dipastikan di mesin target.
+
+### Cacat saya sendiri di arc ini
+
+**Kutipan `browser_tool.py:4394` sudah basi.** Nomor itu saya ambil dari clone
+turn sebelumnya; di clone turn ini baris 4394 berisi `data = result.get("data",
+{})` dan komentar auto-snapshot ada di **4478**. Tertangkap karena saya
+mencocokkan setiap kutipan dengan `sed -n` sebelum commit — bukan karena saya
+ingat. Ini keempat kalinya saya menulis nomor baris salah ke dokumen.
+
+### Verifikasi
+
+`tools/validate_config.py` → **417 checks, SEMUA LOLOS** (tidak berubah; tidak ada
+config yang dicabut). `pyflakes` bersih untuk `tools/`, `python/`,
+`hooks/`, dan `plugins/`. `plugin.yaml` valid YAML. Tujuh jalur `browser_act`
+diuji dengan `tools.browser_tool` tiruan.
+
+**Tidak terverifikasi:** pemuatan plugin oleh Hermes sungguhan, lokasi direktori
+plugin yang dicari Hermes, dan apakah `browser_act` benar-benar mengurangi putaran
+pada model nyata.
