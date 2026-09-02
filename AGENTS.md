@@ -2838,3 +2838,153 @@ semua "YA"), home utama 12 skill + marker. `agentdrop test-workers` → **8 lulu
 **Tidak bisa diverifikasi dari sandbox:** eksekusi `hermes cron` sungguhan,
 unduhan Chrome (egress diblokir), dan perilaku reply/quote/thread Discord serta X
 pada situs aslinya.
+
+## Arc 35 — AgentDrop jadi layer 2 di atas mesin Hermes
+
+Operator: *"pahami secara benar struktur code hermes tanpa ada yg terlewat
+bagaimana pemanggilan data-datanya … memastikan agentdrop dapat berbicara dengan
+hermes secara benar tanpa miss call data, tools, agent"* lalu *"kita tidak perlu
+pakai cli hermes untuk call agent, kita pakai agentdrop cli langsung … ketika
+agentdrop di call maka keluar ux seperti claude code."*
+
+Urutannya sengaja: **pahami dulu, baru bangun.** Membangun REPL tanpa memetakan
+jalur panggilan Hermes justru akan menanam "miss call" secara permanen.
+
+### Temuan yang membuka arc ini
+
+`pyproject.toml:392-394` menunjukkan Hermes punya tiga entry point, dan yang
+penting adalah **`hermes-agent = "run_agent:main"`**. Artinya mesin agent itu
+**sebuah kelas Python bernama `AIAgent`** (`run_agent.py:467`), bukan binari.
+Selama ini kita memanggilnya sebagai proses anak lalu mengurai stdout-nya —
+padahal bisa diimpor langsung.
+
+Dan konstruktor `AIAgent` (`run_agent.py:490`) menyediakan **belasan callback
+peristiwa**: `tool_start_callback`, `tool_complete_callback`,
+`stream_delta_callback`, `thinking_callback`, `status_callback`, `event_callback`,
+dan lainnya. UX ala Claude Code tidak perlu menangkap stdout sama sekali.
+
+Peta lengkapnya (dengan `berkas:baris` terverifikasi) ada di
+**`docs/struktur-hermes-internals.md`**.
+
+### Tiga titik rawan "miss call" yang ditemukan
+
+Ini inti dari permintaan operator, dan ketiganya **gagal tanpa pesan error** —
+jenis cacat paling berbahaya:
+
+**1. `HERMES_HOME` harus disetel SEBELUM `import run_agent`.**
+Docstring `resolve_profile_env()` (`hermes_cli/profiles.py:2571`) menyatakan ia
+dipanggil *"before any hermes modules are imported"*. Melanggar urutan ini
+menghasilkan **profil yang salah tanpa error apa pun**.
+
+**2. `toolsets:` dari config tidak dibaca otomatis oleh `AIAgent`.**
+Di konstruksi kanonik `run_agent.py:10012`, `enabled_toolsets` datang dari
+**argumen CLI**, bukan dari config. Kalau jembatan tidak membacanya sendiri,
+**setiap worker mendapat SELURUH tool Hermes** — persis cacat yang Arc 32
+perbaiki, kembali diam-diam.
+
+Ada juga dua kunci config yang berbeda dan mudah tertukar: `toolsets:` (jalur
+CLI) vs `platform_toolsets.<platform>` (jalur gateway, lewat
+`hermes_cli/tools_config.py:2646`).
+
+**3. SOUL.md dibaca dari home agent, bukan cwd.**
+`agent/system_prompt.py:476` memuatnya lewat
+`load_soul_md(home_override=_agent_home(agent))`. `_agent_home()`
+(`agent/system_prompt.py:370`) memakai ContextVar `HERMES_HOME` lebih dulu, lalu
+jatuh ke home yang memuat `state.db`. Komentar di sana menyebut dua bug nyata
+(#86313, #50233) di mana **profil default membocorkan skill dan identitasnya ke
+prompt bot lain**.
+
+Sebagai penyeimbang, satu kekhawatiran ternyata **tidak** terbukti:
+`agent.disabled_toolsets` benar-benar dibaca (`tools_config.py:2917`, `:3036`,
+`cli.py:5514`). Jaminan "shell mati" kita nyata, bukan config hiasan.
+
+### Yang dibangun
+
+| Berkas | Isi |
+|---|---|
+| `docs/struktur-hermes-internals.md` | peta jalur panggilan Hermes, 9 bagian |
+| `python/hermes_bridge.py` | jembatan: temukan interpreter → baca config → bangun `AIAgent` → nilai hasil |
+| `python/agentdrop_repl.py` | sesi interaktif: prompt per worker, perintah `/`, tool call tampil langsung |
+| `lib/00-common.sh` | `python_hermes()` — baca shebang binari `hermes` |
+| `agentdrop` | `cmd_chat`; **tanpa argumen = masuk sesi** |
+| `tools/validate_config.py` | aturan `[42]`, 14 sub-pemeriksaan |
+
+**Menemukan interpreter Hermes tanpa menebak.** Installer upstream tidak bisa
+dibaca dari sandbox (egress diblokir), jadi lokasi pemasangannya tidak bisa
+diketahui. Solusinya: binari `hermes` adalah console_script pip yang baris
+pertamanya menunjuk **persis** ke interpreter lingkungannya sendiri. Dibaca saat
+runtime, bukan ditebak saat desain.
+
+**Ganti worker di tengah sesi** memakai `set_hermes_home_override()`
+(`hermes_constants.py:30`), bukan menulis ulang `os.environ` — itulah mekanisme
+yang gateway sendiri pakai (`hermes_cli/gateway.py:3948`), dan satu-satunya yang
+dibaca `_agent_home()` sesudah modul diimpor.
+
+**Perintah `/` ditangani lokal**, tidak pernah dikirim ke LLM — meniru pola
+`cli.py` Hermes dan sesuai temuan Arc 29 bahwa `/` yang tidak dikenal tidak
+diteruskan ke LLM.
+
+### Cara membuktikan aturan urutan benar-benar ditegakkan
+
+Yang diuji bukan "kode berjalan", tapi **apakah env sudah disetel pada saat
+impor**. `run_agent` tiruan merekam `os.environ["HERMES_HOME"]` di tingkat modul:
+
+```
+HERMES_HOME saat run_agent diimpor : /tmp/hh2/profiles/pekerja-x   ← LOLOS
+enabled_toolsets diteruskan        : [browser, file, web, todo, memory, skills, clarify]
+disabled_toolsets diteruskan       : [terminal, code_execution]
+```
+
+Tanpa perekaman ini, urutan yang salah tetap "lulus" uji karena tidak ada yang
+melihatnya.
+
+### Verifikasi
+
+Batas Arc 32 diukur **lewat jembatan** untuk kedelapan worker terpasang:
+koordinator `delegation` ada & `browser` tidak; tujuh worker sebaliknya; shell
+mati di semuanya. **8/8 ✓**
+
+`nilai_hasil()` diuji lima kasus — sempurna ✓, 0 panggilan LLM ✗, loop tak
+selesai ✗, jawaban kosong ✗, kunci hilang ✗.
+
+Aturan `[42]` diuji **enam injeksi**, semuanya menyala: impor mendahului env ·
+`enabled_toolsets` dihapus · tanpa argumen tidak masuk REPL · `/` tidak
+disaring · `api_calls == 0` dihapus · `bangun_agent` dihapus seluruhnya.
+
+`test-workers` tetap **8 lulus 0 gagal**. Validator **410 checks SEMUA LOLOS**
+(naik dari 396). `bash -n` 12 skrip bersih. `pyflakes` bersih.
+
+### Cacat saya sendiri di arc ini
+
+1. **Mendefinisikan callback tool tapi tidak pernah menyambungkannya.**
+   `cb_tool_mulai`/`cb_tool_selesai` ada di berkas, tapi `bangun_agent()` tidak
+   menerima parameter callback sama sekali — jadi tool call tidak pernah tampil.
+   Ketahuan hanya karena saya membaca keluaran uji dan menyadari
+   `▸ browser_navigate` tidak ada.
+2. **Dua aturan validator pertama saya lolos saat diinjeksi.** Saya memeriksa
+   substring atas seluruh berkas, padahal `enabled_toolsets` dan `api_calls`
+   juga muncul di docstring — jadi menghapus pemakaiannya di kode tetap lolos.
+   Diperbaiki dengan memeriksa **badan fungsi**, lalu kedua injeksi diulang dan
+   menyala.
+3. **Rentang `usage()` salah hitung dua baris**, sehingga `agentdrop --help`
+   mencetak `set -uo pipefail` sebagai bagian dari bantuan.
+4. **Fixture `hermes` saya bershebang `bash`**, jadi `python_hermes()`
+   menolaknya. Itu perilaku benar, tapi sempat terlihat seperti bug.
+
+### Yang TIDAK terverifikasi — dan ini penting
+
+**Seluruh pengujian arc ini memakai `run_agent` tiruan.** Yang terbukti adalah
+logika jembatan: urutan env, pembacaan config, penerusan toolset, penilaian
+hasil, dan penemuan interpreter. Yang **belum** terbukti adalah integrasi dengan
+Hermes sungguhan — karena Hermes tidak terpasang di sandbox dan egress ke
+`hermes-agent.nousresearch.com` diblokir.
+
+Konsekuensinya konkret: tanda tangan `AIAgent.__init__` dan `run_conversation()`
+dibaca dari kode sumber, tapi **tidak pernah dieksekusi terhadap implementasi
+asli**. Kalau versi terpasang berbeda, kegagalan pertamanya akan muncul di
+`agentdrop` tanpa argumen — dan `agentdrop status` adalah tempat pertama yang
+harus dilihat.
+
+Perilaku `stream_callback` juga belum pasti: ia ada di tanda tangan
+`run_conversation` (`agent/conversation_loop.py:1951`) tapi pemanggilannya tidak
+saya temukan di berkas itu, jadi REPL punya jalur cadangan `TypeError`.

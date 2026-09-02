@@ -27,3 +27,29 @@ _pyu() {  # python yang punya PyYAML: venv proyek kalau ada, kalau tidak python3
   if [[ -x "$STATE_DIR/venv/bin/python" ]]; then echo "$STATE_DIR/venv/bin/python"
   else echo python3; fi
 }
+
+# Interpreter Python milik Hermes.
+#
+# Kenapa tidak python3 sistem: jembatan harus bisa `import run_agent`, dan modul
+# itu hanya ada di lingkungan Hermes. Kita tidak bisa menebak lokasi pemasangannya
+# (installer upstream tidak bisa dibaca dari sandbox), jadi kita BACA shebang
+# binari `hermes` -- console_script pip selalu menunjuk persis ke interpreter
+# lingkungannya sendiri.
+#
+# Gagal diam-diam di sini berarti REPL jalan dengan python3 sistem lalu mati
+# dengan ImportError yang membingungkan. Jadi kegagalannya dibuat jelas.
+python_hermes() {
+  local _bin _py _line _cand
+  for _bin in hermes hermes-agent; do
+    command -v "$_bin" >/dev/null 2>&1 || continue
+    _bin="$(command -v "$_bin")"
+    _line="$(head -1 "$_bin" 2>/dev/null || true)"
+    [[ "$_line" == '#!'* ]] || continue
+    _py="${_line#\#!}"; _py="${_py##* }"          # ambil token terakhir
+    [[ "$_py" == *python* ]] || continue
+    if [[ "$_py" == /* && -x "$_py" ]]; then echo "$_py"; return 0; fi
+    _cand="$(command -v "$_py" 2>/dev/null || true)"
+    [[ -n "$_cand" ]] && { echo "$_cand"; return 0; }
+  done
+  return 1
+}

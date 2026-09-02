@@ -5,11 +5,13 @@
 # Installer memasang; perintah ini menjalankan. Semua yang dulu tersebar di
 # belasan skrip ada di sini sebagai subperintah.
 #
+#   agentdrop              MASUK SESI INTERAKTIF (cara utama memakai sistem)
+#   agentdrop chat         sama saja — tulis task, Enter, langsung dikerjakan
 #   agentdrop start        nyalakan gateway Telegram (agent berjalan di atasnya)
 #   agentdrop stop         hentikan gateway
 #   agentdrop browser      nyalakan Chrome for Testing + noVNC
 #   agentdrop browser-stop hentikan browser
-#   agentdrop run <profil> "<tugas>"   jalankan SATU agent untuk debug
+#   agentdrop run <profil> "<tugas>"   sekali jalan, untuk skrip & debug
 #   agentdrop run --list   daftar profil yang bisa dijalankan
 #   agentdrop status       periksa kesiapan sistem
 #   agentdrop extensions   tautan Chrome Web Store  [--sideload untuk unduh CRX]
@@ -22,6 +24,11 @@
 # CATATAN (K9): gateway dan agent BUKAN dua hal. Agent berjalan di atas
 # gateway, jadi `start` menyalakan keduanya sekaligus. Memisahkannya hanya
 # membuat orang bingung mana yang harus dijalankan.
+#
+# CATATAN (Arc 35): `agentdrop` tanpa argumen masuk ke sesi interaktif. Ia tidak
+# memanggil binari `hermes`; ia menjalankan interpreter Python Hermes atas
+# python/agentdrop_repl.py, yang mengimpor mesinnya (run_agent.AIAgent)
+# langsung. Peta jalurnya ada di docs/struktur-hermes-internals.md.
 # ============================================================================
 set -uo pipefail
 
@@ -42,7 +49,7 @@ STATE_DIR="$HOME/.agentdrop"
 PID_DIR="$STATE_DIR/run"
 mkdir -p "$PID_DIR"
 
-usage() { sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,31p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 # ---------------------------------------------------------------------------
 # start / stop — gateway. Agent berjalan di atasnya, jadi satu perintah.
@@ -328,6 +335,25 @@ cmd_model() {
   _ok "selesai — semua worker sekarang memakai $(_env_get AGENTDROP_MODEL)"
 }
 
+# ---------------------------------------------------------------------------
+# chat — REPL AgentDrop. Inilah cara utama memakai sistem ini.
+#
+# Tidak memanggil `hermes` sebagai proses anak. Ia menjalankan interpreter
+# Python milik Hermes atas python/agentdrop_repl.py, yang mengimpor mesin Hermes
+# (run_agent.AIAgent) secara langsung. Lihat docs/struktur-hermes-internals.md.
+# ---------------------------------------------------------------------------
+cmd_chat() {
+  local py worker=""
+  py="$(python_hermes)" || _die \
+    "interpreter Hermes tidak ditemukan — jalankan ./install.sh"
+  if [[ "${1:-}" == --* ]]; then shift; fi
+  if [[ -n "${1:-}" && "${1:-}" != /* ]]; then worker="$1"; shift; fi
+  local arg=(--home "$HERMES_HOME_DIR")
+  [[ -n "$worker" ]] && arg+=(--worker "$worker")
+  [[ $# -gt 0 ]] && arg+=(--task "$*")
+  exec "$py" "$ROOT/python/agentdrop_repl.py" "${arg[@]}"
+}
+
 cmd_status()   { verify_run "${1:-}"; }
 cmd_audit()    { "$(_pyu)" "$ROOT/tools/audit.py" "$@"; }
 cmd_cron()     { bash "$ROOT/scripts/install-cron.sh" "$@"; }
@@ -352,7 +378,9 @@ main() {
     cron)         cmd_cron "$@" ;;
     burn-in)      cmd_burnin "$@" ;;
     test-workers) cmd_testworkers "$@" ;;
-    -h|--help|"") usage ;;
+    chat)         cmd_chat "$@" ;;
+    "")           cmd_chat ;;
+    -h|--help)    usage ;;
     *) _err "perintah tidak dikenal: $sub"; echo; usage; exit 1 ;;
   esac
 }

@@ -2233,6 +2233,144 @@ def check_model_vars_and_delegation(configs: list[Path]) -> None:
                 f"operator dan berlaku di semua profil termasuk default.")
 
 
+def check_jembatan_hermes() -> None:
+    """[42] Jembatan AgentDrop -> mesin Hermes tidak boleh bergeser.
+
+    Arc 35 membuat AgentDrop memanggil mesin Hermes (run_agent.AIAgent) secara
+    langsung, bukan lewat binari `hermes`. Tiga invariant di sini berasal dari
+    pembacaan kode Hermes, bukan dari selera:
+
+    1. HERMES_HOME disetel SEBELUM `import run_agent`. `resolve_profile_env()`
+       di hermes_cli/profiles.py:2571 dipanggil "before any hermes modules are
+       imported". Membalik urutan ini menghasilkan profil yang SALAH tanpa pesan
+       error apa pun.
+    2. `toolsets:` dari config profil diteruskan sebagai `enabled_toolsets`. Di
+       run_agent.py:10012 parameter itu datang dari argumen CLI, bukan config --
+       kalau tidak diteruskan, worker mendapat SELURUH tool (cacat yang Arc 32
+       perbaiki, akan kembali diam-diam).
+    3. Keberhasilan dinilai dari hasil `run_conversation()`, bukan exit code
+       (Arc 34 Gap 1: `hermes chat` keluar 0 walau task gagal total).
+    """
+    global checks
+
+    jembatan = REPO / "python" / "hermes_bridge.py"
+    repl = REPO / "python" / "agentdrop_repl.py"
+    cli = REPO / "agentdrop"
+    common = REPO / "lib" / "00-common.sh"
+
+    for f in (jembatan, repl):
+        checks += 1
+        if not f.is_file():
+            err(f"{f.relative_to(REPO)} tidak ada. Arc 35 bergantung padanya.")
+            return
+
+    isi = jembatan.read_text()
+    baris = isi.splitlines()
+
+    def badan_fungsi(nama: str) -> str:
+        """Isi satu fungsi, dari `def nama(` sampai def/kelas berikutnya.
+
+        Pemeriksaan substring atas SELURUH berkas tidak berguna di sini: kata
+        `enabled_toolsets` dan `api_calls` juga muncul di docstring, jadi
+        menghapus pemakaiannya di kode tetap lolos. Dua injeksi pertama saya
+        lolos persis karena ini.
+        """
+        pola = re.compile(rf"^def {re.escape(nama)}\(", re.M)
+        m = pola.search(isi)
+        if not m:
+            return ""
+        sisa = isi[m.end():]
+        akhir = re.search(r"^(?:def |class )", sisa, re.M)
+        return sisa[:akhir.start()] if akhir else sisa
+
+    # --- invariant 1: urutan env sebelum impor -----------------------------
+    checks += 1
+    idx_env = next((i for i, b in enumerate(baris)
+                    if 'os.environ["HERMES_HOME"]' in b), None)
+    idx_imp = next((i for i, b in enumerate(baris)
+                    if "from run_agent import" in b), None)
+    if idx_env is None or idx_imp is None:
+        err("python/hermes_bridge.py: penyetelan HERMES_HOME atau impor "
+            "run_agent tidak ditemukan -- jembatan sudah berubah bentuk.")
+    elif idx_env > idx_imp:
+        err("python/hermes_bridge.py: run_agent diimpor SEBELUM HERMES_HOME "
+            f"disetel (baris {idx_imp + 1} < {idx_env + 1}). Hermes mengunci "
+            "nilai pada saat impor, jadi ini menghasilkan profil yang salah "
+            "tanpa pesan error.")
+
+    # impor run_agent tidak boleh ditarik ke tingkat modul
+    checks += 1
+    if re.search(r"^(from run_agent import|import run_agent)", isi, re.M):
+        err("python/hermes_bridge.py: `run_agent` diimpor di tingkat modul. "
+            "Impor harus di dalam bangun_agent() supaya HERMES_HOME sudah "
+            "disetel lebih dulu.")
+
+    # --- invariant 2: toolset diteruskan ----------------------------------
+    badan_bangun = badan_fungsi("bangun_agent")
+    checks += 1
+    if not badan_bangun:
+        err("python/hermes_bridge.py: fungsi bangun_agent() tidak ada.")
+    else:
+        if '"enabled_toolsets":' not in badan_bangun:
+            err("python/hermes_bridge.py: bangun_agent() tidak meneruskan "
+                "enabled_toolsets ke AIAgent. Worker akan mendapat SELURUH tool "
+                "Hermes -- persis cacat yang Arc 32 perbaiki.")
+        checks += 1
+        if '"disabled_toolsets":' not in badan_bangun:
+            err("python/hermes_bridge.py: bangun_agent() tidak meneruskan "
+                "disabled_toolsets. terminal & code_execution hidup kembali.")
+    checks += 1
+    if 'cfg.get("toolsets")' not in isi:
+        err("python/hermes_bridge.py tidak membaca kunci `toolsets` dari "
+            "config profil. Tanpa itu enabled_toolsets selalu kosong.")
+
+    # --- invariant 3: penilaian dari hasil, bukan exit code ---------------
+    badan_nilai = badan_fungsi("nilai_hasil")
+    checks += 1
+    if not badan_nilai:
+        err("python/hermes_bridge.py: fungsi nilai_hasil() tidak ada.")
+    elif not re.search(r"api_calls\s*==\s*0", badan_nilai):
+        err("python/hermes_bridge.py: nilai_hasil() tidak memeriksa api_calls "
+            "== 0. Task yang gagal total akan dilaporkan berhasil -- persis "
+            "Arc 34 Gap 1 (`hermes chat` keluar 0 walau nol tool terpanggil).")
+
+    # --- REPL: perintah / ditangani lokal, tidak dikirim ke LLM -----------
+    checks += 1
+    isi_repl = repl.read_text()
+    if 'startswith("/")' not in isi_repl:
+        err("python/agentdrop_repl.py tidak menyaring perintah `/` sebelum "
+            "dikirim ke agent. Hermes tidak meneruskan `/` yang tidak dikenal "
+            "ke LLM, jadi perintah akan hilang tanpa jejak.")
+    checks += 1
+    if "set_hermes_home_override" not in isi_repl:
+        err("python/agentdrop_repl.py tidak memakai set_hermes_home_override. "
+            "Ganti worker di tengah sesi akan tetap memakai home worker lama "
+            "(lihat agent/system_prompt.py:370).")
+
+    # --- CLI: tanpa argumen masuk REPL ------------------------------------
+    checks += 1
+    isi_cli = cli.read_text()
+    if '    "")           cmd_chat ;;' not in isi_cli:
+        err("agentdrop: perintah tanpa argumen tidak masuk REPL. Operator "
+            "harus kembali menulis `agentdrop run <worker> <task>`.")
+    checks += 1
+    if "python_hermes" not in common.read_text():
+        err("lib/00-common.sh tidak punya python_hermes(). Jembatan harus "
+            "dijalankan oleh interpreter Hermes, bukan python3 sistem.")
+    checks += 1
+    if "python/agentdrop_repl.py" not in isi_cli:
+        err("agentdrop tidak menjalankan python/agentdrop_repl.py.")
+
+    # --- batas yang tidak boleh dilanggar ---------------------------------
+    checks += 1
+    for f in (jembatan, repl):
+        for terlarang in ("computer_use", "hermes-cli"):
+            if terlarang in f.read_text():
+                err(f"{f.relative_to(REPO)} menyebut `{terlarang}`. Keduanya "
+                    f"dilarang di repo ini (Arc 31 & Arc 32).")
+
+
+
 def main() -> int:
     print("=" * 62)
     print("  AgentDrop — validator statis")
@@ -2334,6 +2472,9 @@ def main() -> int:
 
     print("\n[21] Rujukan knowledge")
     check_knowledge_references()
+
+    print("\n[42] Jembatan AgentDrop -> mesin Hermes")
+    check_jembatan_hermes()
 
     print("\n" + "=" * 62)
     check_model_vars_and_delegation(configs)
