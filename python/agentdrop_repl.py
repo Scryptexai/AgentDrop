@@ -135,6 +135,7 @@ BANTUAN = f"""{TEBAL}Perintah{RESET}
   /worker <nama>   pindah worker
   /daftar          daftar worker yang ada
   /info            toolset & config worker aktif
+  /latih <materi>  latih worker INI; hasilnya jadi skill miliknya sendiri
   /baru            mulai sesi bersih (buang riwayat)
   /bantuan         tampilkan ini
   /keluar          keluar  (Ctrl-D juga)
@@ -257,6 +258,51 @@ def jalankan(home: Path, worker: str, task_awal: str | None = None) -> int:
                 perintah_daftar(home, sesi.worker)
             elif nama == "info":
                 perintah_info(sesi)
+            elif nama == "latih":
+                # Pelatihan ditulis ke skill dir worker AKTIF. Rantainya:
+                # set_hermes_home_override (dipasang Sesi._pasang_home) ->
+                # get_hermes_home() override menang (hermes_constants.py:114) ->
+                # _skills_dir() (tools/skill_manager_tool.py:180) -> skill_manage.
+                if not arg:
+                    _cetak(MERAH, "  pakai: /latih <materi yang diajarkan>")
+                    _cetak(REDUP, '  contoh: /latih cara menulis thread crypto '
+                                  'yang tidak terdengar seperti bot')
+                    continue
+                direktori = hb.direktori_profil(home, sesi.worker)
+                sebelum = hb.daftar_skill(direktori)
+                try:
+                    prompt = hb.prompt_latih(arg)
+                except RuntimeError as e:
+                    _cetak(MERAH, f"  {e}")
+                    continue
+                _cetak(REDUP, f"  melatih {sesi.worker} …")
+                try:
+                    hasil = sesi.agent.run_conversation(prompt)
+                except KeyboardInterrupt:
+                    print()
+                    _cetak(KUNING, "  pelatihan dibatalkan")
+                    continue
+                sukses, alasan = hb.nilai_hasil(hasil)
+                sesudah = hb.daftar_skill(direktori)
+                baru = sorted(sesudah - sebelum)
+                _garis()
+                print(f"  worker : {sesi.worker}")
+                print(f"  hasil  : {alasan}")
+                if baru:
+                    _cetak(HIJAU, f"  skill baru: {', '.join(baru)}")
+                    print(f"  lokasi : {direktori / 'skills'}")
+                elif sukses:
+                    # Jawaban panjang yang meyakinkan TAPI tidak ada skill baru
+                    # adalah kegagalan, bukan keberhasilan. Tanpa pemeriksaan
+                    # ini operator mengira pelatihan berhasil.
+                    _cetak(KUNING, "  tidak ada skill baru yang tersimpan")
+                    _cetak(REDUP, "  agent mungkin hanya menjawab tanpa menulis "
+                                  "skill. Coba /latih lagi dengan materi lebih "
+                                  "spesifik, atau periksa `agentdrop audit errors`.")
+                else:
+                    _cetak(MERAH, "  pelatihan gagal")
+                _garis()
+                print()
             elif nama == "baru":
                 try:
                     sesi.muat(sesi.worker)

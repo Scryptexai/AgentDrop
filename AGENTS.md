@@ -2988,3 +2988,149 @@ harus dilihat.
 Perilaku `stream_callback` juga belum pasti: ia ada di tanda tangan
 `run_conversation` (`agent/conversation_loop.py:1951`) tapi pemanggilannya tidak
 saya temukan di berkas itu, jadi REPL punya jalur cadangan `TypeError`.
+
+## Arc 36 — Melatih tiap worker satu per satu
+
+Operator memilih opsi 2: tetap di atas Hermes gateway, tapi **tiap worker bisa
+dilatih sendiri** supaya punya sifat yang sama dengan operator, tanpa ikatan
+delegasi. Alasannya tepat: *"worker banyak menolak dan kurang knowledge karna
+tidak ada trainer yg di jalan kan."*
+
+### Dua premis operator diuji, satu salah satu benar
+
+**SALAH — "tidak bisa menambah `/` fungsi di hermes."**
+`agent/skill_commands.py:427`:
+
+```
+def scan_skill_commands() -> Dict[str, Dict[str, Any]]:
+    """Scan ~/.hermes/skills/ and return a mapping of /command -> skill info."""
+```
+
+Setiap skill **otomatis** jadi perintah `/`, dan masuk ke menu `/` native
+Telegram lewat `set_my_commands()` (`plugins/platforms/telegram/adapter.py:4208`).
+Batasnya 60 slot (komentar `:7318`), bisa diatur lewat
+`platforms.telegram.extra.command_menu`. Kita punya 8 worker — jauh di bawah
+batas. **UI pemilih agent sudah ada tanpa fork apa pun.**
+
+**BENAR SEPARUH — "caranya sama dengan pemilihan provider/model."**
+Model picker memang tombol inline: `adapter.py:7415` merutekan prefiks `mp:`,
+`mpg:`, `mpv:`, `mm:`, `mc:`, `mb`, `mx`, `mg:` ke
+`_handle_model_picker_callback`. Tapi dispatcher itu hanya mengenal **lima
+prefiks** (`mp:*`, `cp:`, `gt:`, `ea:`, `sc:`) dan **tidak punya plugin hook**.
+Menambah prefiks tombol baru berarti mem-patch adapter — itu fork.
+
+### Trainer yang dicari ternyata SUDAH ADA di Hermes
+
+Ini temuan terpenting arc ini. Hermes punya tiga lapis, semuanya sudah aktif di
+config kita:
+
+1. **`/learn`** (`hermes_cli/commands.py:342`) — *"Learn a reusable skill from
+   anything you describe (dirs, URLs, this chat, notes)"*. `agent/learn_prompt.py`
+   menyusun prompt yang menyuruh agent menulis skill lewat `skill_manage`.
+2. **Background review** (`agent/background_review.py:1`) — *"fork the agent to
+   evaluate the turn… 'should any skill/memory be saved or updated?'. **Writes go
+   straight to the memory + skill stores.**"* Default **NYALA**
+   (`:266`, `default=True`), config kita tidak mematikannya.
+3. **`/review`** (`agent/review_engine.py`) — ulasan eksplisit atas hasil kerja.
+
+Dan skill itu **per-profil**, jadi tiap worker menumpuk pelatihannya sendiri.
+
+### ⚠️ Jebakan yang harus diketahui: `SKILLS_DIR` dihitung saat impor
+
+`tools/skill_manager_tool.py:175-177`:
+
+```python
+HERMES_HOME = get_hermes_home()
+SKILLS_DIR = HERMES_HOME / "skills"
+_SKILLS_DIR_AT_IMPORT = SKILLS_DIR
+```
+
+Ini persis kelas bug Arc 35. **Tapi Hermes sudah menanganinya** —
+`_skills_dir()` (`:180-192`) dengan docstring yang menyebut kasus kita:
+*"Some long-lived runtimes import this module before the active profile has set
+HERMES_HOME."*
+
+```python
+configured = Path(SKILLS_DIR)
+if configured != _SKILLS_DIR_AT_IMPORT:
+    return configured                      # ada yang mem-patch -> hormati
+return get_hermes_home() / "skills"        # kalau tidak, resolusi LANGSUNG
+```
+
+Rantai lengkapnya diverifikasi mata rantai demi mata rantai:
+
+```
+set_hermes_home_override(profil)      hermes_constants.py:30
+  → get_hermes_home() override menang  hermes_constants.py:114
+    → _skills_dir() = home/"skills"    skill_manager_tool.py:180-192
+      → skill_manage menulis ke worker ITU
+```
+
+Diperiksa juga: dari 5 kemunculan `SKILLS_DIR` mentah, **semuanya aman** —
+`:176`/`:177` definisi, `:186`/`:214` komentar, `:189` cek-patch di dalam
+`_skills_dir()` sendiri. Kesembilan pemakaian nyata lewat resolver call-time.
+
+### Yang dibangun
+
+| Tempat | Isi |
+|---|---|
+| `python/hermes_bridge.py` | `prompt_latih()` — memanggil `build_learn_prompt()` Hermes, bukan prompt tandingan · `daftar_skill()` |
+| `python/agentdrop_repl.py` | `/latih <materi>` dengan verifikasi sebelum/sesudah |
+| `tools/validate_config.py` | aturan `[43]` |
+
+**Prompt pelatihan tidak ditulis sendiri.** `prompt_latih()` memanggil
+`build_learn_prompt()` (`agent/learn_prompt.py`) — satu-satunya penyusun yang
+dipakai CLI, gateway, dan dashboard. Kalau fungsi itu tidak ada, ia **gagal
+dengan pesan jelas**, bukan merangkai prompt karangan yang perilakunya menyimpang.
+
+**Pelatihan yang tidak menulis skill dilaporkan sebagai kegagalan.** Agent bisa
+menjawab panjang dan meyakinkan tanpa memanggil `skill_manage`. Tanpa
+perbandingan before/after, operator mengira pelatihan berhasil — persis kelas
+cacat Arc 34 Gap 1 dalam bentuk lain.
+
+Empat jalur diuji: skill tersimpan ✓ (dan lokasinya dilaporkan) · tidak ada skill
+baru ⚠ · `build_learn_prompt` hilang ✗ dengan pesan jelas · `/latih` tanpa
+materi → petunjuk pemakaian.
+
+### Bottleneck browser — diukur ulang untuk use case ini
+
+Nomor baris bergeser sejak Arc 31, asimetrinya tetap:
+
+| Aksi | Turn LLM | Bukti |
+|---|---|---|
+| `browser_navigate` | **1** | `browser_tool.py:4394` — *"Auto-take a compact snapshot so the model can act immediately"* |
+| `browser_click` | **2** | `:4524` mengembalikan hanya `{"clicked": ref}` |
+
+Tapi biaya itu hanya terasa saat **eksekusi klik-berat** (quest, daftar,
+check-in). **Pelatihan bukan klik-berat** — membaca, menulis knowledge,
+memperbaiki skill. Jadi untuk fase training, browser bukan bottleneck. Yang
+jauh lebih mungkin menggagalkan sesi training adalah endpoint yang mengembalikan
+HTTP 402 sehingga worker berhenti sebelum menyentuh satu tool pun.
+
+### Cacat saya sendiri di arc ini
+
+**Dua aturan validator `[43]` lolos saat diinjeksi — kelas cacat Arc 35 berulang
+persis.** `build_learn_prompt` saya periksa sebagai substring, padahal katanya
+tetap ada di baris `import` dan di pesan error; `"sebelum"`/`"sesudah"` saya
+periksa sebagai substring, padahal keduanya nama variabel yang tetap ada walau
+pemanggilannya diganti `set()` kosong. Diperbaiki menjadi pemeriksaan **call
+site** (`build_learn_prompt\(` dan hitung `daftar_skill\(` di dalam cabang
+`/latih`), lalu kedua injeksi diulang dan menyala.
+
+Pelajarannya sudah tercatat dua kali dan tetap saya langgar: **pemeriksaan
+substring atas seluruh berkas bukan pemeriksaan perilaku.**
+
+### Verifikasi
+
+`tools/validate_config.py` → **417 checks, SEMUA LOLOS** (naik dari 410).
+Aturan `[43]` diuji **empat injeksi**, semuanya menyala. `bash -n` 12 skrip
+bersih. `pyflakes` bersih. `/latih` diuji end-to-end: skill mendarat di
+`profiles/pekerja-x/skills`, yaitu direktori worker itu sendiri.
+
+**Tetap tidak terverifikasi:** semua ini diuji dengan `run_agent` dan
+`agent.learn_prompt` **tiruan**. Integrasi dengan Hermes sungguhan belum — sama
+seperti Arc 35.
+
+PR dibuka atas permintaan operator: **https://github.com/Scryptexai/AgentDrop/pull/1**
+(mengarah ke `main`). Arahan lama adalah "push saja tanpa PR", jadi PR ini bisa
+ditutup kalau permintaannya ikut terpencet.

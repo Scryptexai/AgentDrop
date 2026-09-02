@@ -192,6 +192,46 @@ def bangun_agent(home: Path, nama_profil: str, *, platform: str = "cli",
 
 
 # ---------------------------------------------------------------------------
+# Pelatihan worker
+# ---------------------------------------------------------------------------
+
+
+def prompt_latih(materi: str) -> str:
+    """Susun prompt pelatihan memakai mesin /learn milik Hermes sendiri.
+
+    `agent/learn_prompt.py` adalah satu-satunya penyusun prompt /learn, dipakai
+    bersama oleh CLI, gateway, dan dashboard. Kita memanggil fungsi yang sama
+    supaya hasil pelatihan identik dengan `hermes /learn` -- bukan menulis
+    prompt tandingan yang perilakunya menyimpang.
+
+    Kalau versi Hermes terpasang tidak punya fungsi ini, kita tidak mengarang
+    prompt sendiri secara diam-diam: pesannya jelas, karena prompt pelatihan
+    yang salah lebih buruk daripada tidak ada pelatihan.
+    """
+    try:
+        from agent.learn_prompt import build_learn_prompt  # type: ignore
+    except Exception as e:
+        raise RuntimeError(
+            f"build_learn_prompt tidak tersedia di Hermes terpasang "
+            f"({type(e).__name__}: {e}). Perbarui Hermes atau latih lewat "
+            f"`hermes /learn` langsung."
+        )
+    return build_learn_prompt(materi)
+
+
+def daftar_skill(direktori: "Path") -> set:
+    """Nama skill yang ada di satu direktori, untuk membandingkan sebelum/sesudah.
+
+    Pelatihan yang tidak menghasilkan apa pun harus terlihat sebagai kegagalan,
+    bukan sebagai jawaban panjang yang terdengar meyakinkan.
+    """
+    akar = Path(direktori) / "skills"
+    if not akar.is_dir():
+        return set()
+    return {p.name for p in akar.iterdir() if p.is_dir() and (p / "SKILL.md").is_file()}
+
+
+# ---------------------------------------------------------------------------
 # Penilaian hasil
 # ---------------------------------------------------------------------------
 

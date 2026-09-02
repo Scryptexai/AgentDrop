@@ -2371,6 +2371,88 @@ def check_jembatan_hermes() -> None:
 
 
 
+def check_pelatihan_worker() -> None:
+    """[43] Jalur pelatihan worker tidak boleh diam-diam menyimpang.
+
+    Arc 36 membuat tiap worker bisa dilatih satu per satu. Dua hal yang harus
+    dijaga, keduanya jenis kegagalan yang TIDAK memberi pesan error:
+
+    1. Prompt pelatihan harus datang dari `build_learn_prompt()` milik Hermes
+       (agent/learn_prompt.py) -- satu-satunya penyusun yang dipakai CLI,
+       gateway, dan dashboard. Prompt tandingan akan menyimpang perilakunya
+       tanpa terlihat.
+    2. Pelatihan yang tidak menulis skill harus dilaporkan sebagai kegagalan.
+       Agent bisa menjawab panjang dan meyakinkan tanpa memanggil skill_manage;
+       tanpa pemeriksaan before/after, operator mengira pelatihan berhasil.
+    """
+    global checks
+
+    jembatan = REPO / "python" / "hermes_bridge.py"
+    repl = REPO / "python" / "agentdrop_repl.py"
+
+    def badan(nama: str, teks: str) -> str:
+        m = re.search(rf"^def {re.escape(nama)}\(", teks, re.M)
+        if not m:
+            return ""
+        sisa = teks[m.end():]
+        akhir = re.search(r"^(?:def |class )", sisa, re.M)
+        return sisa[:akhir.start()] if akhir else sisa
+
+    isi_j = jembatan.read_text() if jembatan.is_file() else ""
+    isi_r = repl.read_text() if repl.is_file() else ""
+
+    badan_latih = badan("prompt_latih", isi_j)
+    checks += 1
+    if not badan_latih:
+        err("python/hermes_bridge.py: fungsi prompt_latih() tidak ada.")
+    else:
+        # HARUS dipanggil. Pemeriksaan substring lolos walau pemanggilannya
+        # dihapus, karena katanya masih ada di baris `import` dan di pesan
+        # error -- injeksi pertama saya lolos persis karena ini.
+        if not re.search(r"[^.\w]build_learn_prompt\(", badan_latih):
+            err("python/hermes_bridge.py: prompt_latih() tidak MEMANGGIL "
+                "build_learn_prompt() milik Hermes (hanya menyebutnya). Prompt "
+                "pelatihan tandingan akan menyimpang dari perilaku /learn.")
+        checks += 1
+        # tidak boleh ada prompt latihan karangan sendiri sebagai fallback
+        if re.search(r'return\s+["\'].*\[/learn\]', badan_latih, re.S):
+            err("python/hermes_bridge.py: prompt_latih() merangkai prompt "
+                "[/learn] sendiri. Kalau build_learn_prompt tidak ada, lebih "
+                "baik gagal dengan jelas daripada melatih dengan prompt salah.")
+
+    checks += 1
+    if "daftar_skill" not in isi_j:
+        err("python/hermes_bridge.py: daftar_skill() tidak ada. Tanpa itu "
+            "pelatihan tidak bisa diverifikasi sebelum/sesudah.")
+
+    checks += 1
+    if 'elif nama == "latih":' not in isi_r:
+        err("python/agentdrop_repl.py: perintah /latih tidak ada.")
+    checks += 1
+    # Ambil HANYA cabang /latih, lalu hitung pemanggilan daftar_skill.
+    # Memeriksa "sebelum"/"sesudah" sebagai substring tidak berguna: keduanya
+    # nama variabel yang tetap ada walau pemanggilannya diganti set() kosong.
+    m = re.search(r'elif nama == "latih":(.*?)\n            elif nama ==', isi_r, re.S)
+    cabang_latih = m.group(1) if m else ""
+    if not cabang_latih:
+        err("python/agentdrop_repl.py: cabang perintah /latih tidak ditemukan.")
+    elif len(re.findall(r"daftar_skill\(", cabang_latih)) < 2:
+        err("python/agentdrop_repl.py: /latih tidak memanggil daftar_skill() "
+            "dua kali (sebelum dan sesudah). Pelatihan yang tidak menulis apa "
+            "pun akan terlihat berhasil.")
+    checks += 1
+    if "tidak ada skill baru" not in isi_r:
+        err("python/agentdrop_repl.py: /latih tidak punya jalur untuk kasus "
+            "'agent menjawab tapi tidak menulis skill'.")
+
+    # pelatihan harus tetap di dalam worker aktif
+    checks += 1
+    if "direktori_profil(home, sesi.worker)" not in isi_r:
+        err("python/agentdrop_repl.py: /latih tidak memakai direktori worker "
+            "aktif. Pelatihan bisa mendarat di profil yang salah.")
+
+
+
 def main() -> int:
     print("=" * 62)
     print("  AgentDrop — validator statis")
@@ -2475,6 +2557,9 @@ def main() -> int:
 
     print("\n[42] Jembatan AgentDrop -> mesin Hermes")
     check_jembatan_hermes()
+
+    print("\n[43] Jalur pelatihan worker")
+    check_pelatihan_worker()
 
     print("\n" + "=" * 62)
     check_model_vars_and_delegation(configs)
