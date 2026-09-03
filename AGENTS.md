@@ -3610,3 +3610,123 @@ tanpa syarat, log dibuang ke `/dev/null`, petunjuk SSH dibuang.
 noVNC yang benar-benar bisa dipakai dari browser operator, dan Chrome for
 Testing yang benar-benar muncul di Xvfb. Ketiganya hanya bisa dipastikan di
 mesin operator.
+
+## Arc 41 — Operator ditanya, dan dependensi dipasang per jalur
+
+Operator melaporkan dua hal sekaligus, dan keduanya tepat:
+
+> "sepertinya harus telusuri lebih dalam why nya, dan set up nya kurang tepat
+> harusnya di buat opsi saat cli agentdrop browser di run opsi pakai window
+> chrome test atau novnc, keduanya punya jalur terpisah dengan depedency yg
+> berbeda, jika pilih chrome maka install display chrome nya kalau pilih novnc
+> maka install lib display nya, dan harus ada recheck ke mesin apakah lib sudah
+> terinstall atau belum jika belum maka jalan kan apt install nya jika sudah
+> skip lanjutkan set up conection nya"
+
+Dia juga melampirkan isi `~/.agentdrop/log/` yang **hanya berisi `chrome.log`**.
+Itu petunjuk terpentingnya.
+
+### Why: jalur noVNC tidak pernah dijalankan sama sekali
+
+Tidak ada `novnc.log`, `xvfb.log`, atau `x11vnc.log` — padahal Arc 40 baru saja
+membuat keempatnya. Berarti blok VNC tidak pernah tersentuh. Isi `chrome.log`
+memastikan: error GPU `SharedImageManager::ProduceSkia`, `org.freedesktop.UPower`,
+dan `google_apis/gcm` semuanya ciri Chrome yang berjalan di **layar desktop
+sungguhan**, bukan di dalam Xvfb.
+
+Penyebabnya ada di kode: `BROWSER_MODE=auto` memeriksa `browser_real_display()`,
+dan begitu layar asli ditemukan ia **memilih native diam-diam**. Mesin operator
+punya layar, jadi setiap kali `agentdrop browser` dijalankan yang naik adalah
+jalur Chrome. noVNC bukan "gagal" — ia **tidak pernah dicoba**. Laporan Arc 40
+saya ("noVNC diverifikasi") benar untuk kode yang saya uji, tapi di mesin
+operator kode itu tidak pernah dieksekusi.
+
+Dan dependensi memang tidak pernah dipasang: seluruh repo hanya berisi `_warn`
+yang menyuruh operator menjalankan `sudo apt install` sendiri.
+
+### Yang dibangun
+
+**1. Operator ditanya.** `agentdrop browser` sekarang menampilkan:
+
+```
+  PILIH MODE BROWSER
+    1) Chrome for Testing -- jendela asli di layar mesin ini
+    2) noVNC              -- dibuka lewat browser (untuk VPS / tanpa layar)
+
+  Layar asli terdeteksi (:0), jadi 1 disarankan.
+  Pilihan [1/2, Enter = 1]:
+```
+
+Saran mengikuti keadaan mesin: ada layar → 1, tidak ada → 2. `--native`,
+`--vnc`, dan `BROWSER_MODE=native|vnc` tetap ada untuk melewati prompt, dan
+tanpa terminal (skrip, cron) ia jatuh ke pilihan otomatis **dengan pesan bahwa
+ia memilih sendiri**.
+
+**2. Dependensi terpisah per jalur.** `browser_deps_chrome()` dan
+`browser_deps_vnc()`. Jalur Chrome memeriksa pustaka tampilannya; jalur noVNC
+memeriksa `Xvfb`, `x11vnc`, `websockify`, **lalu** pustaka Chrome juga — karena
+yang ditampilkan noVNC adalah Chrome yang berjalan di dalam Xvfb.
+
+**3. Periksa dulu, baru pasang.** `_pasang_binari` dan `_pasang_lib`
+mengumpulkan yang kurang; kalau tidak ada yang kurang, keduanya mencetak
+"pemasangan dilewati" dan keluar. Menjalankan `agentdrop browser` berulang kali
+tidak memasang apa pun. Yang kurang dipasang lewat `apt-get`/`dnf`/`pacman`,
+dengan `sudo` hanya kalau tidak root.
+
+**4. Selesai memasang, diperiksa ulang.** Pengelola paket yang keluar 0 tidak
+berarti hasilnya ada. Diuji: `apt-get` sukses tapi pustaka tidak muncul — fungsi
+harus gagal, bukan melapor berhasil.
+
+### Empat cacat yang saya buat sendiri di arc ini
+
+1. **`_pasang_lib` tidak memeriksa ulang sesudah memasang.** Saya menulis
+   verifikasi ulang di `_pasang_binari` lalu lupa menyalinnya ke `_pasang_lib`.
+   Baru ketahuan dari uji: `apt-get` keluar 0, pustaka tidak ada, dan fungsinya
+   mencetak ✓. Persis kelas cacat "terpasang tapi tidak usable".
+2. **Menu prompt tertangkap ke variabel.** `browser_tanya_mode` dipanggil lewat
+   `mode="$(...)"`, dan menunya ikut ke stdout — jadi seluruh menu masuk ke
+   variabel `mode` dan operator tidak melihat apa pun. Diuji: hasilnya kosong.
+   Semua tampilan dipindah ke stderr, hanya jawabannya ke stdout.
+3. **`_warn` menulis ke stdout** (`lib/00-common.sh:22`), jadi cabang "jawaban
+   tidak dikenal" mengotori nilai yang ditangkap. Diganti `printf ... >&2` di
+   fungsi itu.
+4. **Penyaring komentar merusak `${#var}` — dan itu menyebar.** Aturan `[46]`,
+   `[47]`, dan `[48]` masing-masing punya salinan `re.sub(r'(^|[^"\\])#.*$', ...)`.
+   Pola itu menganggap `#` di dalam `${#kurang[@]}` sebagai awal komentar, jadi
+   `${#kurang[@]} -eq 0 ]]; then` terpotong menjadi `${` dan ketiga aturan
+   melaporkan kegagalan palsu pada kode yang benar. Sekarang ada **satu**
+   helper `buang_komentar_shell()` dan `#` hanya dianggap komentar kalau di awal
+   baris atau didahului spasi/metakarakter shell. Tiga salinan yang bisa berbeda
+   adalah sumber bug ini.
+
+Plus satu cacat rule: pemeriksaan "ada jalur dilewati" saya lakukan dengan
+mencari **kata** "dilewati", dan kata itu juga muncul di pesan
+`_warn "ldconfig tidak ada — pemeriksaan pustaka dilewati"`. Injeksinya lolos.
+Diganti pemeriksaan struktur: cabangnya `${#kurang[@]} -eq 0`.
+
+### Verifikasi
+
+`tools/validate_config.py` → **457 checks, SEMUA LOLOS** (dari 447). `bash -n`
+13 skrip bersih. `pyflakes` bersih.
+
+Prompt diuji lewat `script` (butuh TTY sungguhan): **9/9** jawaban benar —
+`1`, `2`, Enter dengan layar, Enter tanpa layar, `chrome`, `novnc`, `native`,
+`vnc`, dan jawaban tidak dikenal jatuh ke saran. Nilai yang tertangkap
+diperiksa bersih, hanya `native` atau `vnc`.
+
+Dependensi diuji dengan `ldconfig` dan `apt-get` tiruan: semua pustaka ada →
+dilewati tanpa memanggil apt · dua kurang → `apt-get install -y -qq libnss3
+libgbm1` persis dua paket itu · apt "sukses" tapi pustaka tidak muncul →
+**gagal**.
+
+Ujung-ke-ujung lewat `browser_start` sungguhan: pilih **2** → keempat log
+(`chrome`, `novnc`, `x11vnc`, `xvfb`) dibuat dan noVNC menjawab · pilih **1** →
+**hanya** `chrome.log`, tidak ada berkas VNC sama sekali. Kedua jalurnya
+benar-benar terpisah.
+
+Injeksi: `[46]` 2/2 · `[47]` 6/6 · `[48]` **6/6** terdeteksi.
+
+**Tidak bisa diuji dari sandbox:** `apt-get` sungguhan di mesin operator, nama
+paket yang benar di distro beliau, dan Chrome yang benar-benar muncul di Xvfb.
+Kalau pemasangan gagal, sekarang pesannya menyebut paket mana yang tetap tidak
+ada sesudah dipasang.

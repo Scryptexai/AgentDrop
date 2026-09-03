@@ -2586,6 +2586,21 @@ def check_perintah_latih() -> None:
             "SOUL.md dan skill yang terbaca akan milik profil default.")
 
 
+def buang_komentar_shell(teks: str) -> str:
+    """Buang komentar shell, TAPI jangan rusak ${#var}.
+
+    Versi pertama memakai `(^|[^"\\])#.*$`, yang menganggap `#` di dalam
+    `${#kurang[@]}` sebagai awal komentar dan memotong sisa barisnya. Akibatnya
+    `${#kurang[@]} -eq 0 ]]; then` berubah menjadi `${` dan tiga aturan
+    validator melaporkan kegagalan palsu di kode yang benar.
+
+    `#` hanya awal komentar kalau di awal baris atau didahului spasi/tab atau
+    metakarakter shell. Di dalam `${#...}` ia didahului `{`, jadi aman.
+    """
+    return "\n".join(re.sub(r"(^|[\s;|&(])#.*$", r"\1", ln)
+                     for ln in teks.split("\n"))
+
+
 def check_variabel_yatim() -> None:
     """[46] Tidak boleh ada `$var` yang dibaca tanpa pernah di-assign.
 
@@ -2650,7 +2665,7 @@ def check_variabel_yatim() -> None:
     dibaca: dict[str, list[str]] = {}
     for nama, t in isi_berkas.items():
         # buang komentar supaya rujukan di dalam komentar tidak dihitung
-        bersih = "\n".join(re.sub(r'(^|[^"\\])#.*$', r'\1', ln) for ln in t.split("\n"))
+        bersih = buang_komentar_shell(t)
         # ${var:-x}, ${var-x}, ${var+x}, ${var:=x}, ${var:?x} aman di bawah `set -u`
         # karena punya nilai cadangan, jadi tidak boleh dilaporkan. ${var%x},
         # ${var#x}, ${var/x}, ${var^} TIDAK aman dan tetap dihitung.
@@ -2701,8 +2716,7 @@ def check_browser_latar_dan_novnc() -> None:
         return
     # Komentar dibuang: berkas ini menjelaskan cacat lama di dalam komentar,
     # dan "grep cocok di komentar" bukan fakta tentang kodenya.
-    t = "\n".join(re.sub(r'(^|[^"\\])#.*$', r'\1', ln)
-                  for ln in f.read_text().split("\n"))
+    t = buang_komentar_shell(f.read_text())
 
     checks += 1
     if "trap '' HUP" not in t:
@@ -2766,6 +2780,105 @@ def check_browser_latar_dan_novnc() -> None:
         err("tidak ada petunjuk terowongan SSH. Di VPS, 'localhost' di laptop "
             "operator bukan mesin itu -- penyebab paling umum 'URL tidak bisa "
             "dibuka' walau noVNC-nya sehat.")
+
+
+def check_pilih_mode_dan_dependensi() -> None:
+    """[48] `agentdrop browser` harus menawarkan pilihan, dan dependensinya per jalur.
+
+    Gejala yang dilaporkan operator: "chrome [jalan], novnc masih gagal", dan di
+    ~/.agentdrop/log hanya ada chrome.log. Penyebabnya: BROWSER_MODE=auto
+    memilih DIAM-DIAM -- begitu ada layar, jalur noVNC tidak pernah dijalankan
+    sama sekali, jadi tidak ada novnc.log untuk diperiksa.
+
+    Semua pemeriksaan di sini melihat SISI PEMANGGIL dan bentuk strukturnya,
+    bukan kehadiran sebuah kata. Pemeriksaan substring pernah lolos karena kata
+    "dilewati" juga muncul di pesan _warn yang lain.
+    """
+    global checks
+
+    f = REPO / "lib" / "40-browser.sh"
+    checks += 1
+    if not f.is_file():
+        err("lib/40-browser.sh tidak ada.")
+        return
+    t = buang_komentar_shell(f.read_text())
+
+    def badan(nama: str) -> str:
+        m = re.search(re.escape(nama) + r'\(\)[^\n]*\n(.*?)\n\}', t, re.S)
+        return m.group(1) if m else ""
+
+    def dipanggil(nama: str) -> bool:
+        """Ada sisi pemanggil, bukan cuma definisi."""
+        for ln in t.split("\n"):
+            s = ln.strip()
+            if s.startswith(nama + "()"):
+                continue
+            if re.search(re.escape(nama) + r'\b', s):
+                return True
+        return False
+
+    checks += 1
+    if not dipanggil("browser_tanya_mode"):
+        err("browser_tanya_mode tidak pernah DIPANGGIL. Mode browser diputuskan "
+            "diam-diam, jadi operator tidak pernah tahu jalur noVNC tidak "
+            "dijalankan -- persis gejala 'noVNC belum di-fix'.")
+
+    for fn in ("browser_deps_chrome", "browser_deps_vnc"):
+        checks += 1
+        if not dipanggil(fn):
+            err(f"{fn} tidak pernah dipanggil. Dependensi jalur itu tidak akan "
+                f"pernah diperiksa.")
+
+    checks += 1
+    bb = badan("browser_tanya_mode")
+    if not bb:
+        err("browser_tanya_mode tidak ditemukan sebagai fungsi.")
+    else:
+        checks += 0
+        if "} >&2" not in bb:
+            err("menu browser_tanya_mode tidak diarahkan ke stderr. Fungsi ini "
+                "dipanggil lewat $(...), jadi menu yang ke stdout tertangkap ke "
+                "variabel mode dan operator tidak melihat apa pun.")
+        if re.search(r'^\s*_warn\b', bb, re.M):
+            err("browser_tanya_mode memakai _warn, yang menulis ke STDOUT "
+                "(lib/00-common.sh:22) dan ikut tertangkap ke variabel mode.")
+
+    # Periksa dulu baru pasang: ada cabang "tidak ada yang kurang" yang keluar 0.
+    for fn in ("_pasang_binari", "_pasang_lib"):
+        checks += 1
+        b = badan(fn)
+        if not b:
+            err(f"{fn} tidak ditemukan sebagai fungsi.")
+        elif "${#kurang[@]} -eq 0" not in b:
+            err(f"{fn} tidak punya cabang 'tidak ada yang kurang'. Tanpa itu "
+                f"menjalankan ulang agentdrop browser akan memasang ulang.")
+
+    # Verifikasi ulang sesudah memasang -- di KEDUA fungsi.
+    for fn in ("_pasang_binari", "_pasang_lib"):
+        checks += 1
+        b = badan(fn)
+        if b and not re.search(r'for \w+ in "\$\{kurang\[@\]\}"', b):
+            err(f"{fn} tidak memeriksa ulang sesudah memasang. Pengelola paket "
+                f"yang keluar 0 tidak berarti hasilnya ada -- diuji: apt-get "
+                f"sukses, pustaka tidak muncul, fungsi tetap melapor berhasil.")
+
+    # Kegagalan dependensi tidak boleh diabaikan di jalur noVNC.
+    checks += 1
+    bv = badan("browser_deps_vnc")
+    if bv:
+        baris = bv.split("\n")
+        for k, ln in enumerate(baris):
+            if '_pasang_lib "chrome"' in ln:
+                # kumpulkan seluruh perintah logis (baris berlanjut dengan \)
+                blok, j = ln, k
+                while blok.rstrip().endswith("\\") and j + 1 < len(baris):
+                    j += 1
+                    blok += "\n" + baris[j]
+                if "||" not in blok:
+                    err("browser_deps_vnc memanggil _pasang_lib tanpa memeriksa "
+                        "nilai kembalinya. Kegagalannya tercetak lalu diabaikan, "
+                        "dan noVNC akan menampilkan Chrome yang mati.")
+                break
 
 
 def main() -> int:
@@ -2887,6 +3000,9 @@ def main() -> int:
 
     print("\n[47] Browser di latar belakang dan noVNC terverifikasi")
     check_browser_latar_dan_novnc()
+
+    print("\n[48] Pilihan mode browser dan dependensi per jalur")
+    check_pilih_mode_dan_dependensi()
 
     print("\n" + "=" * 62)
     check_model_vars_and_delegation(configs)

@@ -243,6 +243,207 @@ novnc_petunjuk_url() {
   fi
 }
 
+# ---------------------------------------------------------------------------
+# DEPENDENSI PER JALUR.
+#
+# Dua jalur ini butuh paket yang BERBEDA, jadi pemeriksaannya juga harus
+# terpisah. Kesalahan lama: satu daftar dependensi untuk keduanya, dipasang
+# (atau tidak dipasang) tanpa memandang jalur mana yang dipilih operator.
+#
+# Aturan di sini: PERIKSA DULU, baru pasang. Yang sudah ada dilewati, supaya
+# `agentdrop browser` yang dijalankan ulang tidak memasang apa pun.
+# ---------------------------------------------------------------------------
+
+_paket_manager() {
+  if command -v apt-get >/dev/null 2>&1; then echo apt
+  elif command -v dnf >/dev/null 2>&1; then echo dnf
+  elif command -v pacman >/dev/null 2>&1; then echo pacman
+  else echo ""
+  fi
+}
+
+# Prefix untuk memasang sebagai root. Kosong kalau sudah root.
+_prefix_root() {
+  [[ "$(id -u)" -eq 0 ]] && { echo ""; return 0; }
+  command -v sudo >/dev/null 2>&1 && { echo "sudo"; return 0; }
+  echo "TIDAKADA"
+}
+
+# Pasang binari yang belum ada. Argumen: <label> <binari=paket>...
+# Mengembalikan 0 kalau sesudahnya semua binari benar-benar ada.
+_pasang_binari() {
+  local label="$1"; shift
+  local kurang=() paket=() entri b p
+  for entri in "$@"; do
+    b="${entri%%=*}"; p="${entri#*=}"
+    command -v "$b" >/dev/null 2>&1 || { kurang+=("$b"); paket+=("$p"); }
+  done
+  if [[ ${#kurang[@]} -eq 0 ]]; then
+    _ok "$label: semua dependensi sudah terpasang — pemasangan dilewati"
+    return 0
+  fi
+  _log "$label: kurang ${kurang[*]} — memasang"
+
+  local pm pre
+  pm="$(_paket_manager)"; pre="$(_prefix_root)"
+  if [[ -z "$pm" ]]; then
+    _err "Tidak menemukan apt-get/dnf/pacman. Pasang manual: ${paket[*]}"
+    return 1
+  fi
+  if [[ "$pre" == "TIDAKADA" ]]; then
+    _err "Butuh hak root untuk memasang ${kurang[*]}, tapi sudo tidak ada."
+    _err "Jalankan sebagai root, atau pasang manual: ${paket[*]}"
+    return 1
+  fi
+
+  case "$pm" in
+    apt)
+      export DEBIAN_FRONTEND=noninteractive
+      $pre apt-get update -qq >/dev/null 2>&1 || true
+      $pre apt-get install -y -qq "${paket[@]}" || {
+        _err "apt-get gagal memasang ${paket[*]}"
+        return 1; } ;;
+    dnf)    $pre dnf install -y "${paket[@]}" || { _err "dnf gagal"; return 1; } ;;
+    pacman) $pre pacman -S --noconfirm "${paket[@]}" || { _err "pacman gagal"; return 1; } ;;
+  esac
+
+  # Dipasang bukan berarti ada. Diperiksa ulang, bukan dipercaya.
+  local masih=()
+  for b in "${kurang[@]}"; do
+    command -v "$b" >/dev/null 2>&1 || masih+=("$b")
+  done
+  if [[ ${#masih[@]} -gt 0 ]]; then
+    _err "sesudah pemasangan, masih tidak ada: ${masih[*]}"
+    _err "Nama paketnya mungkin berbeda di distro Anda. Pasang manual lalu ulangi."
+    return 1
+  fi
+  _ok "$label: ${kurang[*]} terpasang"
+  return 0
+}
+
+# Pustaka bersama tidak punya binari; diperiksa lewat ldconfig.
+_pasang_lib() {
+  local label="$1"; shift
+  command -v ldconfig >/dev/null 2>&1 || { _warn "ldconfig tidak ada — pemeriksaan pustaka dilewati"; return 0; }
+  local kurang=() paket=() entri soname p
+  for entri in "$@"; do
+    soname="${entri%%=*}"; p="${entri#*=}"
+    ldconfig -p 2>/dev/null | grep -q "$soname" || { kurang+=("$soname"); paket+=("$p"); }
+  done
+  if [[ ${#kurang[@]} -eq 0 ]]; then
+    _ok "$label: pustaka tampilan sudah lengkap — pemasangan dilewati"
+    return 0
+  fi
+  _log "$label: pustaka kurang (${#kurang[@]}) — memasang ${paket[*]}"
+  local pm pre
+  pm="$(_paket_manager)"; pre="$(_prefix_root)"
+  [[ "$pre" == "TIDAKADA" ]] && { _err "butuh root untuk memasang pustaka"; return 1; }
+  [[ -z "$pm" ]] && { _err "tidak ada pengelola paket; pasang manual: ${paket[*]}"; return 1; }
+  case "$pm" in
+    apt)
+      export DEBIAN_FRONTEND=noninteractive
+      $pre apt-get install -y -qq "${paket[@]}" >/dev/null || { _err "gagal memasang pustaka"; return 1; } ;;
+    *)  _warn "pemasangan pustaka otomatis hanya diuji di Debian/Ubuntu."
+        $pre "$pm" install -y "${paket[@]}" >/dev/null 2>&1 || {
+          _err "pasang manual: ${paket[*]}"; return 1; } ;;
+  esac
+
+  # Pengelola paket yang keluar 0 TIDAK berarti pustakanya ada: nama paket bisa
+  # salah di distro ini, atau arsitekturnya tidak cocok. Diperiksa ulang lewat
+  # ldconfig, sama seperti _pasang_binari memeriksa ulang binarinya.
+  ldconfig 2>/dev/null || true
+  local masih=() s
+  for s in "${kurang[@]}"; do
+    ldconfig -p 2>/dev/null | grep -q "$s" || masih+=("$s")
+  done
+  if [[ ${#masih[@]} -gt 0 ]]; then
+    _err "sesudah pemasangan, pustaka ini tetap tidak ada: ${masih[*]}"
+    _err "Nama paketnya mungkin berbeda di distro Anda. Pasang manual lalu ulangi."
+    return 1
+  fi
+  _ok "$label: pustaka tampilan terpasang"
+  return 0
+}
+
+# Jalur Chrome for Testing: jendela asli di layar mesin.
+browser_deps_chrome() {
+  _log "Periksa dependensi jalur CHROME FOR TESTING (jendela asli)"
+  # Pustaka yang dibutuhkan Chrome di Debian/Ubuntu. Tanpanya Chrome keluar
+  # seketika dengan "error while loading shared libraries" dan yang terlihat
+  # hanya "CDP tidak menjawab dalam 20 detik".
+  _pasang_lib "chrome" \
+    "libnss3.so=libnss3" "libnspr4.so=libnspr4" "libatk-1.0.so.0=libatk1.0-0" \
+    "libatk-bridge-2.0.so.0=libatk-bridge2.0-0" "libcups.so.2=libcups2" \
+    "libdrm.so.2=libdrm2" "libxkbcommon.so.0=libxkbcommon0" \
+    "libXcomposite.so.1=libxcomposite1" "libXdamage.so.1=libxdamage1" \
+    "libXfixes.so.3=libxfixes3" "libXrandr.so.2=libxrandr2" "libgbm.so.1=libgbm1" \
+    "libpango-1.0.so.0=libpango-1.0-0" "libcairo.so.2=libcairo2" \
+    "libasound.so.2=libasound2" "libatspi.so.0=libatspi2.0-0" \
+    "libxshmfence.so.1=libxshmfence1"
+}
+
+# Jalur noVNC: Xvfb + x11vnc + websockify. Tidak menyentuh pustaka Chrome.
+browser_deps_vnc() {
+  _log "Periksa dependensi jalur noVNC (VPS / tanpa layar)"
+  _pasang_binari "novnc" \
+    "Xvfb=xvfb" "x11vnc=x11vnc" "websockify=novnc" || return 1
+  # Chrome tetap dibutuhkan di jalur ini: yang ditampilkan noVNC adalah Chrome
+  # yang berjalan di dalam Xvfb.
+  _pasang_lib "chrome" \
+    "libnss3.so=libnss3" "libnspr4.so=libnspr4" "libatk-1.0.so.0=libatk1.0-0" \
+    "libatk-bridge-2.0.so.0=libatk-bridge2.0-0" "libcups.so.2=libcups2" \
+    "libdrm.so.2=libdrm2" "libxkbcommon.so.0=libxkbcommon0" \
+    "libXcomposite.so.1=libxcomposite1" "libXdamage.so.1=libxdamage1" \
+    "libXfixes.so.3=libxfixes3" "libXrandr.so.2=libxrandr2" "libgbm.so.1=libgbm1" \
+    "libpango-1.0.so.0=libpango-1.0-0" "libcairo.so.2=libcairo2" \
+    "libasound.so.2=libasound2" "libatspi.so.0=libatspi2.0-0" \
+    "libxshmfence.so.1=libxshmfence1" \
+    || { _err "pustaka Chrome belum lengkap; noVNC akan menampilkan Chrome yang mati.";
+         return 1; }
+  # Halaman web noVNC. Tanpa ini websockify jalan tapi tidak ada yang bisa
+  # dibuka di browser -- persis gejala "url belum bisa dibuka".
+  if [[ ! -d /usr/share/novnc && ! -d /usr/share/webapps/novnc && ! -d /opt/novnc ]]; then
+    _warn "halaman web noVNC tidak ditemukan walau paket novnc terpasang."
+    _warn "VNC tetap bisa dipakai dengan VNC viewer, tapi tidak lewat browser."
+  fi
+}
+
+# Tanya operator. Hanya kalau ada terminal; skrip dan cron tidak punya.
+#
+# SEMUA tampilan ditulis ke stderr, dan HANYA jawabannya ke stdout. Fungsi ini
+# dipanggil lewat `mode="$(browser_tanya_mode ...)"`; kalau menu ikut ke stdout,
+# seluruh menu tertangkap ke dalam variabel dan operator tidak melihat apa pun.
+# Diuji: dengan stdout bersama, hasilnya kosong dan menu hilang.
+browser_tanya_mode() {  # -> stdout: native|vnc
+  local layar_asli="$1" saran=1 jawab=""
+  [[ -z "$layar_asli" ]] && saran=2
+  {
+    echo
+    echo "  PILIH MODE BROWSER"
+    echo "    1) Chrome for Testing -- jendela asli di layar mesin ini"
+    echo "    2) noVNC              -- dibuka lewat browser (untuk VPS / tanpa layar)"
+    echo
+    if [[ "$saran" == 1 ]]; then
+      echo "  Layar asli terdeteksi (${DISPLAY:-}), jadi 1 disarankan."
+    else
+      echo "  Tidak ada layar asli, jadi 2 disarankan."
+    fi
+    printf '  Pilihan [1/2, Enter = %s]: ' "$saran"
+  } >&2
+  IFS= read -r jawab || jawab=""
+  jawab="${jawab:-$saran}"
+  case "$jawab" in
+    1|native|chrome) echo native ;;
+    2|vnc|novnc)     echo vnc ;;
+    *) # _warn menulis ke STDOUT (lib/00-common.sh:22), jadi di dalam substitusi
+       # perintah pesannya akan ikut tertangkap ke variabel mode. Ditulis ke
+       # stderr langsung di sini.
+       printf '\033[1;33m  !\033[0m jawaban %s tidak dikenal -- pakai saran (%s)\n' \
+         "'$jawab'" "$saran" >&2
+       if [[ "$saran" == 1 ]]; then echo native; else echo vnc; fi ;;
+  esac
+}
+
 browser_start() {
   # Tutup sesi SSH mengirim SIGHUP ke seluruh grup proses. Tanpa baris ini,
   # Xvfb, x11vnc, websockify, dan Chrome ikut mati tepat saat operator menutup
@@ -295,9 +496,30 @@ browser_start() {
   case "$mode" in
     native) pakai_vnc=false ;;
     vnc)    pakai_vnc=true ;;
-    auto)   [[ -n "$layar_asli" ]] && pakai_vnc=false || pakai_vnc=true ;;
-    *)      _die "BROWSER_MODE tidak dikenal: '$mode' — pakai auto|native|vnc" ;;
+    auto)
+      # Auto dulu MEMILIH DIAM-DIAM: begitu ada layar, jalur noVNC tidak pernah
+      # dijalankan sama sekali dan operator tidak tahu itu terjadi -- gejalanya
+      # "noVNC belum di-fix" padahal tidak pernah dicoba. Sekarang operator
+      # ditanya, dan pilihannya menentukan dependensi mana yang diperiksa.
+      if [[ -t 0 && -t 1 && -z "${AGENTDROP_BROWSER_MODE:-}" ]]; then
+        mode="$(browser_tanya_mode "$layar_asli")"
+      else
+        [[ -n "$layar_asli" ]] && mode=native || mode=vnc
+        echo "  mode  : $mode (dipilih otomatis; jalankan agentdrop browser di"
+        echo "          terminal untuk ditanya, atau set BROWSER_MODE=native|vnc)"
+      fi
+      [[ "$mode" == native ]] && pakai_vnc=false || pakai_vnc=true ;;
+    *)      _die "BROWSER_MODE tidak dikenal: '$mode' -- pakai auto|native|vnc" ;;
   esac
+
+  # Dependensi DIPERIKSA DAN DIPASANG per jalur, sesudah mode dipastikan.
+  # Diperiksa dulu: yang sudah ada dilewati, jadi menjalankan ulang tidak
+  # memasang apa pun.
+  if [[ "$pakai_vnc" == true ]]; then
+    browser_deps_vnc       || _die "dependensi noVNC belum lengkap -- perbaiki pesan di atas, lalu ulangi."
+  else
+    browser_deps_chrome       || _die "dependensi Chrome belum lengkap -- perbaiki pesan di atas, lalu ulangi."
+  fi
   if [[ "$pakai_vnc" == false && -z "$layar_asli" ]]; then
     _err "Tidak ada layar yang bisa dipakai, padahal BROWSER_MODE=$mode."
     _die "Set BROWSER_MODE=vnc untuk lewat noVNC, atau jalankan di mesin berlayar."

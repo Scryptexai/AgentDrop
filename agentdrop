@@ -12,7 +12,9 @@
 #   agentdrop latih --list daftar worker + jumlah skill yang sudah dipelajari
 #   agentdrop start        nyalakan gateway Telegram (agent berjalan di atasnya)
 #   agentdrop stop         hentikan gateway
-#   agentdrop browser      nyalakan Chrome for Testing + noVNC
+#   agentdrop browser      nyalakan browser; Anda DITANYA mau jendela asli
+#                          (Chrome for Testing) atau noVNC. Dependensinya
+#                          diperiksa per jalur dan dipasang hanya kalau kurang
 #   agentdrop browser-stop hentikan browser
 #   agentdrop run <profil> "<tugas>"   sekali jalan, untuk skrip & debug
 #   agentdrop run --list   daftar profil yang bisa dijalankan
@@ -52,7 +54,7 @@ STATE_DIR="$HOME/.agentdrop"
 PID_DIR="$STATE_DIR/run"
 mkdir -p "$PID_DIR"
 
-usage() { sed -n '2,34p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,36p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 # ---------------------------------------------------------------------------
 # start / stop — gateway. Agent berjalan di atasnya, jadi satu perintah.
