@@ -34,39 +34,17 @@ browser_install_chrome() {
 #     spesifik sudah ditangani wallet resmi, bukan oleh shim
 # Karena itu AgentDrop memasang wallet RESMI, dan manusia yang memegang kuncinya.
 # ---------------------------------------------------------------------------
-_extract_crx() {  # _extract_crx <berkas> <tujuan>
-  python3 - "$1" "$2" <<'PY'
-import struct, sys, zipfile, io, os, json
-src, dst = sys.argv[1], sys.argv[2]
-raw = open(src, 'rb').read()
-# CRX3 = "Cr24" + versi(4) + panjang header(4) + header + ZIP.
-# unzip biasa gagal karena header itu, jadi ZIP-nya dipotong lebih dulu.
-blob = raw[12 + struct.unpack('<I', raw[8:12])[0]:] if raw[:4] == b'Cr24' else raw
-try:
-    zf = zipfile.ZipFile(io.BytesIO(blob))
-except Exception as e:
-    print(f"BUKAN_ZIP: {e}"); sys.exit(1)
-os.makedirs(dst, exist_ok=True)
-zf.extractall(dst)
-mf = os.path.join(dst, 'manifest.json')
-if not os.path.exists(mf):
-    print("TANPA_MANIFEST"); sys.exit(1)
-m = json.load(open(mf))
-print(f"OK\t{m.get('name','?')}\t{m.get('version','?')}\tMV{m.get('manifest_version','?')}")
-PY
-}
-
-# Cetak tautan Chrome Web Store untuk tiap wallet.
-#
-# Ini jalur pemasangan yang DIPILIH, bukan jalur CRX. Alasannya ada di
-# stage_browser (install.sh): ekstensi dari Web Store terdaftar sungguhan di
-# profil, ikut diperbarui Chrome, dan versinya yang ditinjau Google.
-#
-# Memakai _pyu, bukan python3 polos: PyYAML ada di venv proyek, dan python3
-# sistem sering tidak punya (PEP 668 memblokir pip system).
+  # _extract_crx sudah dihapus. Ekstensi dipasang dari Chrome Web Store di
+  # dalam GUI browser; tidak ada CRX yang diunduh dan diekstrak sendiri.
 browser_print_store_links() {
   "$(_pyu)" - "$REPO_ROOT/config/extensions.yaml" "$EXT_ROOT" <<'PY'
-import yaml, sys, os
+import sys, os
+try:
+    import yaml
+except ImportError:
+    print("  ! PyYAML tidak tersedia di interpreter ini.")
+    print("  ! Jalankan ./install.sh -- ia menyiapkan venv dengan PyYAML.")
+    sys.exit(3)
 cfg, dest = sys.argv[1], sys.argv[2]
 try:
     m = yaml.safe_load(open(cfg)) or {}
@@ -87,8 +65,13 @@ PY
 }
 
 browser_list_extensions() {
-  python3 - "$REPO_ROOT/config/extensions.yaml" "$EXT_ROOT" <<'PY'
-import yaml, sys, os
+  "$(_pyu)" - "$REPO_ROOT/config/extensions.yaml" "$EXT_ROOT" <<'PY'
+import sys, os
+try:
+    import yaml
+except ImportError:
+    print("  ! PyYAML tidak tersedia. Jalankan ./install.sh untuk menyiapkan venv.")
+    sys.exit(3)
 m = yaml.safe_load(open(sys.argv[1])) or {}
 dest = sys.argv[2]
 print(f"{'NAMA':<12} {'WAJIB':<6} {'KATEGORI':<14} {'STATUS':<11} LABEL")
@@ -100,90 +83,43 @@ for e in (m.get('extensions') or []) + (m.get('extra') or []):
 PY
 }
 
-browser_install_extensions() {  # [--sideload] [--all | --only a,b]
-  # TANPA --sideload, perintah ini hanya MENCETAK tautan Chrome Web Store.
+browser_install_extensions() {  # cetak tautan Chrome Web Store saja
+  # Perintah ini hanya MENCETAK tautan Chrome Web Store. Tidak ada unduhan.
   #
-  # Itu jalur yang dipilih. Memasang dari Web Store membuat ekstensi terdaftar
-  # sungguhan di profil (bukan sementara seperti --load-extension, yang sejak
-  # Chrome 126 membuat service worker mati dan popup tidak bisa dibuka), ikut
-  # diperbarui Chrome, dan versinya yang ditinjau Google.
-  #
-  # --sideload menghidupkan jalur lama: unduh CRX lalu ekstrak sendiri. Masih
-  # ada untuk mesin tanpa akses ke Web Store, tapi bukan default.
-  local mode="required" only="" sideload=false
+  # Ekstensi dipasang di dalam GUI browser lewat Web Store, bukan diunduh lewat
+  # terminal lalu diekstrak. Alasannya bukan selera:
+  #   - ekstensi Web Store TERDAFTAR di profil, ikut diperbarui Chrome, dan
+  #     versinya yang ditinjau Google;
+  #   - CRX yang diekstrak manual harus dimuat lewat --load-extension, dan sejak
+  #     Chrome 126 ekstensi semacam itu service worker-nya mati, content script
+  #     tidak disuntikkan, dan popup-nya tidak bisa dibuka -- semuanya gagal
+  #     tanpa pesan error.
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --sideload) sideload=true ;;
-      --all) mode="all" ;;
-      --only) mode="only"; only="${2:-}"; shift ;;
+      --all|--only)
+        _die "opsi $1 sudah dihapus. Ekstensi dipasang dari Chrome Web Store
+di dalam GUI browser, bukan diunduh lewat terminal." ;;
+      --sideload)
+        _die "--sideload sudah dihapus. Mengunduh CRX lalu mengekstraknya sendiri
+menghasilkan ekstensi yang tidak terdaftar di profil, tidak diperbarui Chrome,
+dan service worker-nya mati sejak Chrome 126. Pasang dari Chrome Web Store:
+buka tautan di bawah di jendela Chrome, tekan Add to Chrome." ;;
       *) _die "argumen tidak dikenal: $1" ;;
     esac; shift
   done
 
-  if [[ "$sideload" == false ]]; then
-    _log "Ekstensi wallet — pasang dari Chrome Web Store"
-    browser_print_store_links
-    echo
-    _warn "Buka tiap tautan di jendela Chrome for Testing, lalu tekan 'Add to Chrome'."
-    _warn "Sesudah terpasang, buat atau impor wallet-nya di sana."
-    _warn "Jalur lama (unduh CRX otomatis): agentdrop extensions --sideload"
-    return 0
+  _log "Ekstensi wallet — pasang dari Chrome Web Store"
+  # Tanpa pemeriksaan ini, kegagalan mencetak daftar (PyYAML hilang, misalnya)
+  # hanya memunculkan traceback lalu perintah lanjut mencetak petunjuk seolah
+  # semuanya baik-baik saja -- persis yang terjadi sebelum diperbaiki.
+  if ! browser_print_store_links; then
+    _die "gagal membaca config/extensions.yaml. Perbaiki dulu penyebabnya di atas."
   fi
-  _warn "Mode --sideload: mengunduh CRX pihak ketiga dan mengekstraknya sendiri."
-  _warn "Ekstensi semacam ini TIDAK terdaftar di profil dan tidak diperbarui Chrome."
-  [[ -f "$REPO_ROOT/config/extensions.yaml" ]] || _die "config/extensions.yaml tidak ada"
-  command -v curl >/dev/null 2>&1 || _die "butuh curl"
-  python3 -c 'import yaml' 2>/dev/null || _die "butuh PyYAML"
-  mkdir -p "$EXT_ROOT"
-
-  local jobs
-  jobs="$(_MODE="$mode" _ONLY="$only" python3 - "$REPO_ROOT/config/extensions.yaml" <<'PY'
-import yaml, os, sys
-m = yaml.safe_load(open(sys.argv[1])) or {}
-mode, only = os.environ['_MODE'], os.environ.get('_ONLY','')
-want = {x.strip() for x in only.split(',') if x.strip()}
-for e in (m.get('extensions') or []) + (m.get('extra') or []):
-    if mode == 'required' and not e.get('required'): continue
-    if mode == 'only' and e['name'] not in want: continue
-    print('\t'.join([e['name'], e.get('id',''), e['folder'], e.get('source','')]))
-PY
-)"
-  [[ -n "$jobs" ]] || { _warn "tidak ada entri yang cocok"; return 0; }
-
-  local gagal=0 n id fo src tmp f out
-  while IFS=$'\t' read -r n id fo src; do
-    [[ -n "$n" ]] || continue
-    _log "memasang $n"
-    tmp="$(mktemp -d)"
-    if [[ -n "$src" ]]; then
-      curl -fsSL "$src" -o "$tmp/ext.bin" || { _warn "gagal unduh $src"; rm -rf "$tmp"; gagal=$((gagal+1)); continue; }
-    else
-      local url="https://clients2.google.com/service/update2/crx?response=redirect&prodversion=${CHROME_PROD_VERSION:-131.0.0.0}&acceptformat=crx2,crx3&x=id%3D${id}%26uc"
-      curl -fsSL "$url" -o "$tmp/ext.crx" || { _warn "gagal unduh id=$id"; rm -rf "$tmp"; gagal=$((gagal+1)); continue; }
-      # Endpoint mengembalikan XML, bukan CRX, kalau id-nya salah.
-      if head -c 64 "$tmp/ext.crx" | grep -q '<?xml'; then
-        _warn "endpoint mengembalikan XML — id '$id' kemungkinan salah"
-        rm -rf "$tmp"; gagal=$((gagal+1)); continue
-      fi
-    fi
-    f="$(ls "$tmp"/*.crx "$tmp"/*.bin 2>/dev/null | head -1)"
-    [[ -n "$f" ]] || { _warn "tidak ada berkas terunduh untuk $n"; rm -rf "$tmp"; gagal=$((gagal+1)); continue; }
-    rm -rf "$EXT_ROOT/$fo"
-    if out="$(_extract_crx "$f" "$EXT_ROOT/$fo")" && [[ "$out" == OK* ]]; then
-      IFS=$'\t' read -r _ nm ver mv <<< "$out"
-      _ok "$n → $nm v$ver ($mv)"
-      [[ "$mv" == "MV2" ]] && _warn "$n adalah MV2; Chrome sudah menghapus dukungan MV2"
-    else
-      _warn "ekstraksi gagal untuk $n: $out"; gagal=$((gagal+1))
-    fi
-    rm -rf "$tmp"
-  done <<< "$jobs"
-
-  [[ "$gagal" -gt 0 ]] && _warn "$gagal ekstensi gagal"
   echo
-  _warn "Setelah terpasang, buka Chrome lewat noVNC SEKALI untuk membuat atau"
-  _warn "mengimpor wallet tiap ekstensi. Agent tidak boleh melakukan itu sendiri."
-  return $(( gagal > 0 ? 1 : 0 ))
+  _warn "Buka tiap tautan di jendela Chrome for Testing, lalu tekan Add to Chrome."
+  _warn "Sesudah terpasang, buat atau impor wallet-nya DI DALAM BROWSER itu."
+  _warn "Tidak ada yang diunduh lewat terminal — semuanya lewat Web Store."
+  return 0
 }
 
 # ---------------------------------------------------------------------------
@@ -280,18 +216,13 @@ browser_start() {
   esac
   _ok "Chrome: $CHROME"; "$CHROME" --version 2>/dev/null | sed 's/^/   /'
 
-  # Banyak ekstensi sekaligus, dipisah koma dalam SATU --load-extension.
-  local list="" count=0 d
-  if [[ -d "$EXT_ROOT" ]]; then
-    for d in "$EXT_ROOT"/*/; do
-      [[ -d "$d" && -f "${d}manifest.json" ]] || continue
-      d="${d%/}"
-      [[ -n "$list" ]] && list="$list,$d" || list="$d"
-      count=$((count+1)); printf '  \033[1;32m✓\033[0m %s\n' "$(basename "$d")"
-    done
+  # Ekstensi dipasang dari Chrome Web Store di dalam GUI browser, bukan
+  # diunduh lewat terminal. Yang terpasang masuk ke profil Chrome dan dimuat
+  # otomatis, jadi tidak ada yang perlu dipindai atau diteruskan di sini.
+  if [[ ! -f "$PROFILE_DIR/Default/Secure Preferences" ]]; then
+    _warn "Profil Chrome belum punya ekstensi. Buka Chrome dulu lalu pasang dari"
+    _warn "Chrome Web Store:  agentdrop extensions"
   fi
-  [[ "$count" -gt 0 ]] && _ok "$count ekstensi dari $EXT_ROOT" \
-    || _warn "tidak ada ekstensi di $EXT_ROOT — jalankan: ./agentdrop extensions"
 
   mkdir -p "$STATE_DIR/run" "$PROFILE_DIR"
 
@@ -372,29 +303,15 @@ browser_start() {
   fi
 
   _log "Chrome for Testing + remote debugging"
-  # --enable-unsafe-extension-debugging BUKAN opsional sejak Chrome 126.
-  #
-  # Tanpa flag ini, Chrome memperlakukan ekstensi dari --load-extension sebagai
-  # sementara: halamannya bisa dibuka, TAPI ekstensi tidak ditulis ke Secure
-  # Preferences profil, service worker tidak pernah jalan, content script tidak
-  # disuntikkan, dan popup-nya tidak bisa dibuka. Semuanya gagal tanpa pesan
-  # error apa pun. MetaMask/OKX/Phantom persis kena ini — ketiganya MV3 dengan
-  # service worker.
-  #
-  # Ini sebabnya keluhan "ekstensi terunduh tapi tidak bisa dibuka" tidak pernah
-  # sembuh dengan berpindah layar: penyebabnya bukan VNC, melainkan flag ini
-  # tidak ada.
-  #
-  # Aman di sini karena CDP diikat ke 127.0.0.1 saja (lihat
-  # --remote-debugging-address di atas), jadi permukaan serangnya lokal.
+  # Ekstensi TIDAK dimuat lewat --load-extension. Yang dipasang dari Chrome Web
+  # Store sudah terdaftar di profil, jadi Chrome memuatnya sendiri; flag itu
+  # hanya untuk CRX yang diekstrak manual, dan sejak Chrome 126 ekstensi yang
+  # dimuat seperti itu service worker-nya mati dan popup-nya tidak bisa dibuka.
+  # Lihat docs/ untuk riwayat lengkapnya.
   local args=(--remote-debugging-port="${CDP_PORT}" --remote-debugging-address=127.0.0.1
               --user-data-dir="${PROFILE_DIR}" --no-sandbox --disable-dev-shm-usage
               --window-size=1920,1080 --window-position=0,0
-              --no-first-run --no-default-browser-check
-              --enable-unsafe-extension-debugging)
-  # --load-extension hanya kalau ada ekstensi valid: Chrome gagal start kalau
-  # path-nya tidak ada, dan pesannya tidak menjelaskan apa-apa.
-  [[ -n "$list" ]] && args+=(--load-extension="${list}")
+              --no-first-run --no-default-browser-check)
 
   # -------------------------------------------------------------------------
   # MATIKAN CHROME LAMA DULU. Ini bukan kebersihan, ini syarat.
@@ -511,7 +428,7 @@ browser_status() {
     done
   fi
   echo "   profil   : $PROFILE_DIR"
-  echo "   ekstensi : $EXT_ROOT"
+  echo "   ekstensi : dipasang dari Chrome Web Store di dalam browser"
 }
 
 browser_stop() {

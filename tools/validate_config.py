@@ -2453,6 +2453,71 @@ def check_pelatihan_worker() -> None:
 
 
 
+def check_ekstensi_dan_layar() -> None:
+    """[44] Ekstensi lewat Web Store saja, dan pemilihan layar harus otomatis.
+
+    Dua keputusan operator yang tidak boleh bergeser diam-diam:
+
+    1. Ekstensi wallet dipasang dari Chrome Web Store DI DALAM GUI browser.
+       Tidak ada CRX yang diunduh lewat terminal lalu diekstrak, dan tidak ada
+       --load-extension. Pernah terjadi: komentar di lib/40-browser.sh
+       menjelaskan bahwa --load-extension membuat service worker mati sejak
+       Chrome 126, sementara browser_start() di berkas yang SAMA tetap
+       meneruskan flag itu untuk apa pun yang ada di extensions/installed.
+       Kodenya membantah komentarnya sendiri.
+    2. Layar dipilih otomatis: mesin berlayar pakai Chrome for Testing native,
+       VPS pakai Xvfb + noVNC. Deteksinya tidak boleh mempercayai DISPLAY
+       buta -- SSH tanpa -X, systemd unit, dan container semuanya mewariskan
+       DISPLAY yang tidak menunjuk ke mana pun.
+    """
+    global checks
+
+    browser_lib = REPO / "lib" / "40-browser.sh"
+    checks += 1
+    if not browser_lib.is_file():
+        err("lib/40-browser.sh tidak ada.")
+        return
+    isi = browser_lib.read_text()
+
+    # --- tidak ada --load-extension yang benar-benar diteruskan ------------
+    checks += 1
+    if re.search(r"args\+=\(--load-extension", isi):
+        err("lib/40-browser.sh masih meneruskan --load-extension ke Chrome. "
+            "Ekstensi yang dimuat seperti itu service worker-nya mati sejak "
+            "Chrome 126 dan popup-nya tidak bisa dibuka. Pasang dari Chrome "
+            "Web Store di dalam browser.")
+    checks += 1
+    if re.search(r"^_extract_crx\(\)", isi, re.M):
+        err("lib/40-browser.sh masih punya mesin ekstraksi CRX. Ekstensi "
+            "dipasang dari Chrome Web Store, bukan diunduh lalu diekstrak.")
+    checks += 1
+    # --sideload boleh ADA sebagai penolakan, tapi jalur unduhnya tidak
+    if re.search(r"clients2\.google\.com|chromewebstore[^\n]*\.crx", isi):
+        err("lib/40-browser.sh masih mengunduh CRX. Operator menolak jalur "
+            "ini: pemasangan lewat Web Store di dalam GUI browser.")
+
+    # --- pemilihan layar otomatis ------------------------------------------
+    checks += 1
+    if "browser_real_display" not in isi:
+        err("lib/40-browser.sh tidak punya browser_real_display(). Pemilihan "
+            "layar native-vs-VNC harus otomatis.")
+    checks += 1
+    # DISPLAY tidak boleh dipercaya buta: harus ada pemeriksaan socket X
+    badan = ""
+    m = re.search(r"^browser_real_display\(\)(.*?)^\}", isi, re.S | re.M)
+    if m:
+        badan = m.group(1)
+    checks += 1
+    if "/tmp/.X11-unix/X" not in badan:
+        err("browser_real_display() tidak memverifikasi socket /tmp/.X11-unix. "
+            "DISPLAY warisan SSH tanpa -X atau container akan dipercaya buta, "
+            "Chrome gagal start, dan yang muncul hanya 'CDP tidak menjawab'.")
+    checks += 1
+    if "BROWSER_MODE:-auto" not in isi:
+        err("lib/40-browser.sh: mode layar tidak default ke 'auto'. Mesin "
+            "berlayar harus otomatis pakai native, VPS otomatis pakai noVNC.")
+
+
 def main() -> int:
     print("=" * 62)
     print("  AgentDrop — validator statis")
@@ -2560,6 +2625,9 @@ def main() -> int:
 
     print("\n[43] Jalur pelatihan worker")
     check_pelatihan_worker()
+
+    print("\n[44] Ekstensi Web Store + pemilihan layar otomatis")
+    check_ekstensi_dan_layar()
 
     print("\n" + "=" * 62)
     check_model_vars_and_delegation(configs)

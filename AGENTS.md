@@ -3221,3 +3221,141 @@ diuji dengan `tools.browser_tool` tiruan.
 **Tidak terverifikasi:** pemuatan plugin oleh Hermes sungguhan, lokasi direktori
 plugin yang dicari Hermes, dan apakah `browser_act` benar-benar mengurangi putaran
 pada model nyata.
+
+## Arc 38 — Bug install, jalur ekstensi yang membantah dirinya sendiri, dan dual CDP
+
+Tiga laporan operator, satu per satu.
+
+### 1. `install.sh` mati di `venv/bin/pip: No such file or directory`
+
+Log operator:
+
+```
+hermes sudah ada: Hermes Agent v0.20.1 — dilewati
+/home/dev/AgentDrop/lib/10-deps.sh: line 73: /home/dev/.agentdrop/venv/bin/pip: No such file or directory
+  ✗ gagal memasang PyYAML / eth-account
+```
+
+**Penyebabnya:** pemeriksaan kesiapan venv hanya melihat `bin/python`, tapi baris
+install memakai `bin/pip`. Keduanya tidak selalu ada bersama.
+
+`python3 -m venv` membuat direktori dan `bin/python` **lebih dulu**, baru
+menjalankan `ensurepip`. Kalau paket `python3-venv` belum terpasang (khas
+Debian/Ubuntu) langkah itu gagal dan `bin/pip` tidak pernah ada. Pada percobaan
+berikutnya venv rusak itu lolos pemeriksaan, pembuatan ulang dilewati, dan baris
+install mati tanpa penjelasan.
+
+**Direproduksi persis** sebelum diperbaiki:
+
+```
+venv --without-pip  ->  bin/python ADA, import pip GAGAL
+logika LAMA         ->  /tmp/.../venv/bin/pip: No such file or directory   (exit 127)
+logika BARU         ->  ! venv tidak lengkap — dibuat ulang
+                        ==> Membuat venv …
+                        ✓ venv: PyYAML + eth-account
+```
+
+**Perbaikan** di `lib/10-deps.sh`: kesiapan diuji dengan `python -c 'import pip'`
+(modul, bukan skrip) · venv rusak **dibuat ulang**, bukan dilewati · `ensurepip`
+dijalankan kalau venv jadi tanpa pip · install lewat `python -m pip`, bukan
+`bin/pip` · pesan kegagalan menyebut `sudo apt install python3-venv`.
+
+Diuji tiga keadaan: belum ada venv (dibuat) · venv setengah jadi skripnya
+(dipakai, karena modul pip-nya ada) · venv tanpa pip sama sekali (dideteksi,
+dibuat ulang, berhasil).
+
+### 2. Ekstensi: kodenya membantah komentarnya sendiri
+
+Operator: *"extension itu download di webstore bukan download lewat terminal lalu
+ektract, this very wrong."*
+
+Default-nya **sudah** Web Store. Tapi di berkas yang sama ada kontradiksi nyata:
+
+- komentar `lib/40-browser.sh:107` menjelaskan bahwa `--load-extension` membuat
+  *"service worker tidak jalan, content script tidak disuntikkan, dan popup tidak
+  bisa dibuka"* sejak Chrome 126
+- sementara `browser_start()` di baris **397** tetap meneruskan
+  `args+=(--load-extension="${list}")` untuk apa pun yang ada di
+  `extensions/installed/`
+
+Jadi operator disuruh memasang dari Web Store, lalu kode memuat CRX hasil ekstrak
+lewat jalur yang komentarnya sendiri sebut rusak. Ditambah header
+`config/extensions.yaml` yang masih mendokumentasikan alur lama (*"diekstrak ke
+extensions/installed/, lalu dimuat lewat --load-extension"*).
+
+**Yang dibuang:** `_extract_crx()` (30 baris) · seluruh jalur `--sideload`
+(55 baris) · pemindaian `EXT_ROOT` di `browser_start` · flag `--load-extension` ·
+`--enable-unsafe-extension-debugging` (gunanya khusus untuk `--load-extension`,
+dan itu permukaan serangan yang tidak perlu). `--sideload`, `--all`, `--only`
+sekarang **ditolak dengan pesan yang menjelaskan kenapa**, bukan dihapus diam-diam.
+
+**Bug ikutan yang ketahuan saat menguji:** `browser_print_store_links` memakai
+`_pyu()` tapi `browser_list_extensions` memakai `python3` polos — jadi yang satu
+bisa, yang lain tidak. Dan **tidak ada penjaga ImportError**: PyYAML hilang,
+traceback Python bocor ke layar, lalu perintah **lanjut mencetak petunjuk seolah
+berhasil**. Sekarang interpreter konsisten, ImportError jadi pesan Indonesia, dan
+pemanggil memeriksa status keluar.
+
+### 3. Dual CDP — sudah ada, dan sudah benar
+
+Operator minta dua mode: desktop lokal pakai Chrome for Testing, VPS pakai noVNC.
+**Ini sudah terpasang** di `browser_start()`:
+
+```bash
+local mode="${BROWSER_MODE:-auto}"
+case "$mode" in
+  native) pakai_vnc=false ;;
+  vnc)    pakai_vnc=true ;;
+  auto)   [[ -n "$layar_asli" ]] && pakai_vnc=false || pakai_vnc=true ;;
+esac
+```
+
+Tidak ada yang perlu dibangun. Yang dilakukan hanya **menguji keempat jalurnya**,
+karena "sudah ada" belum berarti "sudah benar":
+
+| Keadaan | Hasil |
+|---|---|
+| VPS, tanpa `DISPLAY` | → VNC (Xvfb + noVNC) ✓ |
+| Desktop lokal, `DISPLAY=:0` + socket X sungguhan | → NATIVE ✓ |
+| SSH tanpa `-X`, `DISPLAY=:7` tanpa socket | → **ditolak**, jatuh ke VNC ✓ |
+| `BROWSER_DISPLAY=:3` (override manual) | → NATIVE ✓ |
+
+Baris ketiga yang penting: `DISPLAY` warisan SSH tanpa `-X`, systemd unit, dan
+container tidak menunjuk ke mana pun. Kalau dipercaya buta, Chrome gagal start
+dan yang muncul hanya *"CDP tidak menjawab dalam 20 detik"* — jauh dari
+penyebabnya.
+
+### Validator 425 checks
+
+Aturan baru **`[44]`** (8 sub-pemeriksaan): tidak ada `--load-extension` yang
+diteruskan · tidak ada `_extract_crx` · tidak ada unduhan CRX ·
+`browser_real_display()` ada · **memverifikasi socket `/tmp/.X11-unix`** ·
+default mode `auto`. Diuji **empat injeksi**, semuanya menyala.
+
+### Cacat saya sendiri di arc ini
+
+1. **Skrip patch gagal karena escaping berlapis.** Saya menulis `"\\ndef main()"`
+   di dalam heredoc — backslash ganda membuat `\n` literal, jadi anchor tidak
+   pernah ketemu dan assertion gagal **dua kali berturut-turut**. Baru jalan
+   sesudah fungsi ditulis ke berkas terpisah lalu disisipkan berbasis nomor
+   baris. Pelajaran: jangan menyusun string Python ber-escape di dalam heredoc
+   yang sudah di-escape.
+2. **Dua uji pertama pemilihan layar tidak sah.** Saya hanya men-source
+   `lib/00-common.sh`, jadi `browser_real_display` tidak ada — `command not
+   found` membuat cabang `if` gagal dan **ketiganya mencetak "VNC"**, terlihat
+   seperti hasil yang konsisten. Tertangkap karena saya memeriksa stderr.
+3. **Fixture socket X salah.** `touch /tmp/.X11-unix/X0` membuat berkas biasa,
+   padahal pemeriksaannya `-S` (socket). Deteksi terlihat rusak padahal fixture-nya
+   yang salah. Diperbaiki dengan membuat socket sungguhan lewat Python.
+
+### Verifikasi
+
+`tools/validate_config.py` → **425 checks, SEMUA LOLOS** (dari 417). `bash -n` 12
+skrip bersih. `pyflakes` bersih. `agentdrop test-workers` **8 lulus 0 gagal**.
+Install bersih dari nol dan dari venv rusak keduanya berhasil.
+`agentdrop extensions` mencetak 5 tautan Web Store; `--sideload` dan `--all`
+ditolak dengan penjelasan. Keempat jalur pemilihan layar diuji.
+
+**Tidak bisa diuji dari sandbox:** unduhan Chrome for Testing (egress diblokir),
+Chrome yang benar-benar muncul di layar asli, dan noVNC yang benar-benar bisa
+dibuka.

@@ -14,7 +14,7 @@
 #   agentdrop run <profil> "<tugas>"   sekali jalan, untuk skrip & debug
 #   agentdrop run --list   daftar profil yang bisa dijalankan
 #   agentdrop status       periksa kesiapan sistem
-#   agentdrop extensions   tautan Chrome Web Store  [--sideload untuk unduh CRX]
+#   agentdrop extensions   tautan Chrome Web Store (pasang di dalam browser)
 #   agentdrop audit <cmd>  baca log: health | errors | doctor | trace | stuck | tail
 #   agentdrop logs         kumpulkan log ke data/audit/ untuk dianalisis
 #   agentdrop cron         pasang jadwal otomatis

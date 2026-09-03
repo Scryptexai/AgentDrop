@@ -7,7 +7,7 @@
 #
 #   ./install.sh                     pasang penuh
 #   ./install.sh --skip-browser      lewati Chrome for Testing + ekstensi
-#   ./install.sh --skip-extensions   pasang Chrome, jangan unduh wallet
+#   ./install.sh --skip-extensions   pasang Chrome, lewati info ekstensi
 #   ./install.sh --non-interactive   jangan tanya apa pun
 #   ./install.sh --dir PATH          lokasi kode
 #   ./install.sh --hermes-home PATH  lokasi data Hermes
@@ -157,7 +157,6 @@ stage_install_code() {
     .venv venv                # lingkungan dev
     .pytest_cache .mypy_cache .ruff_cache
     node_modules
-    extensions/installed      # biner pihak ketiga hasil unduhan
     'storage-state*.json' 'storage_state*.json'   # sesi browser hidup
   )
   local arg=() e
@@ -271,8 +270,6 @@ stage_browser() {
   echo "  lalu tekan 'Add to Chrome'. Sesudah terpasang, buat atau impor"
   echo "  wallet-nya di sana. Agent tidak boleh dan tidak bisa melakukannya."
   echo
-  echo "  Jalur lama (unduh CRX otomatis) masih ada kalau Anda memang butuh:"
-  echo "      agentdrop extensions --sideload"
 }
 
 # ---------------------------------------------------------------------------

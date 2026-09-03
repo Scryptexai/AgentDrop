@@ -66,11 +66,39 @@ deps_install() {
   fi
 
   # PyYAML + eth-account di venv tersendiri (PEP 668 memblokir pip system).
-  if [[ ! -x "$STATE_DIR/venv/bin/python" ]]; then
-    _log "Membuat venv $STATE_DIR/venv"
-    python3 -m venv "$STATE_DIR/venv" || _die "gagal membuat venv"
+  #
+  # venv bisa SETENGAH JADI. `python3 -m venv` membuat direktori dan bin/python
+  # lebih dulu, baru kemudian menjalankan ensurepip; kalau paket python3-venv
+  # belum terpasang (khas Debian/Ubuntu) langkah itu gagal dan bin/pip tidak
+  # pernah ada. Pemeriksaan lama hanya melihat bin/python, jadi venv rusak itu
+  # dianggap siap, pembuatan ulang dilewati, dan baris install mati dengan
+  # "venv/bin/pip: No such file or directory" tanpa penjelasan apa pun.
+  local _venv="$STATE_DIR/venv" _vpy="$STATE_DIR/venv/bin/python"
+
+  if [[ ! -x "$_vpy" ]] || ! "$_vpy" -c 'import pip' >/dev/null 2>&1; then
+    if [[ -e "$_venv" ]]; then
+      _warn "venv $_venv tidak lengkap (python ada, pip tidak) — dibuat ulang"
+      rm -rf "$_venv"
+    fi
+    _log "Membuat venv $_venv"
+    python3 -m venv "$_venv" || _die "gagal membuat venv $_venv.
+  Di Debian/Ubuntu ini hampir selalu karena paket python3-venv belum terpasang:
+      sudo apt install python3-venv
+  lalu jalankan ulang ./install.sh"
+
+    # venv bisa jadi tapi pip-nya tidak ada kalau ensurepip dilewati.
+    if ! "$_vpy" -c 'import pip' >/dev/null 2>&1; then
+      _log "Menyiapkan pip di dalam venv"
+      "$_vpy" -m ensurepip --upgrade >/dev/null 2>&1 || _die \
+        "venv $_venv dibuat tapi pip tidak tersedia dan ensurepip gagal.
+  Pasang python3-venv lalu jalankan ulang:
+      sudo apt install python3-venv"
+    fi
   fi
-  "$STATE_DIR/venv/bin/pip" install -q --upgrade PyYAML eth-account \
+
+  # Lewat `python -m pip`, bukan bin/pip: skrip bin/pip bisa hilang sementara
+  # modul pip-nya ada, dan itu persis yang membuat install ini mati sebelumnya.
+  "$_vpy" -m pip install -q --upgrade PyYAML eth-account \
     || _die "gagal memasang PyYAML / eth-account"
   _ok "venv: PyYAML + eth-account"
 }

@@ -1,9 +1,11 @@
 # ============================================================================
 # Manifest ekstensi browser
 # ============================================================================
-# Dibaca oleh `agentdrop extensions`. Setiap entri diunduh dari Chrome
-# Web Store, diekstrak ke extensions/installed/<folder>/, lalu dimuat Chrome
-# for Testing lewat --load-extension.
+# Dibaca oleh `agentdrop extensions`, yang hanya MENCETAK tautan di bawah.
+# TIDAK ADA yang diunduh lewat terminal. Ekstensi dipasang di dalam GUI browser
+# lewat Chrome Web Store, sehingga terdaftar di profil, ikut diperbarui Chrome,
+# dan service worker-nya hidup. Kunci `folder` hanya penanda nama, bukan tujuan
+# unduhan.
 #
 # KENAPA BANYAK WALLET, BUKAN SATU
 # --------------------------------
