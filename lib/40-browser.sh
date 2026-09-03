@@ -195,7 +195,61 @@ browser_preflight() {
   return 0
 }
 
+# Jalankan proses latar dengan keluaran ke berkas log, bukan /dev/null.
+# websockify dan x11vnc yang gagal dulu lenyap tanpa jejak karena stderr-nya
+# dibuang, jadi yang terlihat operator hanya URL yang tidak bisa dibuka.
+_log_dir_bg() { echo "${AGENTDROP_LOG_DIR:-$STATE_DIR/log}"; }
+
+# Apakah ada yang menjawab di port TCP loopback. Dipakai menggantikan
+# `pgrep -f "websockify.*6080"`, yang mencocokkan SUBSTRING di baris perintah
+# proses apa pun: shell yang sedang men-grep, editor yang membuka berkas ini,
+# atau `agentdrop browser` itu sendiri bisa membuat pgrep "berhasil" sehingga
+# websockify tidak pernah dinyalakan sama sekali. Yang kita butuhkan bukan
+# nama prosesnya, tapi apakah portnya menjawab.
+_port_tcp_siap() {  # _port_tcp_siap <port>
+  (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null
+}
+
+# noVNC dianggap hidup HANYA kalau halamannya benar-benar menjawab.
+# "Prosesnya ada" bukan bukti: websockify bisa hidup sebentar lalu mati karena
+# port dipakai, modul python kurang, atau --web menunjuk direktori kosong.
+novnc_siap() {  # novnc_siap <detik-tunggu>
+  local tunggu="${1:-8}" k
+  for k in $(seq 1 "$tunggu"); do
+    curl -fsS "http://127.0.0.1:${NOVNC_PORT}/vnc.html" >/dev/null 2>&1 && return 0
+    curl -fsS "http://127.0.0.1:${NOVNC_PORT}/"        >/dev/null 2>&1 && return 0
+    sleep 1
+  done
+  return 1
+}
+
+# Perbaiki URL noVNC yang benar-benar bisa dibuka. Di VPS, "localhost" di
+# laptop operator BUKAN mesin ini — itu penyebab paling umum "URL tidak bisa
+# dibuka" walau noVNC-nya sehat.
+novnc_petunjuk_url() {
+  local ip
+  ip="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  echo "  noVNC  : http://localhost:${NOVNC_PORT}/vnc.html"
+  echo "           (jalan kalau Anda di mesin ini, atau lewat terowongan SSH)"
+  if [[ -n "${SSH_CONNECTION:-}" || -n "${SSH_TTY:-}" ]]; then
+    echo
+    echo "  Anda tersambung lewat SSH. 'localhost' di laptop Anda bukan mesin ini."
+    echo "  Buka terowongan dari laptop Anda, baru buka URL di atas:"
+    echo "    ssh -L ${NOVNC_PORT}:localhost:${NOVNC_PORT} $(whoami 2>/dev/null)@$(hostname -f 2>/dev/null || hostname)"
+  elif [[ -n "$ip" ]]; then
+    echo
+    echo "  Dari mesin lain di jaringan yang sama: http://${ip}:${NOVNC_PORT}/vnc.html"
+    echo "  ! noVNC ini TANPA kata sandi. Jangan buka port ${NOVNC_PORT} ke internet."
+  fi
+}
+
 browser_start() {
+  # Tutup sesi SSH mengirim SIGHUP ke seluruh grup proses. Tanpa baris ini,
+  # Xvfb, x11vnc, websockify, dan Chrome ikut mati tepat saat operator menutup
+  # terminalnya — browser "hilang sendiri". Diuji: dengan `&` polos anak mati;
+  # dengan trap ini anak hidup dan `$!` tetap memberi PID yang benar.
+  trap '' HUP
+
   local a
   for a in "$@"; do
     case "$a" in
@@ -249,16 +303,34 @@ browser_start() {
     _die "Set BROWSER_MODE=vnc untuk lewat noVNC, atau jalankan di mesin berlayar."
   fi
 
+  # Semua proses latar menulis ke berkas log, bukan /dev/null: kegagalan yang
+  # tidak bisa dibaca ulang adalah kegagalan yang akan dilaporkan operator
+  # sebagai "tidak jalan" tanpa petunjuk apa pun.
+  local logbg; logbg="$(_log_dir_bg)"; mkdir -p "$logbg"
+  # noVNC boleh diklaim hidup hanya sesudah halamannya benar-benar menjawab.
+  local novnc_hidup=false
+
   if [[ "$pakai_vnc" == false ]]; then
     CHROME_DISPLAY="$layar_asli"
     _ok "Layar asli mesin dipakai: $CHROME_DISPLAY"
     _ok "Chrome for Testing akan muncul sebagai jendela biasa — popup ekstensi bisa dibuka"
   else
     command -v Xvfb >/dev/null 2>&1 || _die "butuh Xvfb. Debian/Ubuntu: apt install xvfb"
-    if ! pgrep -f "Xvfb :${DISPLAY_NUM}" >/dev/null 2>&1; then
+    # Yang diperiksa soket X-nya, bukan nama prosesnya -- sama seperti yang
+    # dipakai browser_real_display(), jadi keduanya tidak bisa berbeda pendapat.
+    if [[ ! -S "/tmp/.X11-unix/X${DISPLAY_NUM}" ]]; then
       _log "Xvfb :${DISPLAY_NUM} ${RESOLUTION}"
-      Xvfb ":${DISPLAY_NUM}" -screen 0 "$RESOLUTION" -nolisten tcp >/dev/null 2>&1 &
-      echo $! > "$STATE_DIR/run/xvfb.pid"; sleep 2
+      Xvfb ":${DISPLAY_NUM}" -screen 0 "$RESOLUTION" -nolisten tcp \
+        </dev/null >>"$logbg/xvfb.log" 2>&1 &
+      echo $! > "$STATE_DIR/run/xvfb.pid"
+      local k
+      for k in $(seq 1 20); do
+        [[ -S "/tmp/.X11-unix/X${DISPLAY_NUM}" ]] && break
+        sleep 0.5
+      done
+      [[ -S "/tmp/.X11-unix/X${DISPLAY_NUM}" ]] \
+        || _die "Xvfb gagal hidup di :${DISPLAY_NUM} — lihat $logbg/xvfb.log"
+      _ok "Xvfb siap di :${DISPLAY_NUM}"
     fi
     CHROME_DISPLAY=":${DISPLAY_NUM}"
 
@@ -275,15 +347,27 @@ browser_start() {
       _die "Login manual butuh layar. Pasang dulu, lalu ulangi: agentdrop browser"
     fi
 
-    if ! pgrep -f "x11vnc.*:${DISPLAY_NUM}" >/dev/null 2>&1; then
+    if ! _port_tcp_siap "$VNC_PORT"; then
       _log "x11vnc :${VNC_PORT}"
-      x11vnc -display ":${DISPLAY_NUM}" -rfbport "$VNC_PORT" -nopw -forever -shared >/dev/null 2>&1 &
+      x11vnc -display ":${DISPLAY_NUM}" -rfbport "$VNC_PORT" -nopw -forever -shared \
+        </dev/null >>"$logbg/x11vnc.log" 2>&1 &
       echo $! > "$STATE_DIR/run/x11vnc.pid"
-      sleep 1
-      pgrep -f "x11vnc.*:${DISPLAY_NUM}" >/dev/null 2>&1 \
-        || _die "x11vnc gagal hidup di display :${DISPLAY_NUM}"
+      local k
+      for k in $(seq 1 10); do
+        _port_tcp_siap "$VNC_PORT" && break
+        sleep 1
+      done
+      _port_tcp_siap "$VNC_PORT" \
+        || _die "x11vnc gagal membuka port ${VNC_PORT} di display :${DISPLAY_NUM} — lihat $logbg/x11vnc.log"
+      _ok "x11vnc siap di :${VNC_PORT}"
     fi
-    if ! pgrep -f "websockify.*${NOVNC_PORT}" >/dev/null 2>&1; then
+
+    # `novnc_siap 1`, bukan pgrep: yang menentukan "sudah jalan" adalah apakah
+    # halamannya menjawab, bukan apakah ada proses yang namanya kebetulan cocok.
+    if novnc_siap 1; then
+      novnc_hidup=true
+      _ok "noVNC sudah berjalan di port ${NOVNC_PORT}"
+    else
       _log "noVNC :${NOVNC_PORT}"
       # --web dicari, bukan dihardcode: lokasi novnc berbeda antar distro, dan
       # path yang salah membuat websockify jalan tapi halamannya 404.
@@ -291,14 +375,50 @@ browser_start() {
       for c in /usr/share/novnc /usr/share/webapps/novnc /opt/novnc; do
         [[ -d "$c" ]] && { novnc_web="$c"; break; }
       done
+      # Direktori ada tapi isinya kosong sama buruknya dengan tidak ada: halaman
+      # akan 404 dan operator melihat "URL tidak bisa dibuka".
+      if [[ -n "$novnc_web" && ! -f "$novnc_web/vnc.html" && ! -f "$novnc_web/index.html" ]]; then
+        _warn "$novnc_web ada tapi tidak punya vnc.html/index.html — dianggap tidak ada"
+        novnc_web=""
+      fi
+
+      # Sebagian distro tidak memasang binari `websockify`, hanya modul python.
+      local ws_cmd=()
+      if command -v websockify >/dev/null 2>&1; then
+        ws_cmd=(websockify)
+      elif python3 -c 'import websockify' >/dev/null 2>&1; then
+        ws_cmd=(python3 -m websockify)
+      else
+        _err "websockify tidak ada, baik sebagai binari maupun modul python."
+        _err "Debian/Ubuntu: sudo apt install novnc   (atau: pip install websockify)"
+        _die "Tanpa websockify tidak ada halaman noVNC."
+      fi
+
       if [[ -n "$novnc_web" ]]; then
-        websockify --web="$novnc_web" "$NOVNC_PORT" "127.0.0.1:${VNC_PORT}" >/dev/null 2>&1 &
+        "${ws_cmd[@]}" --web="$novnc_web" "$NOVNC_PORT" "127.0.0.1:${VNC_PORT}" \
+          </dev/null >>"$logbg/novnc.log" 2>&1 &
       else
         _warn "direktori novnc tidak ditemukan — VNC tetap jalan di port ${VNC_PORT},"
         _warn "tapi tanpa halaman web. Pakai VNC viewer ke 127.0.0.1:${VNC_PORT}."
-        websockify "$NOVNC_PORT" "127.0.0.1:${VNC_PORT}" >/dev/null 2>&1 &
+        "${ws_cmd[@]}" "$NOVNC_PORT" "127.0.0.1:${VNC_PORT}" \
+          </dev/null >>"$logbg/novnc.log" 2>&1 &
       fi
       echo $! > "$STATE_DIR/run/novnc.pid"
+
+      # INI YANG DULU TIDAK ADA. URL dicetak tanpa diperiksa, jadi websockify
+      # yang mati seketika tetap menghasilkan "noVNC : http://localhost:6080"
+      # yang tidak bisa dibuka. Sekarang diverifikasi dulu.
+      if novnc_siap 8; then
+        novnc_hidup=true
+        _ok "noVNC menjawab di port ${NOVNC_PORT}"
+      else
+        _err "websockify tidak menjawab di port ${NOVNC_PORT}."
+        _err "Keluaran terakhirnya:"
+        tail -5 "$logbg/novnc.log" 2>/dev/null | sed 's/^/     /'
+        _warn "Penyebab paling sering: port ${NOVNC_PORT} sudah dipakai proses lain,"
+        _warn "atau paket novnc belum terpasang. Coba: sudo apt install novnc"
+        _warn "VNC polos tetap bisa dipakai dengan VNC viewer ke 127.0.0.1:${VNC_PORT}."
+      fi
     fi
   fi
 
@@ -358,7 +478,7 @@ browser_start() {
   rm -f "${PROFILE_DIR}/SingletonLock" "${PROFILE_DIR}/SingletonCookie" \
         "${PROFILE_DIR}/SingletonSocket" 2>/dev/null || true
 
-  DISPLAY="$CHROME_DISPLAY" "$CHROME" "${args[@]}" >/dev/null 2>&1 &
+  DISPLAY="$CHROME_DISPLAY" "$CHROME" "${args[@]}" </dev/null >>"$logbg/chrome.log" 2>&1 &
   local chrome_pid=$!
   echo "$chrome_pid" > "$STATE_DIR/run/chrome.pid"
 
@@ -403,9 +523,15 @@ browser_start() {
     _warn "Kalau keduanya undefined, popup tidak akan bisa dibuka."
   fi
   echo
-  if [[ "$pakai_vnc" == true ]]; then
-    echo "  noVNC : http://localhost:${NOVNC_PORT}/vnc.html"
+  if [[ "$pakai_vnc" == true && "$novnc_hidup" == true ]]; then
+    novnc_petunjuk_url
     echo "  (paksa jendela asli di mesin berlayar: BROWSER_MODE=native agentdrop browser)"
+  elif [[ "$pakai_vnc" == true ]]; then
+    # Mencetak URL yang kita tahu mati adalah cara tercepat membuat operator
+    # menyimpulkan "agentdrop rusak" tanpa petunjuk apa pun.
+    echo "  noVNC  : TIDAK BISA DINYALAKAN (lihat pesan error di atas)"
+    echo "  vnc    : pakai VNC viewer ke 127.0.0.1:${VNC_PORT} — layar tetap ada"
+    echo "  log    : $(_log_dir_bg)/novnc.log"
   else
     echo "  jendela : Chrome for Testing muncul di layar $CHROME_DISPLAY"
     echo "  (paksa lewat noVNC: BROWSER_MODE=vnc agentdrop browser)"

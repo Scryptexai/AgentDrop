@@ -2675,6 +2675,99 @@ def check_variabel_yatim() -> None:
             f"mematikan skrip saat runtime, dan `bash -n` tidak menangkapnya.")
 
 
+def check_browser_latar_dan_novnc() -> None:
+    """[47] Proses browser harus lepas dari terminal, dan noVNC harus diverifikasi.
+
+    Dua cacat yang membuat operator melihat "noVNC belum di-fix, URL tidak bisa
+    dibuka":
+
+    1. Xvfb, x11vnc, websockify, dan Chrome dijalankan dengan `&` polos. Tutup
+       sesi SSH mengirim SIGHUP ke seluruh grup proses dan keempatnya mati.
+       Diuji terkontrol: dengan `trap '' HUP` keempatnya hidup, tanpa itu
+       keempatnya mati.
+
+    2. URL noVNC dicetak tanpa diperiksa. `pgrep -f "websockify.*6080"` juga
+       mencocokkan SUBSTRING di baris perintah proses apa pun -- shell yang
+       sedang men-grep bisa membuatnya "berhasil" sehingga websockify tidak
+       pernah dinyalakan. Yang relevan bukan nama prosesnya, tapi apakah
+       portnya menjawab.
+    """
+    global checks
+
+    f = REPO / "lib" / "40-browser.sh"
+    checks += 1
+    if not f.is_file():
+        err("lib/40-browser.sh tidak ada.")
+        return
+    # Komentar dibuang: berkas ini menjelaskan cacat lama di dalam komentar,
+    # dan "grep cocok di komentar" bukan fakta tentang kodenya.
+    t = "\n".join(re.sub(r'(^|[^"\\])#.*$', r'\1', ln)
+                  for ln in f.read_text().split("\n"))
+
+    checks += 1
+    if "trap '' HUP" not in t:
+        err("lib/40-browser.sh tidak mengabaikan SIGHUP. Menutup sesi SSH akan "
+            "mematikan Xvfb, x11vnc, websockify, dan Chrome sekaligus.")
+
+    checks += 1
+    if re.search(r'pgrep -f "websockify', t) or re.search(r"pgrep -f 'websockify", t):
+        err("lib/40-browser.sh masih memakai `pgrep -f websockify`. Pola itu "
+            "mencocokkan substring di baris perintah proses apa pun, jadi bisa "
+            "'berhasil' padahal websockify tidak pernah dinyalakan.")
+
+    checks += 1
+    if re.search(r'pgrep -f "x11vnc', t):
+        err("lib/40-browser.sh masih memakai `pgrep -f x11vnc` untuk memastikan "
+            "x11vnc hidup. Periksa portnya, bukan nama prosesnya.")
+
+    checks += 1
+    if "_port_tcp_siap" not in t:
+        err("lib/40-browser.sh tidak punya pemeriksaan port TCP. Tanpa itu tidak "
+            "ada cara memastikan x11vnc benar-benar membuka portnya.")
+
+    checks += 1
+    if "novnc_siap" not in t or "curl -fsS \"http://127.0.0.1:${NOVNC_PORT}/vnc.html\"" not in t:
+        err("lib/40-browser.sh tidak memverifikasi halaman noVNC lewat HTTP. "
+            "'Prosesnya ada' bukan bukti halamannya bisa dibuka.")
+
+    # URL tidak boleh dicetak tanpa syarat
+    checks += 1
+    if not re.search(r'pakai_vnc" == true && "\$novnc_hidup" == true', t):
+        err("lib/40-browser.sh mencetak URL noVNC tanpa memeriksa apakah noVNC "
+            "hidup. Ini persis gejala 'URL tidak bisa dibuka'.")
+
+    checks += 1
+    if "novnc_hidup=true" not in t:
+        err("penanda novnc_hidup tidak pernah di-set true, jadi URL tidak akan "
+            "pernah dicetak walau noVNC sehat.")
+
+    # Kegagalan harus bisa dibaca ulang. Diperiksa dengan menghitung, bukan
+    # mencocokkan nama perintah: peluncurannya bisa berupa "${ws_cmd[@]}" dan
+    # redirect-nya bisa berada di baris lanjutan, jadi pencocokan per-baris
+    # dengan nama perintah melewatkan keduanya.
+    checks += 1
+    bg = [l for l in t.split("\n") if re.search(r'[^&]&\s*$', l)]
+    berlog = [l for l in bg if '>>"$logbg/' in l]
+    if not bg:
+        err("tidak ada peluncuran proses latar yang ditemukan di "
+            "lib/40-browser.sh — pemeriksaannya sendiri yang salah.")
+    elif len(berlog) != len(bg):
+        err(f"{len(bg) - len(berlog)} dari {len(bg)} proses latar tidak menulis "
+            f"ke berkas log. Kegagalan yang tidak bisa dibaca ulang akan "
+            f"dilaporkan operator sebagai 'tidak jalan' tanpa petunjuk apa pun.")
+
+    checks += 1
+    if "python3 -m websockify" not in t:
+        err("tidak ada cadangan `python3 -m websockify`. Sebagian distro hanya "
+            "memasang modul python, bukan binari websockify.")
+
+    checks += 1
+    if "ssh -L" not in t:
+        err("tidak ada petunjuk terowongan SSH. Di VPS, 'localhost' di laptop "
+            "operator bukan mesin itu -- penyebab paling umum 'URL tidak bisa "
+            "dibuka' walau noVNC-nya sehat.")
+
+
 def main() -> int:
     print("=" * 62)
     print("  AgentDrop — validator statis")
@@ -2791,6 +2884,9 @@ def main() -> int:
 
     print("\n[46] Variabel dibaca tanpa pernah di-assign")
     check_variabel_yatim()
+
+    print("\n[47] Browser di latar belakang dan noVNC terverifikasi")
+    check_browser_latar_dan_novnc()
 
     print("\n" + "=" * 62)
     check_model_vars_and_delegation(configs)

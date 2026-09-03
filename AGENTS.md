@@ -3492,3 +3492,121 @@ selesai bersih dengan `n=0`, sedangkan blok lama mereproduksi
 (tidak ada display, tidak ada Chrome), dan `agentdrop latih` terhadap Hermes
 sungguhan dengan `skill_manage` yang benar-benar menulis. Keduanya hanya bisa
 dibuktikan di mesin operator.
+
+## Arc 40 — noVNC yang tidak bisa dibuka, dan browser yang mati saat terminal ditutup
+
+Operator: **"browser no vnc belum di fix pada agentdrop browser, url belum bisa di
+buka mungkin perlu system run browser di background."**
+
+Dua-duanya benar, dan dugaannya tentang background tepat. Saya tidak menebak:
+ketiganya dibuktikan dulu, baru diperbaiki.
+
+### 1. URL dicetak tanpa pernah diperiksa
+
+`NOVNC_PORT` dipakai untuk menyalakan websockify dan untuk mencetak URL — tapi
+tidak pernah untuk memeriksa apakah ada yang menjawab. Dibuktikan dengan
+menjalankan `browser_start` sungguhan terhadap websockify tiruan yang langsung
+gagal: keluarannya
+
+```
+noVNC : http://localhost:6080/vnc.html
+```
+
+padahal `ss -ltn` menunjukkan **tidak ada apa pun di 6080**. Keluaran websockify
+juga lenyap ke `>/dev/null`, jadi tidak ada jejak untuk dibaca ulang.
+
+Sekarang `novnc_siap()` memeriksa halamannya lewat HTTP sebelum apa pun diklaim,
+dan kalau gagal yang dicetak bukan URL melainkan:
+
+```
+noVNC  : TIDAK BISA DINYALAKAN (lihat pesan error di atas)
+vnc    : pakai VNC viewer ke 127.0.0.1:5900 — layar tetap ada
+log    : <log>/novnc.log
+```
+
+Mencetak URL yang kita tahu mati adalah cara tercepat membuat operator
+menyimpulkan "agentdrop rusak" tanpa petunjuk apa pun.
+
+### 2. `pgrep -f` mencocokkan substring, bukan proses
+
+`pgrep -f "websockify.*6080"` dipakai sebagai tanda "sudah jalan". Pola itu
+mencocokkan **baris perintah proses apa pun**: shell yang sedang men-grep,
+editor yang membuka berkas ini, bahkan skrip uji saya sendiri. Saat pengujian,
+shell saya kebetulan memuat teks pola itu, jadi pemeriksaannya "berhasil",
+cabang start dilewati, dan websockify tidak pernah dinyalakan sama sekali.
+
+Semua pemeriksaan diganti dari nama proses ke keadaan yang sebenarnya:
+
+| proses | dulu | sekarang |
+|---|---|---|
+| Xvfb | `pgrep -f "Xvfb :99"` | soket `/tmp/.X11-unix/X99` ada (`-S`) |
+| x11vnc | `pgrep -f "x11vnc.*:99"` | port 5900 menjawab (`/dev/tcp`) |
+| websockify | `pgrep -f "websockify.*6080"` | `http://127.0.0.1:6080/vnc.html` menjawab |
+
+Pemeriksaan Xvfb sengaja memakai soket X yang sama seperti
+`browser_real_display()`, supaya keduanya tidak bisa berbeda pendapat tentang
+apakah layar itu ada.
+
+### 3. Dugaan operator benar: browser mati saat terminal ditutup
+
+Xvfb, x11vnc, websockify, dan Chrome semuanya dijalankan dengan `&` polos —
+tidak ada `nohup` maupun `setsid` di seluruh repo (satu-satunya `nohup` ada di
+`agentdrop:87` untuk gateway). Tutup sesi SSH mengirim SIGHUP ke seluruh grup
+proses dan keempatnya ikut mati. Browser "hilang sendiri".
+
+Diuji terkontrol, bukan diduga. Jalur `browser_start` sungguhan dijalankan di
+sesi sendiri, lalu SIGHUP dikirim ke grup prosesnya:
+
+| | Xvfb | x11vnc | noVNC | Chrome |
+|---|---|---|---|---|
+| `&` polos (sebelum) | MATI | MATI | MATI | MATI |
+| `trap '' HUP` (sesudah) | HIDUP | HIDUP | HIDUP | HIDUP |
+
+`trap '' HUP` dipilih bukan `setsid` karena `setsid` bisa mem-fork sehingga `$!`
+memberi PID yang salah dan `browser_stop` kehilangan jejaknya. Dengan `trap`,
+PID yang tercatut tetap PID prosesnya sendiri — diverifikasi: keempat berkas
+`.pid` masih menunjuk proses yang hidup.
+
+### 4. Penyebab ketiga: `localhost` di VPS bukan mesin itu
+
+URL yang dicetak selalu `http://localhost:6080/vnc.html`. Di VPS, operator
+membuka dari laptopnya, dan `localhost` di laptopnya bukan mesin itu. noVNC-nya
+sehat tapi URL-nya memang tidak akan pernah bisa dibuka. Sekarang dideteksi dari
+`SSH_CONNECTION`/`SSH_TTY` dan dicetak perintah terowongannya:
+
+```
+ssh -L 6080:localhost:6080 user@host
+```
+
+### 5. Tiga cacat yang saya buat sendiri saat menulis validatornya
+
+1. **Rule saya kena kode saya sendiri.** `pgrep -f "websockify` masih "ditemukan"
+   padahal yang tersisa hanya penjelasan di komentar. Komentar harus dibuang
+   sebelum mencocokkan — jebakan lama yang muncul lagi, kali ini di aturan baru.
+2. **Pemeriksaan log salah cara.** Saya cocokkan `(websockify|x11vnc|Xvfb).*>/dev/null 2>&1 &`
+   per baris. Peluncurannya `"${ws_cmd[@]}"` dan redirect-nya di baris lanjutan,
+   jadi tidak pernah cocok — injeksinya lolos. Diganti dengan menghitung: jumlah
+   peluncuran latar harus sama dengan jumlah yang menulis log (5 = 5).
+3. **`pkill -f` membunuh shell saya sendiri, tiga kali.** Pola pencarian muncul
+   di baris perintah pemanggilnya, jadi shell-nya ikut cocok. Bersihkan lewat
+   port, atau rangkai polanya dari potongan supaya tidak muncul utuh.
+
+### Verifikasi
+
+`tools/validate_config.py` → **447 checks, SEMUA LOLOS** (dari 436). `bash -n`
+13 skrip bersih. `pyflakes` bersih.
+
+Dua skenario noVNC dijalankan lewat `browser_start` sungguhan: websockify gagal
+→ tidak ada URL, ada fallback VNC dan lokasi log; websockify sehat → URL dicetak
+dan `curl` independen mengonfirmasi **HTTP 200** dari
+`http://127.0.0.1:6080/vnc.html`. Jalur native diuji ulang: `BROWSER_MODE=auto`
+dengan `DISPLAY=:3` tetap memilih layar asli — tidak ada regresi.
+
+Rule `[47]` (10 sub-check) mengunci semuanya: **6/6 injeksi terdeteksi** — trap
+dibuang, kembali ke `pgrep` websockify, kembali ke `pgrep` x11vnc, URL dicetak
+tanpa syarat, log dibuang ke `/dev/null`, petunjuk SSH dibuang.
+
+**Tidak bisa diuji dari sandbox:** x11vnc dan websockify sungguhan, halaman
+noVNC yang benar-benar bisa dipakai dari browser operator, dan Chrome for
+Testing yang benar-benar muncul di Xvfb. Ketiganya hanya bisa dipastikan di
+mesin operator.
