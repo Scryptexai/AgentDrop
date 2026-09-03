@@ -3359,3 +3359,136 @@ ditolak dengan penjelasan. Keempat jalur pemilihan layar diuji.
 **Tidak bisa diuji dari sandbox:** unduhan Chrome for Testing (egress diblokir),
 Chrome yang benar-benar muncul di layar asli, dan noVNC yang benar-benar bisa
 dibuka.
+
+## Arc 39 — `agentdrop browser` mati sesudah CDP siap, dan training yang tidak bisa dijalankan
+
+Operator menjalankan `agentdrop browser` di mesinnya sendiri. Chrome ketemu, Chrome
+lama di CDP 9222 dihentikan, lalu:
+
+```
+✓ CDP siap: ws://127.0.0.1:9222/devtools/browser/0df0bbef-…
+/home/dev/.agentdrop/app/lib/40-browser.sh: line 384: count: unbound variable
+```
+
+Satu baris tambahan: **"train belum terimplementsasi juga"**. Dua-duanya benar,
+dan yang pertama adalah cacat yang saya buat sendiri di Arc 38.
+
+### 1. Cacat saya sendiri: blok dihapus, pembacanya tertinggal
+
+Arc 38 menghapus jalur CRX/`--sideload`, termasuk blok pemindaian `EXT_ROOT` dan
+deklarasinya `local list="" count=0 d`. Yang membaca `$count` tidak ikut terhapus.
+Baris 384 berbunyi `if [[ "$count" -gt 0 ]]; then`, dan itu **satu-satunya**
+rujukan ke `count` di seluruh berkas.
+
+Di bawah `set -uo pipefail` itu fatal. Dan karena barisnya hanya dieksekusi
+**sesudah** CDP hidup, tidak ada pemeriksaan statis yang menyadarinya: `bash -n`
+hanya memeriksa sintaks, dan blok itu tidak pernah tersentuh saat pengujian
+karena tidak ada Chrome di sandbox.
+
+Perbaikannya bukan sekadar menambah `count=0` kembali. Penjaga itu dulu berarti
+"periksa hanya kalau ada ekstensi yang dimuat lewat `--load-extension`". Jalur
+itu sudah dibuang dan ekstensi sekarang dipasang dari Chrome Web Store ke dalam
+profil, jadi pemeriksaan target `chrome-extension://` justru **harus selalu
+jalan** — itulah satu-satunya bukti bahwa CDP bisa menjangkau popup wallet.
+Penjaganya dihapus, pemeriksaannya jadi tanpa syarat, dan pesannya ditambah
+petunjuk `agentdrop extensions` kalau belum ada ekstensi sama sekali.
+
+Sesudah itu seluruh nama yang dideklarasikan blok terhapus (`list`, `count`, `d`)
+digrep ulang di berkas. Dua kandidat lain dari pemindaian otomatis (`c` dan
+`pakai_vnc`) ternyata false positive: keduanya dideklarasikan dalam bentuk
+`local novnc_web="" c` dan `local mode="..." pakai_vnc=false CHROME_DISPLAY`,
+yaitu satu `local` dengan banyak nama.
+
+**Pelajaran yang mahal:** sesudah menghapus sebuah deklarasi `local`, grep
+seluruh berkas untuk setiap nama yang ikut terbuang.
+
+### 2. Training memang tidak bisa dijalankan — dan itu salah rancangan Arc 36
+
+Operator benar. Arc 36 menaruh `/latih` di `python/agentdrop_repl.py`. REPL itu
+berjalan di atas jembatan yang mengimpor `run_agent.AIAgent` langsung, dan
+jembatan itu **belum pernah diuji terhadap Hermes sungguhan**. Tidak ada
+`agentdrop latih`. Jadi perintah latih ada di kode tapi tidak bisa dijalankan
+dari tempat operator berdiri. Fitur yang hanya hidup di dalam REPL yang belum
+teruji bukan fitur yang terimplementasi.
+
+Yang dibangun sekarang: **`agentdrop latih <worker> "<materi>"`** di
+`lib/60-latih.sh`, di atas jalur yang **sudah terbukti jalan** —
+`hermes --profile <worker> chat -q "..."`, persis yang dipakai `agentdrop run`
+dan yang membuat `pekerja-x` berhasil posting ke X. Tidak ada dependensi baru,
+tidak ada jembatan yang belum teruji.
+
+Dua hal dijaga supaya tidak mengulang cacat lama:
+
+- **Prompt pelatihan diambil dari `build_learn_prompt()` milik Hermes** kalau
+  tersedia, supaya hasilnya identik dengan `hermes /learn`. Kalau tidak tersedia,
+  dipakai prompt bawaan **dan operator diberitahu** dengan satu baris peringatan —
+  tidak berpura-pura itu prompt Hermes.
+- **Pelatihan dinilai dari skill yang benar-benar tersimpan**, bukan dari exit
+  code dan bukan dari jawaban yang terdengar meyakinkan. Direktori skill worker
+  difoto sebelum dan sesudah; yang muncul di selisih itulah hasilnya.
+
+Kasus yang paling menipu ditangani khusus: agent membalas panjang, exit code 0,
+tool terpanggil, **tapi tidak ada skill yang tersimpan**. Itu dilaporkan gagal
+dengan exit code 1, bukan lulus.
+
+Tujuh jalur diuji dengan Hermes tiruan: `--list` · latih berhasil (skill
+terdeteksi, exit 0) · agent menjawab tanpa menyimpan skill (**exit 1**) · worker
+tidak ada · materi kosong · `build_learn_prompt` tersedia (prompt Hermes yang
+dipakai) · `build_learn_prompt` tidak ada (prompt bawaan + peringatan).
+
+### 3. Aturan validator yang seharusnya menangkap cacat itu
+
+Rule `[46]` memindai seluruh skrip shell: nama yang **dibaca** tapi tidak pernah
+**di-assign di berkas mana pun** (semua `lib/*.sh` di-source ke satu namespace)
+dan bukan variabel lingkungan. Persis kelas cacat yang mematikan `agentdrop
+browser`.
+
+Nama UPPERCASE dilewati — di codebase ini itu kenop lingkungan (`BROWSER_MODE`,
+`AGENTDROP_LOG_DIR`, `TELEGRAM_BOT_TOKEN`) yang datang dari shell atau `.env`
+operator dan tidak bisa dienumerasi statik. Cacat Arc 39 ada di nama lowercase,
+dan di sanalah aturan ini tajam. `${var:-x}` juga tidak dilaporkan karena punya
+nilai cadangan dan aman di bawah `set -u`; `${var%x}` tetap dihitung.
+
+Tiga koreksi yang harus dicatat karena semuanya saya buat sendiri saat menulis
+aturan ini:
+
+1. Regex assignment pertama hanya menangkap nama pertama di tiap baris, jadi
+   `PRE0="..."; ERR0="..."` membuat `ERR0` terlihat yatim. Lima belas false
+   positive (`ERR0`, `ERR1`, `HASIL`, `V_PASS`, `V_WARN`) semuanya berasal dari
+   sini. Assignment sekarang dikenali di mana pun dalam baris.
+2. Filter UPPERCASE saya tulis `if nama != nama.upper()`, padahal variabel loop
+   generator itu `n`. `nama` masih berisi nama berkas dari loop sebelumnya, jadi
+   kondisinya selalu benar dan **tidak ada yang tersaring**. `pyflakes` tidak
+   menangkapnya karena `nama` memang nama yang sah di lingkup itu. Baru ketahuan
+   setelah 10 error tetap muncul di keadaan bersih.
+3. Dua injeksi pertama saya tidak valid: `$count` sekarang hanya ada di komentar
+   (bug-nya sudah diperbaiki), dan `read -r s` memang meng-assign `s`. Keduanya
+   "lulus" karena injeksinya tidak menciptakan cacat, bukan karena aturannya
+   lemah. **Injeksi yang tidak menyala harus dicurigai dulu sebagai injeksi yang
+   salah**, baru sebagai aturan yang lemah.
+
+Rule `[45]` mengunci `agentdrop latih`: harus tersambung ke dispatcher (bukan
+hanya ada di lib — persis cacat Arc 36), harus memakai `hermes --profile`, tidak
+boleh menilai keberhasilan dari exit code, harus membaca log audit, harus punya
+jalur untuk kasus "menjawab tanpa menyimpan skill", harus mencoba
+`build_learn_prompt()`, dan harus mengarahkan `HERMES_HOME` ke profil worker.
+
+### Verifikasi
+
+`tools/validate_config.py` → **436 checks, SEMUA LOLOS** (dari 425). `bash -n`
+**13** skrip bersih (dari 12, ada `lib/60-latih.sh`). `pyflakes` bersih.
+
+Injeksi rule `[45]`: **5/5 terdeteksi** — dispatcher dilepas, dinilai dari exit
+code, jalur `hermes --profile` dibuang, peringatan tanpa-skill dibuang,
+`HERMES_HOME` tidak diarahkan ke profil. Injeksi rule `[46]`: **2/2 terdeteksi**
+— pembaca tanpa deklarasi di `lib/40-browser.sh` (bentuk asli cacat Arc 39) dan
+di `lib/60-latih.sh`.
+
+Blok perbaikan baris 384 dijalankan langsung di bawah `set -uo pipefail`:
+selesai bersih dengan `n=0`, sedangkan blok lama mereproduksi
+`count: unbound variable` persis seperti di log operator.
+
+**Tidak bisa diuji dari sandbox:** `agentdrop browser` terhadap Chrome sungguhan
+(tidak ada display, tidak ada Chrome), dan `agentdrop latih` terhadap Hermes
+sungguhan dengan `skill_manage` yang benar-benar menulis. Keduanya hanya bisa
+dibuktikan di mesin operator.

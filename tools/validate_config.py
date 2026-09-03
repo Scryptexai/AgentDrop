@@ -2518,6 +2518,163 @@ def check_ekstensi_dan_layar() -> None:
             "berlayar harus otomatis pakai native, VPS otomatis pakai noVNC.")
 
 
+def check_perintah_latih() -> None:
+    """[45] `agentdrop latih` harus ada dan dinilai dari skill yang tersimpan.
+
+    Arc 36 menaruh pelatihan di dalam REPL, yang berjalan di atas jembatan
+    run_agent yang belum teruji terhadap Hermes sungguhan. Akibatnya perintah
+    latih ADA di kode tapi tidak bisa dijalankan operator. Arc 39 memindahkannya
+    ke `agentdrop latih`, di atas jalur `hermes --profile ... chat` yang terbukti
+    jalan.
+
+    Yang dijaga di sini:
+    1. Perintahnya benar-benar tersambung ke dispatcher, bukan cuma ada di lib.
+    2. Penilaian TIDAK memakai exit code sebagai keberhasilan. `hermes chat`
+       keluar 0 walau task gagal total (Arc 34 Gap 1).
+    3. Pelatihan yang tidak menyimpan skill dilaporkan gagal. Agent bisa
+       membalas panjang dan meyakinkan tanpa memanggil skill_manage.
+    """
+    global checks
+
+    lib = REPO / "lib" / "60-latih.sh"
+    cli = REPO / "agentdrop"
+    checks += 1
+    if not lib.is_file():
+        err("lib/60-latih.sh tidak ada. Perintah `agentdrop latih` bergantung "
+            "padanya.")
+        return
+    isi = lib.read_text()
+    isi_cli = cli.read_text() if cli.is_file() else ""
+
+    checks += 1
+    if "cmd_latih" not in isi_cli:
+        err("agentdrop: cmd_latih tidak tersambung ke dispatcher. Fungsi boleh "
+            "ada di lib, tapi kalau tidak dipanggil, operator tidak bisa "
+            "menjalankannya -- persis cacat Arc 36.")
+
+    checks += 1
+    if "hermes --profile" not in isi:
+        err("lib/60-latih.sh tidak memakai `hermes --profile ... chat`. Jalur "
+            "inilah yang terbukti jalan; jalur lain belum teruji.")
+
+    # exit code boleh DICETAK, tapi tidak boleh menentukan keberhasilan
+    checks += 1
+    if re.search(r'\[\[\s*"\$rc"\s*-eq\s*0\s*\]\]', isi):
+        err("lib/60-latih.sh menilai keberhasilan dari exit code. `hermes chat` "
+            "keluar 0 walau task gagal total (Arc 34 Gap 1).")
+
+    checks += 1
+    if "_audit_counts" not in isi:
+        err("lib/60-latih.sh tidak membaca log audit. Tanpa itu tidak ada cara "
+            "mengetahui apakah tool benar-benar terpanggil.")
+
+    checks += 1
+    if "TIDAK ADA skill baru" not in isi:
+        err("lib/60-latih.sh tidak punya jalur untuk kasus 'agent menjawab tapi "
+            "tidak menyimpan skill'. Kasus itu exit code-nya 0 dan jawabannya "
+            "terdengar berhasil.")
+
+    checks += 1
+    if "build_learn_prompt" not in isi:
+        err("lib/60-latih.sh tidak mencoba memakai build_learn_prompt() milik "
+            "Hermes. Prompt pelatihan harus identik dengan `hermes /learn`.")
+
+    # pelatihan harus diarahkan ke worker yang diminta, bukan profil default
+    checks += 1
+    if 'HERMES_HOME="$d"' not in isi:
+        err("lib/60-latih.sh tidak mengarahkan HERMES_HOME ke profil worker. "
+            "SOUL.md dan skill yang terbaca akan milik profil default.")
+
+
+def check_variabel_yatim() -> None:
+    """[46] Tidak boleh ada `$var` yang dibaca tanpa pernah di-assign.
+
+    Cacat Arc 39 yang mematikan `agentdrop browser`: sebuah blok dihapus beserta
+    `local list="" count=0 d`-nya, tapi baris yang membaca `$count` tertinggal.
+    `bash -n` tidak menangkapnya (sintaksnya sah), dan karena baris itu hanya
+    dieksekusi sesudah CDP hidup, tidak ada pengujian statis yang menyadarinya.
+    Operator menemukannya sebagai `count: unbound variable`.
+
+    Semua lib/*.sh di-source ke satu namespace, jadi satu variabel cukup
+    di-assign di berkas mana pun. Yang dicari di sini: nama yang DIBACA di
+    suatu berkas tetapi tidak pernah di-assign di berkas mana pun dan bukan
+    variabel lingkungan.
+    """
+    global checks
+
+    berkas = sorted(REPO.glob("lib/*.sh")) + sorted(REPO.glob("scripts/*.sh"))
+    agen = REPO / "agentdrop"
+    if agen.is_file():
+        berkas.append(agen)
+
+    # Variabel yang wajar datang dari luar kode: lingkungan, argumen posisi,
+    # dan nama yang di-set oleh perintah builtin yang sulit dilacak statik.
+    dari_luar = {
+        "HOME", "PATH", "USER", "LANG", "LC_ALL", "TERM", "PWD", "OLDPWD",
+        "DISPLAY", "XDG_RUNTIME_DIR", "SHELL", "HOSTNAME", "TMPDIR", "EDITOR",
+        "COLUMNS", "LINES", "IFS", "RANDOM", "LINENO", "BASH_VERSINFO",
+        "BASH_SOURCE", "BASH_LINENO", "FUNCNAME", "SECONDS", "OPTIND", "OPTARG",
+        "PIPESTATUS", "REPLY", "UID", "EUID", "PPID", "SHLVL", "PS1", "PS2",
+        "HERMES_HOME", "PYTHONPATH", "NO_COLOR", "CI",
+    }
+
+    # Nama yang di-assign di mana pun dalam proyek ini.
+    terisi: set[str] = set()
+    isi_berkas: dict[str, str] = {}
+    for b in berkas:
+        t = b.read_text(errors="replace")
+        isi_berkas[str(b)] = t
+        # Assignment tidak harus di awal baris: `A=1; B=2` dan `{ A=1; }` umum
+        # dipakai di sini. Regex lama hanya menangkap nama pertama di tiap baris,
+        # yang membuat B/C/HASIL/V_PASS terlihat seperti variabel yatim.
+        for m in re.finditer(r'(?:^|[;&|{}\s])([A-Za-z_][A-Za-z0-9_]*)[+]?=', t, re.M):
+            terisi.add(m.group(1))
+        # ${VAR:=x} dan ${VAR=x} juga men-set
+        for m in re.finditer(r'\$\{([A-Za-z_][A-Za-z0-9_]*):?=', t):
+            terisi.add(m.group(1))
+        # `local a="" b=0 c` — nama tanpa inisial setelah koma/spasi
+        for m in re.finditer(r'^[ \t]*(?:local|declare|readonly)[ \t]+(.+)$', t, re.M):
+            for n in re.split(r'[ \t]+', m.group(1)):
+                n = n.split("=", 1)[0].strip('"')
+                if re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', n):
+                    terisi.add(n)
+        # `for x in`, `read x`, `mapfile -t x`, `select x in`
+        for m in re.finditer(r'\b(?:for|select)\s+([A-Za-z_][A-Za-z0-9_]*)\s+in\b', t):
+            terisi.add(m.group(1))
+        for m in re.finditer(r'\b(?:read|mapfile|readarray)\b[^\n|;&]*', t):
+            for n in re.findall(r'(?<![\w-])([A-Za-z_][A-Za-z0-9_]*)\s*(?=$|[ \t;|&<>])',
+                                m.group(0).split(None, 1)[1] if len(m.group(0).split(None, 1)) > 1 else ""):
+                if n not in {"r", "p", "t", "n", "a", "d", "s", "u", "N"}:
+                    terisi.add(n)
+
+    dibaca: dict[str, list[str]] = {}
+    for nama, t in isi_berkas.items():
+        # buang komentar supaya rujukan di dalam komentar tidak dihitung
+        bersih = "\n".join(re.sub(r'(^|[^"\\])#.*$', r'\1', ln) for ln in t.split("\n"))
+        # ${var:-x}, ${var-x}, ${var+x}, ${var:=x}, ${var:?x} aman di bawah `set -u`
+        # karena punya nilai cadangan, jadi tidak boleh dilaporkan. ${var%x},
+        # ${var#x}, ${var/x}, ${var^} TIDAK aman dan tetap dihitung.
+        for m in re.finditer(r'\$\{([A-Za-z_][A-Za-z0-9_]*)(:?[-+?=]|[%/#^,]|\})', bersih):
+            if m.group(2) in ("-", ":-", "+", ":+", "=", ":=", "?", ":?"):
+                continue
+            dibaca.setdefault(m.group(1), []).append(nama)
+        for m in re.finditer(r'\$([A-Za-z_][A-Za-z0-9_]*)', bersih):
+            dibaca.setdefault(m.group(1), []).append(nama)
+
+    # Nama UPPERCASE dilewati: di codebase ini itu kenop lingkungan (BROWSER_MODE,
+    # AGENTDROP_LOG_DIR, TELEGRAM_BOT_TOKEN, ...) yang dibaca dari shell atau .env
+    # milik operator dan tidak bisa dienumerasi secara statik. Cacat Arc 39 ada di
+    # nama lowercase, dan di sanalah aturan ini tajam.
+    checks += 1  # satu hitungan untuk pemindaian seluruh berkas shell
+    for nama in sorted(n for n in set(dibaca) - terisi - dari_luar
+                       if n != n.upper()):
+        checks += 1
+        asal = sorted({Path(p).name for p in dibaca[nama]})
+        err(f"variabel ${nama} dibaca tapi tidak pernah di-assign di berkas "
+            f"mana pun (dibaca di {', '.join(asal)}). Di bawah `set -u` ini "
+            f"mematikan skrip saat runtime, dan `bash -n` tidak menangkapnya.")
+
+
 def main() -> int:
     print("=" * 62)
     print("  AgentDrop — validator statis")
@@ -2628,6 +2785,12 @@ def main() -> int:
 
     print("\n[44] Ekstensi Web Store + pemilihan layar otomatis")
     check_ekstensi_dan_layar()
+
+    print("\n[45] Perintah agentdrop latih")
+    check_perintah_latih()
+
+    print("\n[46] Variabel dibaca tanpa pernah di-assign")
+    check_variabel_yatim()
 
     print("\n" + "=" * 62)
     check_model_vars_and_delegation(configs)

@@ -7,6 +7,9 @@
 #
 #   agentdrop              MASUK SESI INTERAKTIF (cara utama memakai sistem)
 #   agentdrop chat         sama saja — tulis task, Enter, langsung dikerjakan
+#   agentdrop latih <worker> "<materi>"   latih SATU worker; hasilnya jadi
+#                          skill milik worker itu sendiri
+#   agentdrop latih --list daftar worker + jumlah skill yang sudah dipelajari
 #   agentdrop start        nyalakan gateway Telegram (agent berjalan di atasnya)
 #   agentdrop stop         hentikan gateway
 #   agentdrop browser      nyalakan Chrome for Testing + noVNC
@@ -49,7 +52,7 @@ STATE_DIR="$HOME/.agentdrop"
 PID_DIR="$STATE_DIR/run"
 mkdir -p "$PID_DIR"
 
-usage() { sed -n '2,31p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,34p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 # ---------------------------------------------------------------------------
 # start / stop — gateway. Agent berjalan di atasnya, jadi satu perintah.
@@ -379,6 +382,7 @@ main() {
     burn-in)      cmd_burnin "$@" ;;
     test-workers) cmd_testworkers "$@" ;;
     chat)         cmd_chat "$@" ;;
+    latih|train)  cmd_latih "$@" ;;
     "")           cmd_chat ;;
     -h|--help)    usage ;;
     *) _err "perintah tidak dikenal: $sub"; echo; usage; exit 1 ;;

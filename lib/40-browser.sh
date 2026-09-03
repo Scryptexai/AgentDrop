@@ -381,22 +381,26 @@ browser_start() {
   fi
   _ok "CDP siap: $ws"
 
-  if [[ "$count" -gt 0 ]]; then
-    # `grep -c` mencetak 0 DAN keluar dengan status 1 saat tidak ada kecocokan.
-    # Jadi `|| echo 0` di sini mencetak nol KEDUA dan n menjadi "0\n0", yang
-    # membuat [[ -gt ]] gagal dengan "syntax error in expression". `|| true`
-    # menahan statusnya untuk set -e tanpa menambah keluaran.
-    local n; n="$(curl -fsS "http://127.0.0.1:${CDP_PORT}/json" 2>/dev/null | grep -c 'chrome-extension://' || true)"
-    n="${n:-0}"
-    if [[ "$n" -gt 0 ]]; then _ok "ekstensi terlihat lewat CDP ($n target)"
-    else
-      _warn "target chrome-extension:// tidak terlihat di /json."
-      _warn "Ini belum tentu cacat: service worker MV3 memang sering tidak"
-      _warn "terdaftar di /json walau ekstensinya sehat. Jadi /json bukan bukti."
-      _warn "BUKTI sebenarnya cuma satu — di jendela browser, buka halaman lalu"
-      _warn "di console cek window.ethereum dan window.solana."
-      _warn "Kalau keduanya undefined, popup tidak akan bisa dibuka."
-    fi
+  # Pemeriksaan ini sekarang SELALU jalan. Dulu ia dijaga `if [[ "$count" -gt 0 ]]`
+  # karena hanya relevan kalau ada ekstensi yang dimuat lewat --load-extension.
+  # Jalur itu sudah dibuang (ekstensi dipasang dari Chrome Web Store ke dalam
+  # profil), dan penjaganya tertinggal tanpa `count` yang mendefinisikannya —
+  # di bawah `set -uo pipefail` itu mematikan perintah PERSIS sesudah CDP siap.
+  # `grep -c` mencetak 0 DAN keluar dengan status 1 saat tidak ada kecocokan.
+  # Jadi `|| echo 0` di sini mencetak nol KEDUA dan n menjadi "0\n0", yang
+  # membuat [[ -gt ]] gagal dengan "syntax error in expression". `|| true`
+  # menahan statusnya untuk set -e tanpa menambah keluaran.
+  local n; n="$(curl -fsS "http://127.0.0.1:${CDP_PORT}/json" 2>/dev/null | grep -c 'chrome-extension://' || true)"
+  n="${n:-0}"
+  if [[ "$n" -gt 0 ]]; then _ok "ekstensi terlihat lewat CDP ($n target)"
+  else
+    _warn "target chrome-extension:// tidak terlihat di /json."
+    _warn "Kalau Anda belum memasang wallet: agentdrop extensions"
+    _warn "Ini belum tentu cacat: service worker MV3 memang sering tidak"
+    _warn "terdaftar di /json walau ekstensinya sehat. Jadi /json bukan bukti."
+    _warn "BUKTI sebenarnya cuma satu — di jendela browser, buka halaman lalu"
+    _warn "di console cek window.ethereum dan window.solana."
+    _warn "Kalau keduanya undefined, popup tidak akan bisa dibuka."
   fi
   echo
   if [[ "$pakai_vnc" == true ]]; then
