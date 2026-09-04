@@ -1,0 +1,86 @@
+# ============================================================
+# SECRETS — never commit. Hermes itself auto-redacts logs,
+# but these files should never reach git in the first place.
+# ============================================================
+.env
+.env.local
+.env.*.local
+!.env.example
+config/hermes/.env
+config/hermes/profiles/*/.env
+auth.json
+*.pem
+*.key
+
+# ============================================================
+# Runtime state / data
+# ============================================================
+data/campaigns/*/
+!data/campaigns/.gitkeep
+# LOG AKTIVITAS SENGAJA TIDAK DI-IGNORE.
+# Log audit harus bisa di-commit dan di-push ke branch kerja, supaya kegagalan
+# di mesin operator bisa didiagnosis dari repo tanpa akses ke mesinnya.
+# Rahasia sudah dibuang saat tulis oleh tools/audit_log.py (_SECRET_KEYS +
+# pola regex), dan scripts/collect-logs.sh menolak menulis kalau ada sisa.
+!data/logs/
+!data/logs/**
+data/screenshots/*
+!data/screenshots/.gitkeep
+
+# Browser profiles are per-machine, per-identity, and huge.
+# Chrome profile lives in CDP_PROFILE_DIR (~/.agentdrop/chrome-profile), outside the repo.
+browser-profiles/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# ============================================================
+# SESI BROWSER — berisi cookie/localStorage yang masih hidup.
+# scripts/takeover.sh mengekspor ini sebagai cadangan. Bocor =
+# orang lain bisa masuk ke akun airdrop Anda tanpa password.
+# ============================================================
+storage-state*.json
+storage_state*.json
+**/storage-state*.json
+**/storage_state*.json
+data/campaigns/*.json
+
+# ============================================================
+# Python
+# ============================================================
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ============================================================
+# OS / editor
+# ============================================================
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# ============================================================================
+# PRIVATE KEY DAEMON SIGNING — tidak boleh pernah masuk git.
+# Path default-nya di luar repo (~/.hermes/), tapi kalau ada yang menaruhnya
+# di dalam repo, pola ini yang menangkap.
+# ============================================================================
+agentdrop-signer.key
+*.signer.key
+signer.key
+
+# Ekstensi pihak ketiga yang diunduh `agentdrop extensions`.
+# Jangan di-commit: ini kode biner pihak ketiga, dan manifest-nya
+# (config/extensions.yaml) yang menjadi sumber kebenaran.
+extensions/installed/
+
+# Hasil pengujian yang dikumpulkan `agentdrop logs`.
+# SENGAJA di-commit: inilah bahan analisis hasil uji nyata.
+# collect-logs.sh memeriksa secret sebelum menulis apa pun.
+!data/audit/
+!data/audit/**

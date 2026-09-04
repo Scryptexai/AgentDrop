@@ -1,0 +1,290 @@
+# ============================================================================
+# WORKER: DAILY — check-in harian semua campaign aktif
+# ============================================================================
+# Dipasang ke: ~/.hermes/profiles/pekerja-harian/config.yaml
+# Profil = HERMES_HOME terpisah penuh. Tidak mewarisi config utama.
+# ============================================================================
+
+model:
+  # Variabel model worker INI, bukan global. tugas berulang yang sudah dikenal; model murah cukup.
+  # Kosongkan salah satu di .env untuk memakai nilai global
+  # (AGENTDROP_MODEL dst.) — install.sh yang menyelesaikan
+  # fallback-nya, karena Hermes tidak punya sintaks default
+  # untuk ${VAR} (config.py:2767 membiarkannya verbatim).
+  # Tugas repetitif dan terstruktur: pakai model murah. Ini worker yang jalan
+  # setiap hari, jadi biayanya yang paling terasa. Ganti via `hermes model`.
+  default: "${AGENTDROP_MODEL}"
+  # "openrouter", BUKAN "auto". "auto" tidak pernah menyelesaikan ke OpenRouter
+  # (hermes_cli/auth.py:2268 memeriksa PROVIDER_REGISTRY, dan "auto" tidak ada
+  # di sana; config.py:2990 memperingatkan "auto" justru membuat model dirutekan
+  # lewat provider yang salah). Gejalanya: model custom tidak termuat dan UI
+  # hanya menampilkan model/provider bawaan Hermes. Penjelasan panjang ada di
+  # config/hermes/config.yaml.
+  provider: "${AGENTDROP_PROVIDER}"
+  base_url: "${AGENTDROP_BASE_URL}"
+  max_tokens: "${AGENTDROP_MAX_TOKENS}"
+
+
+# Provider OpenAI-compatible. Dirender dari .env saat install.
+#
+# WAJIB ada di SETIAP profil, bukan hanya di config utama: `hermes model`
+# menulis `custom_providers` ke config profil DEFAULT (hermes_cli/main.py:4957
+# -> save_config -> config.py:4023 menulis ~/.hermes/config.yaml). Profil
+# worker punya config.yaml sendiri, jadi tanpa blok ini setelan provider
+# custom tidak pernah sampai ke worker mana pun.
+custom_providers:
+  - name: "__AGENTDROP_PROVIDER_NAME__"
+    base_url: "${AGENTDROP_BASE_URL}"
+    key_env: "CUSTOM_API_KEY"
+    api_mode: "__AGENTDROP_API_MODE__"
+    models:
+      "${AGENTDROP_MODEL}": {}
+# ---------------------------------------------------------------------------
+# TOOLSET = BATAS CAKUPAN, bukan sekadar daftar kemampuan.
+#
+# Dulu daftar ini dimulai dengan `hermes-cli`. Itu satu baris yang mahal:
+# toolsets.py:478-481 memetakan hermes-cli ke _HERMES_CORE_TOOLS, yang isinya
+# 53 tool -- termasuk 14 tool kanban, 4 tool Home Assistant, text_to_speech,
+# image_generate, session_search, cronjob, dan computer_use. Tidak satu pun
+# dipakai airdrop farming, tapi SEMUANYA masuk ke skema tool yang dikirim ke
+# model di SETIAP putaran.
+#
+# Jadi toolset sempit dipilih satu-satu. Dua akibat yang disengaja:
+#
+#   1. Koordinator TIDAK mendapat toolset `browser`. Ia memang tidak boleh
+#      mengeksekusi -- sekarang itu ditegakkan oleh skema tool, bukan hanya
+#      oleh kalimat di SOUL.md.
+#   2. Worker TIDAK mendapat toolset `delegation`. Mereka leaf; sekarang
+#      mereka secara struktural tidak bisa mendelegasikan ke profil lain.
+#
+# `terminal` dan `code_execution` tetap di disabled_toolsets di bawah sebagai
+# lapisan kedua, walau tanpa hermes-cli keduanya memang tidak pernah termuat.
+# ---------------------------------------------------------------------------
+toolsets:
+  - browser
+  - file
+  - web
+  - todo
+  - memory
+  - skills
+  - clarify
+
+agent:
+  # Rutinitas harian pendek dan terprediksi. 30 cukup; kalau mentok, itu tanda
+  # ada yang salah — bukan tanda perlu budget lebih besar.
+  max_turns: 30
+  reasoning_effort: "medium"
+  # MATIKAN SHELL — lihat penjelasan di akhir file.
+  disabled_toolsets: [terminal, code_execution]
+
+browser:
+  # 1800 (30 menit) — cukup panjang untuk satu rangkaian aksi farming.
+  # Default Hermes 120 detik terlalu pendek: sesi login dashboard
+  # bisa tertutup di tengah rangkaian aksi.
+  inactivity_timeout: 1800
+  command_timeout: 30
+  # 15000 = default Hermes (browser_tool.py:290). Jangan dinaikkan tanpa bukti:
+  # angka ini adalah "per-page budget" yang masuk ke KONTEKS MODEL di setiap
+  # snapshot (browser_tool.py:285-289), dan satu task browser melakukan banyak
+  # snapshot -- jadi kenaikannya dibayar berkali-kali, bukan sekali. Snapshot
+  # yang terpotong tetap disimpan utuh ke cache/web dan bisa dibaca lewat
+  # read_file. Penjelasan panjang di config/hermes/config.yaml.
+  snapshot_threshold: 15000
+  # Audit trail harian.
+  record_sessions: false
+  allow_private_urls: false
+
+  # headed HANYA berlaku untuk browser lokal Hermes (agent-browser), BUKAN
+  # mode CDP. GUI di setup ini datang dari noVNC
+  # (Xvfb 1920x1080 -> x11vnc :5900 -> noVNC :6080). Biarkan false.
+  headed: false
+  # ------------------------------------------------------------------------
+  # CDP: attach ke Chrome for Testing, BUKAN meluncurkan browser sendiri.
+  #
+  #   tools/browser_tool.py:2431-2435
+  #       if cdp_override and not force_local:
+  #           session_info = _create_cdp_session(task_id, cdp_override)
+  #   tools/browser_tool.py:2909
+  #       backend_args = ["--cdp", session_info["cdp_url"]]
+  #   komentarnya: "The rest of the command (--json, command, args) is identical."
+  #
+  # Jadi browser_navigate / browser_snapshot / browser_click dan seluruh
+  # protokol ref accessibility-tree tetap berfungsi persis sama.
+  #
+  # Browser-nya dijalankan `agentdrop browser`: Chrome for Testing +
+  # ekstensi wallet + noVNC. HARUS Chrome for Testing — build Chrome branded
+  # mengabaikan --load-extension sejak versi 137.
+  #
+  # JANGAN set BROWSER_CDP_URL ke websocket mentah kalau --session juga aktif:
+  # agent-browser >=0.13 membuat browser lokal sendiri dan mengabaikan --cdp
+  # tanpa error apa pun.
+  #
+  # `headed` di atas tidak berlaku di mode CDP — hanya dipakai mode lokal.
+  # ------------------------------------------------------------------------
+  # "off" = paksa built-in browser tools. WAJIB eksplisit: kalau dibiarkan
+  # kosong, Hermes mengaktifkan mode Browser Use sendiri bila CLI browser-use
+  # atau uvx terpasang, lalu browser_navigate/browser_click digantikan SATU tool
+  # browser_exec (tools/browser_use_cli.py:216 + docstring baris 3). Semua
+  # SKILL.md kita menyebut browser_*, jadi mode itu membuat seluruh prosedur
+  # merujuk tool yang tidak ada. Panjangnya di config/hermes/config.yaml.
+  backend: "off"
+
+  cdp_url: "http://127.0.0.1:9222"
+
+
+compression:
+  enabled: true
+
+# Worker ini jalan tanpa pengawasan via cron. Hard stop = circuit breaker:
+# berhenti lebih baik daripada menghabiskan budget iterasi untuk retry buta.
+tool_loop_guardrails:
+  warnings_enabled: true
+  hard_stop_enabled: true
+  warn_after:
+    exact_failure: 2
+    same_tool_failure: 3
+    idempotent_no_progress: 2
+
+# ---------------------------------------------------------------------------
+# MEMORY LOOP
+# ---------------------------------------------------------------------------
+# Hermes punya tinjauan memory berkala bawaan. `nudge_interval` adalah jumlah
+# turn di antaranya. Protokol lengkapnya di skills/self-improvement/SKILL.md:
+# baca pelajaran sebelum bertindak, catat kegagalan setelahnya, dan naikkan
+# pelajaran yang berulang menjadi pengetahuan skill.
+#
+# `memory_char_limit` kecil (default 2200 char ~= 800 token) dan SELALU ada di
+# konteks, jadi ia untuk fakta frekuensi tinggi. Pengetahuan yang menumpuk
+# pergi ke memory/lessons/<profil>.md, yang dibaca saat dibutuhkan.
+#
+# `write_approval: false` sengaja. Agent yang harus minta izin untuk mencatat
+# pelanggarannya sendiri tidak akan mencatat apa pun.
+# ---------------------------------------------------------------------------
+memory:
+  memory_enabled: true
+  user_profile_enabled: true
+  nudge_interval: 10
+  write_approval: false
+
+# ---------------------------------------------------------------------------
+# LOG AUDIT
+# ---------------------------------------------------------------------------
+# Setiap pemanggilan tool dicatat ke ~/.agentdrop/logs/audit-<tanggal>.jsonl.
+# Dibaca lewat:  python3 tools/audit.py doctor
+#
+# Kenapa path-nya ~/.agentdrop dan bukan path repo: Hermes menjalankan command
+# hook lewat shlex.split(os.path.expanduser(...)) dengan shell=False
+# (hermes-agent/agent/shell_hooks.py:16,555). Jadi `~` di-expand, tetapi $VAR
+# TIDAK. ./install.sh menyalin skrip hook ke lokasi tetap ini supaya
+# konfigurasi tetap benar di mana pun repo di-clone.
+#
+# `fail_closed` sengaja TIDAK disetel. Logger yang bisa menggagalkan tool call
+# akan dimatikan orang, dan log yang dimatikan tidak berguna sama sekali.
+# ---------------------------------------------------------------------------
+hooks:
+  pre_tool_call:
+    - command: "python3 __AGENTDROP_HOOK__"
+      timeout: 10
+  post_tool_call:
+    - command: "python3 __AGENTDROP_HOOK__"
+      timeout: 10
+  subagent_start:
+    - command: "python3 __AGENTDROP_HOOK__"
+      timeout: 10
+  subagent_stop:
+    - command: "python3 __AGENTDROP_HOOK__"
+      timeout: 10
+  pre_approval_request:
+    - command: "python3 __AGENTDROP_HOOK__"
+      timeout: 10
+  post_approval_response:
+    - command: "python3 __AGENTDROP_HOOK__"
+      timeout: 10
+  on_session_start:
+    - command: "python3 __AGENTDROP_HOOK__"
+      timeout: 10
+  on_session_end:
+    - command: "python3 __AGENTDROP_HOOK__"
+      timeout: 10
+
+# Cron dan gateway berjalan tanpa TTY, jadi pendaftaran hook baru tidak bisa
+# meminta persetujuan interaktif. Tanpa ini hook di atas diabaikan diam-diam
+# pada run non-interaktif.
+hooks_auto_accept: true
+
+# ============================================================================
+# AKSES SHELL DIMATIKAN — INI DISENGAJA, JANGAN NYALAKAN
+# ============================================================================
+# Toolset `hermes-cli` memuat SELURUH _HERMES_CORE_TOOLS, yang di dalamnya ada:
+#     # Terminal + process management
+#     "terminal", "process",
+# (hermes-agent/toolsets.py:31-35). Jadi meskipun kata "terminal" tidak pernah
+# muncul di daftar `toolsets:` di atas, agent TETAP punya tool terminal lewat
+# bundle itu.
+#
+# Akibatnya persis kegagalan yang paling mahal saat agent mengerjakan airdrop:
+# alih-alih memanggil tool browser native, agent mengetik perintah shell untuk
+# membuka browser sendiri — headless, tanpa ekstensi, tanpa sesi login — lalu
+# melaporkan sukses.
+#
+# `agent.disabled_toolsets` dikurangkan PALING AKHIR dari toolset yang aktif
+# (hermes-agent/hermes_cli/tools_config.py:2712-2726, "This runs last so it
+# overrides everything above"), jadi ini satu-satunya cara yang benar-benar
+# menutup bundle tersebut.
+#
+#   terminal       -> tool: terminal, process
+#   code_execution -> tool: execute_code (menjalankan Python yang memanggil tool)
+#
+# Browser harus dipanggil lewat tool native (browser_navigate, browser_snapshot,
+# browser_click, ...) — bukan lewat shell.
+
+# ============================================================================
+# SKILLS — matikan skill bawaan Hermes yang bertentangan dengan aturan AgentDrop
+# ============================================================================
+# Hermes mengirim ~200 skill bawaan (skills/ + optional-skills/ di repo
+# hermes-agent). Semuanya TERLIHAT oleh agent lewat manifest skill, walau
+# toolset-nya tidak kita aktifkan.
+#
+# Itu bukan masalah kosmetik. Manifest skill masuk ke konteks agent, jadi:
+#   1. agent bisa memutuskan mengikuti prosedur skill yang kita larang, lalu
+#      gagal aneh karena toolnya tidak ada;
+#   2. skill adalah dokumen prosedur yang diikuti agent — membiarkan 77 di
+#      antaranya terbaca adalah permukaan prompt-injection yang tidak perlu;
+#   3. `computer-use` ada di antaranya, padahal validator kita sendiri
+#      ([20]) menolak skill AgentDrop yang menganjurkannya.
+#
+# Toolset-nya memang sudah mati di semua profil (terminal, code_execution,
+# computer_use tidak pernah diaktifkan), jadi ini lapisan kedua: prosedurnya
+# tidak terbaca sama sekali.
+#
+# Mekanisme: `skills.disabled` dibaca agent/skill_utils.py:446
+# get_disabled_skill_names() dari config.yaml, lalu dipakai
+# agent/prompt_builder.py:1814 untuk menyaring manifest. Nama harus sama
+# dengan `name:` di frontmatter SKILL.md — sudah diverifikasi ke sumbernya.
+#
+# WAJIB di tiap profil: profil adalah HERMES_HOME terpisah penuh dan TIDAK
+# mewarisi config utama, jadi menaruh ini hanya di config.yaml utama tidak
+# berpengaruh apa pun pada worker.
+#
+# `hermes-agent` tidak boleh dimasukkan: itu satu-satunya isi
+# ESSENTIAL_SKILLS (agent/skill_utils.py:443) dan Hermes mengurangkannya
+# dari daftar disabled apa pun.
+skills:
+  disabled:
+    # Mengendalikan desktop di luar browser — melanggar K7 dan batas wallet.
+    - computer-use
+    # X/Twitter lewat CLI: melewati browser, melewati log audit, dan memakai
+    # kredensial API yang tidak pernah kita berikan.
+    - xurl
+    # Semuanya butuh shell, dan shell dimatikan di setiap profil.
+    - python-debugpy
+    - node-inspect-debugger
+    # Delegasi coding ke CLI pihak ketiga — di luar cakupan airdrop farming,
+    # dan semuanya menjalankan shell.
+    - claude-code
+    - codex
+    - opencode
+    # Menyentuh email dan akun Google operator. Tidak ada task airdrop yang
+    # membutuhkannya, dan keduanya bernilai tinggi kalau disalahgunakan.
+    - himalaya
+    - google-workspace

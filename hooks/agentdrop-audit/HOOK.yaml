@@ -1,0 +1,15 @@
+name: agentdrop-audit
+description: >
+  Merekam seluruh siklus hidup agent ke log audit JSONL: pesan masuk dari
+  Telegram, tiap langkah tool-calling loop, sampai agent selesai.
+  Dipasangkan dengan agent-hooks/audit-log.py (sisi tool) dan dibaca lewat
+  tools/audit.py.
+events:
+  - gateway:startup
+  - session:start
+  - session:end
+  - session:reset
+  - agent:start
+  - agent:step
+  - agent:end
+  - command:*

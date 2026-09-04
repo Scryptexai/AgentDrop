@@ -1,0 +1,410 @@
+#!/usr/bin/env bash
+# ============================================================================
+# agentdrop — satu-satunya perintah runtime
+# ============================================================================
+# Installer memasang; perintah ini menjalankan. Semua yang dulu tersebar di
+# belasan skrip ada di sini sebagai subperintah.
+#
+#   agentdrop              MASUK SESI INTERAKTIF (cara utama memakai sistem)
+#   agentdrop chat         sama saja — tulis task, Enter, langsung dikerjakan
+#   agentdrop latih <worker> "<materi>"   latih SATU worker; hasilnya jadi
+#                          skill milik worker itu sendiri
+#   agentdrop latih --list daftar worker + jumlah skill yang sudah dipelajari
+#   agentdrop start        nyalakan gateway Telegram (agent berjalan di atasnya)
+#   agentdrop stop         hentikan gateway
+#   agentdrop browser      nyalakan browser; Anda DITANYA mau jendela asli
+#                          (Chrome for Testing) atau noVNC. Dependensinya
+#                          diperiksa per jalur dan dipasang hanya kalau kurang
+#   agentdrop browser-stop hentikan browser
+#   agentdrop run <profil> "<tugas>"   sekali jalan, untuk skrip & debug
+#   agentdrop run --list   daftar profil yang bisa dijalankan
+#   agentdrop status       periksa kesiapan sistem
+#   agentdrop extensions   tautan Chrome Web Store (pasang di dalam browser)
+#   agentdrop audit <cmd>  baca log: health | errors | doctor | trace | stuck | tail
+#   agentdrop logs         kumpulkan log ke data/audit/ untuk dianalisis
+#   agentdrop cron         pasang jadwal otomatis
+#   agentdrop burn-in      uji stabilisasi sebelum agent dipercaya
+#   agentdrop test-workers uji fungsional semua worker, dinilai dari log audit
+#
+# CATATAN (K9): gateway dan agent BUKAN dua hal. Agent berjalan di atas
+# gateway, jadi `start` menyalakan keduanya sekaligus. Memisahkannya hanya
+# membuat orang bingung mana yang harus dijalankan.
+#
+# CATATAN (Arc 35): `agentdrop` tanpa argumen masuk ke sesi interaktif. Ia tidak
+# memanggil binari `hermes`; ia menjalankan interpreter Python Hermes atas
+# python/agentdrop_repl.py, yang mengimpor mesinnya (run_agent.AIAgent)
+# langsung. Peta jalurnya ada di docs/struktur-hermes-internals.md.
+# ============================================================================
+set -uo pipefail
+
+# Kode bisa berada di repo (saat pengembangan) atau di lokasi instal. Dicari berurutan.
+for cand in \
+    "$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" \
+    "/usr/local/lib/agentdrop" \
+    "$HOME/.agentdrop/app"; do
+  if [[ -f "$cand/lib/00-common.sh" ]]; then ROOT="$cand"; break; fi
+done
+[[ -n "${ROOT:-}" ]] || { echo "lib/ tidak ditemukan — jalankan ./install.sh" >&2; exit 1; }
+
+# shellcheck source=/dev/null
+for m in "$ROOT"/lib/*.sh; do source "$m"; done
+REPO_ROOT="$ROOT"
+HERMES_HOME_DIR="${HERMES_HOME:-$HOME/.hermes}"
+STATE_DIR="$HOME/.agentdrop"
+PID_DIR="$STATE_DIR/run"
+mkdir -p "$PID_DIR"
+
+usage() { sed -n '2,36p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+
+# ---------------------------------------------------------------------------
+# start / stop — gateway. Agent berjalan di atasnya, jadi satu perintah.
+# ---------------------------------------------------------------------------
+cmd_start() {
+  command -v hermes >/dev/null 2>&1 || _die "hermes tidak ada — jalankan ./install.sh"
+  if [[ -f "$PID_DIR/gateway.pid" ]] && kill -0 "$(cat "$PID_DIR/gateway.pid")" 2>/dev/null; then
+    _warn "gateway sudah jalan (pid $(cat "$PID_DIR/gateway.pid"))"
+    return 0
+  fi
+  _log "Menyalakan gateway Hermes"
+  echo "  Agent berjalan DI ATAS gateway, jadi ini menyalakan keduanya."
+  echo "  Kirim task ke bot Telegram Anda untuk memulai."
+  echo
+  # TANPA --profile, dan itu disengaja.
+  #
+  # config/hermes/config.yaml menyalakan gateway.multiplex_profiles: true, jadi
+  # gateway DEFAULT adalah satu-satunya proses inbound untuk SEMUA profil.
+  # `hermes --profile <worker> gateway start` ditolak Hermes
+  # (hermes_cli/gateway.py:6131) dengan "The default gateway is running as a
+  # profile multiplexer and already serves profile ...".
+  #
+  # Dashboard web Hermes justru melakukan hal yang salah itu: web_server.py:4815
+  # _gateway_subcommand() menyusun _profile_cli_args(profile) + ["gateway", verb],
+  # jadi menekan Restart Gateway saat profil aktif adalah seorang worker akan
+  # mencoba menyalakan gateway worker itu dan ditolak. Di sini kita tidak pernah
+  # meneruskan --profile, jadi `agentdrop start` selalu menyalakan multiplexer.
+  echo "  multiplex_profiles aktif -> gateway default melayani semua profil."
+  # Log gateway juga masuk ke log audit, supaya kegagalan startup terlihat.
+  local glog="$LOG_DIR/gateway.log"
+  HERMES_HOME="$HERMES_HOME_DIR" \
+    nohup hermes gateway start > "$glog" 2>&1 &
+  echo $! > "$PID_DIR/gateway.pid"
+  sleep 3
+  if kill -0 "$(cat "$PID_DIR/gateway.pid")" 2>/dev/null; then
+    _ok "gateway jalan (pid $(cat "$PID_DIR/gateway.pid"))"
+    _ok "log: $glog"
+    echo
+    echo "  pantau    : tail -f $glog"
+    echo "  aktivitas : agentdrop audit tail"
+    echo "  hentikan  : agentdrop stop"
+  else
+    _err "gateway mati segera setelah dinyalakan. Akhir log:"
+    tail -20 "$glog" | sed 's/^/    /'
+    rm -f "$PID_DIR/gateway.pid"
+    return 1
+  fi
+}
+
+cmd_stop() {
+  # ARC 43: sebelumnya fungsi ini HANYA membaca berkas PID dan langsung
+  # `return 0` kalau berkasnya tidak ada. Akibatnya gateway yang berkas PID-nya
+  # hilang, basi, atau ditulis oleh instalasi lain tidak pernah dimatikan sama
+  # sekali -- dan itulah yang membuat RAM menumpuk tiap install ulang.
+  #
+  # Sekarang berkas PID tetap dipakai (jalur yang sopan), lalu ditutup dengan
+  # sapuan pola yang tidak bergantung padanya.
+  local mati=0 pid
+  if [[ -f "$PID_DIR/gateway.pid" ]]; then
+    pid="$(cat "$PID_DIR/gateway.pid" 2>/dev/null)"
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+      kill "$pid" 2>/dev/null; mati=$((mati + 1))
+    fi
+  fi
+
+  # Sapuan pola: menangkap gateway yang tidak punya berkas PID, termasuk yang
+  # ditinggal instalasi sebelumnya. Penjaga anti-bunuh-diri ada di
+  # _pid_layak_dimatikan (lib/00-common.sh).
+  local n
+  n="$(hentikan_pola_proses "hermes .*gateway" "hermes gateway")"
+  [[ "$n" =~ ^[0-9]+$ ]] && mati=$((mati + n))
+
+  rm -f "$PID_DIR/gateway.pid" 2>/dev/null || true
+
+  if [[ "$mati" -gt 0 ]]; then _ok "gateway dihentikan ($mati proses)"
+  else _warn "gateway tidak jalan"; fi
+}
+
+# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# run — panggil SATU agent saja, untuk debug perilaku sebelum orkestrasi.
+# ---------------------------------------------------------------------------
+# Kenapa perlu: lewat gateway+orchestrator Anda tidak bisa tahu worker mana yang
+# benar dan mana yang error, karena semuanya berjalan di balik satu percakapan.
+# Perintah ini menjalankan satu profil dengan satu tugas, di depan mata, dengan
+# log audit yang sama. Selesaikan tiap agent satu per satu dulu; orkestrasi
+# baru masuk akal setelah masing-masing stabil.
+#
+#   agentdrop run pekerja-quest "Kerjakan quest Galxe proyek X, berhenti di popup"
+#   agentdrop run pekerja-riset "Analisis kelayakan https://..."
+#   agentdrop run --list
+# _audit_counts — cetak "<jumlah pre_tool_call> <jumlah level=error>" di seluruh
+# log audit. Dipakai cmd_run untuk menilai hasil task dari BUKTI, bukan dari exit
+# code. Cermin dari hitung_total() di scripts/test-workers.sh; kalau log tidak
+# bisa dibaca, mencetak "0 0" supaya pemanggil tidak crash di bawah `set -u`.
+_audit_counts() {
+  PYTHONPATH="$ROOT/tools" "$(_pyu)" - <<'PY' 2>/dev/null || echo "0 0"
+import audit_log
+pre = err = 0
+for r in audit_log.read_all():
+    if r.get("event") == "pre_tool_call":
+        pre += 1
+    if r.get("level") == "error":
+        err += 1
+print(pre, err)
+PY
+}
+
+cmd_run() {
+  command -v hermes >/dev/null 2>&1 || _die "hermes tidak ada — jalankan ./install.sh"
+
+  local profile="" task=""
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --list|-l)
+        echo "Profil yang bisa dijalankan:"
+        local d
+        for d in "$HERMES_HOME_DIR"/profiles/*/; do
+          [[ -f "${d}config.yaml" ]] || continue
+          echo "  $(basename "$d")"
+        done
+        return 0 ;;
+      -*) _die "opsi tidak dikenal: $1" ;;
+      *)  if [[ -z "$profile" ]]; then profile="$1"; else task="$1"; fi ;;
+    esac
+    shift
+  done
+
+  [[ -n "$profile" ]] || { _err "butuh nama profil. Lihat: agentdrop run --list"; return 1; }
+
+  browser_preflight
+
+  # Tolak profil yang tidak terpasang SEBELUM hermes mengeluh dengan pesan
+  # yang tidak menyebut daftar profil yang ada.
+  if [[ ! -f "$HERMES_HOME_DIR/profiles/$profile/config.yaml" ]]; then
+    _err "profil '$profile' tidak terpasang di $HERMES_HOME_DIR/profiles/"
+    echo "  yang ada:"; local d
+    for d in "$HERMES_HOME_DIR"/profiles/*/; do
+      [[ -f "${d}config.yaml" ]] && echo "    $(basename "$d")"
+    done
+    return 1
+  fi
+
+  [[ -n "$task" ]] || { _err "butuh tugas. Contoh: agentdrop run $profile \"lakukan X\""; return 1; }
+
+  _log "Menjalankan $profile (satu tugas, tanpa orkestrasi)"
+  echo "  tugas : $task"
+  echo "  log   : agentdrop audit tail"
+  echo
+  # --profile adalah flag global pre-argparse, jadi harus di depan subcommand.
+  # HERMES_HOME disetel eksplisit: tanpa itu get_hermes_home() jatuh ke default
+  # dan profil yang dimaksud tidak dipakai sama sekali.
+  # ---------------------------------------------------------------------------
+  # rc=0 BUKAN bukti task berhasil.
+  #
+  # `hermes chat` mengembalikan 0 walau task-nya gagal total -- sudah terjadi di
+  # mesin operator: HTTP 402 dari endpoint, tidak ada satu pun tool terpanggil,
+  # dan rc tetap 0. Menilai dari rc berarti melaporkan "selesai" untuk pekerjaan
+  # yang tidak pernah terjadi. scripts/test-workers.sh sudah memakai penilaian
+  # yang benar (selisih jumlah baris audit, bukan exit code); cmd_run belum.
+  #
+  # Selisih jumlah, bukan filter waktu: date(1) GNU tidak punya %f, dan resolusi
+  # milidetik terlalu kasar untuk dua task yang berurutan cepat.
+  # ---------------------------------------------------------------------------
+  local _pre0 _err0 _pre1 _err1
+  read -r _pre0 _err1 <<< "$(_audit_counts)"
+  _err0="$_err1"
+
+  HERMES_HOME="$HERMES_HOME_DIR" \
+    hermes --profile "$profile" chat -q "$task"
+  local rc=$?
+
+  read -r _pre1 _err1 <<< "$(_audit_counts)"
+  local _dpre=$(( ${_pre1:-0} - ${_pre0:-0} ))
+  local _derr=$(( ${_err1:-0} - ${_err0:-0} ))
+  echo
+  if [[ $rc -ne 0 ]]; then
+    _err "$profile berhenti dengan rc=$rc"
+    return $rc
+  fi
+  if [[ $_derr -gt 0 ]]; then
+    _err "$profile rc=0 TAPI ada $_derr baris error di log audit — task GAGAL"
+    echo "       lihat: agentdrop audit errors"
+    return 1
+  fi
+  if [[ $_dpre -eq 0 ]]; then
+    _err "$profile rc=0 TAPI tidak ada satu pun tool terpanggil — task tidak dikerjakan"
+    echo "       penyebab paling umum: model/provider salah. Periksa: agentdrop model --show"
+    return 1
+  fi
+  _ok "$profile selesai — $_dpre tool call, tanpa error"
+  return 0
+}
+
+# agentdrop model — setel provider/model untuk SEMUA worker sekaligus.
+#
+# Kenapa perintah ini perlu ada: `hermes model` menulis ke config profil
+# DEFAULT (hermes_cli/main.py:4957 -> save_config -> config.py:4023 menulis
+# ~/.hermes/config.yaml). Profil worker punya config.yaml sendiri di
+# ~/.hermes/profiles/<nama>/, dan tidak ada mekanisme Hermes yang menyalin
+# setelan default ke sana. Jadi operator bisa menyetel provider dengan benar
+# lewat `hermes model` dan setiap worker tetap memakai provider lama — tanpa
+# pesan error apa pun yang menunjuk penyebabnya.
+#
+# Satu-satunya tempat yang dibaca semua worker adalah .env, karena config
+# setiap profil merujuk ${AGENTDROP_*} dan install merendernya dari sana.
+# Perintah ini menulis .env lalu merender ulang config, jadi satu perintah
+# cukup untuk delapan profil.
+cmd_model() {
+  local ENV_FILE="$HERMES_HOME_DIR/.env"
+  [[ -f "$ENV_FILE" ]] || _die ".env tidak ada di $ENV_FILE — jalankan ./install.sh"
+
+  # --show eksplisit, ATAU stdin bukan terminal (dipanggil dari skrip/cron).
+  # Tanpa `! -t 0` di dalam tanda kurung, operator yang menjalankan
+  # `agentdrop model` di terminal ikut mendapat tampilan read-only dan tidak
+  # pernah bisa menyetel apa pun.
+  if [[ "${1:-}" == "--show" ]] || { [[ $# -eq 0 ]] && [[ ! -t 0 ]]; }; then
+    _log "Model saat ini (dari $ENV_FILE)"
+    local k
+    for k in AGENTDROP_MODEL AGENTDROP_PROVIDER AGENTDROP_BASE_URL \
+             AGENTDROP_API_MODE AGENTDROP_MAX_TOKENS; do
+      printf '  %-24s %s\n' "$k" "$(_env_get "$k")"
+    done
+      echo
+      # Tampilkan model per worker dari config TER-RENDER, bukan config repo.
+      # Kalau yang dibaca config repo, yang muncul adalah string mentah
+      # "${AGENTDROP_MODEL}" dan operator mengira var-nya belum di-set — padahal
+      # render terjadi saat install. Pemeriksaan ini harus membuktikan hasilnya,
+      # bukan mengulang placeholder yang sudah pasti ada di sumbernya.
+      _log "Model tiap worker (dari config ter-render):"
+      local d n m
+      for d in "$HERMES_HOME_DIR"/profiles/*/; do
+        [[ -f "${d}config.yaml" ]] || continue
+        n="$(basename "$d")"
+        # `|| true` wajib: di bawah `set -euo pipefail`, grep yang tidak cocok
+        # keluar dengan status 1 dan menular ke assignment — skrip mati tanpa
+        # pesan. Config tanpa baris `default:` adalah hal yang harus dilaporkan,
+        # bukan yang membunuh perintah.
+        m="$(grep -E '^  default:' "${d}config.yaml" 2>/dev/null | head -1 | cut -d'"' -f2 || true)"
+        case "$m" in
+          *'${'*) printf '  %-22s %s\n' "$n" "TIDAK TER-RENDER: $m" ;;
+          *)      printf '  %-22s %s\n' "$n" "$m" ;;
+        esac
+      done
+    return 0
+  fi
+
+  [[ -t 0 ]] || _die "stdin bukan terminal. Pakai: agentdrop model --set KEY=VALUE ..."
+
+  _log "Provider untuk SEMUA worker"
+  _warn "hermes model HANYA menyetel profil default, bukan worker."
+  echo
+
+  local cur v
+  cur="$(_env_get AGENTDROP_PROVIDER)"
+  read -r -p "  provider [${cur:-custom}] (custom/openrouter/anthropic/...): " v
+  [[ -n "$v" ]] && _env_set AGENTDROP_PROVIDER "$v"
+
+  cur="$(_env_get AGENTDROP_BASE_URL)"
+  read -r -p "  base_url [${cur:-https://api.hcnsec.cn/v1}]: " v
+  [[ -n "$v" ]] && _env_set AGENTDROP_BASE_URL "$v"
+
+  cur="$(_env_get AGENTDROP_MODEL)"
+  read -r -p "  model [${cur:-Qwen3.8-27B}]: " v
+  [[ -n "$v" ]] && _env_set AGENTDROP_MODEL "$v"
+
+  cur="$(_env_get AGENTDROP_API_MODE)"
+  echo "  api_mode: auto | chat_completions | codex_responses | anthropic_messages"
+  read -r -p "  api_mode [${cur:-auto}] (salah pilih = tool calling gagal): " v
+  [[ -n "$v" ]] && _env_set AGENTDROP_API_MODE "$v"
+
+  cur="$(_env_get AGENTDROP_MAX_TOKENS)"
+  read -r -p "  max_tokens [${cur:-8192}] (kecilkan kalau HTTP 402): " v
+  [[ -n "$v" ]] && _env_set AGENTDROP_MAX_TOKENS "$v"
+
+  if [[ "$(_env_get AGENTDROP_PROVIDER)" == "custom" ]]; then
+    cur="$(_env_get CUSTOM_API_KEY)"
+    if [[ -z "$cur" ]]; then
+      read -r -s -p "  CUSTOM_API_KEY (endpoint custom): " v; echo
+      [[ -n "$v" ]] && _env_set CUSTOM_API_KEY "$v"
+    else
+      _ok "CUSTOM_API_KEY sudah ada"
+    fi
+  fi
+
+  # Per-worker ikut global kecuali operator sudah menyetelnya sendiri.
+  _log "Menyamakan per-worker dengan global"
+  local prof kunci k glob
+  for prof in $(cd "$HERMES_HOME_DIR/profiles" 2>/dev/null && ls -d */ | tr -d '/'); do
+    kunci="${prof//-/_}"; kunci="${kunci^^}"
+    for k in MODEL PROVIDER BASE_URL MAX_TOKENS; do
+      glob="AGENTDROP_${k}"
+      _env_set "AGENTDROP_${k}_${kunci}" "$(_env_get "$glob")"
+    done
+  done
+
+  _log "Merender ulang config"
+  _render_all_configs
+  _ok "selesai — semua worker sekarang memakai $(_env_get AGENTDROP_MODEL)"
+}
+
+# ---------------------------------------------------------------------------
+# chat — REPL AgentDrop. Inilah cara utama memakai sistem ini.
+#
+# Tidak memanggil `hermes` sebagai proses anak. Ia menjalankan interpreter
+# Python milik Hermes atas python/agentdrop_repl.py, yang mengimpor mesin Hermes
+# (run_agent.AIAgent) secara langsung. Lihat docs/struktur-hermes-internals.md.
+# ---------------------------------------------------------------------------
+cmd_chat() {
+  local py worker=""
+  py="$(python_hermes)" || _die \
+    "interpreter Hermes tidak ditemukan — jalankan ./install.sh"
+  if [[ "${1:-}" == --* ]]; then shift; fi
+  if [[ -n "${1:-}" && "${1:-}" != /* ]]; then worker="$1"; shift; fi
+  local arg=(--home "$HERMES_HOME_DIR")
+  [[ -n "$worker" ]] && arg+=(--worker "$worker")
+  [[ $# -gt 0 ]] && arg+=(--task "$*")
+  exec "$py" "$ROOT/python/agentdrop_repl.py" "${arg[@]}"
+}
+
+cmd_status()   { verify_run "${1:-}"; }
+cmd_audit()    { "$(_pyu)" "$ROOT/tools/audit.py" "$@"; }
+cmd_cron()     { bash "$ROOT/scripts/install-cron.sh" "$@"; }
+cmd_burnin()   { bash "$ROOT/scripts/burn-in.sh" "$@"; }
+cmd_testworkers() { browser_preflight; bash "$ROOT/scripts/test-workers.sh" "$@"; }
+cmd_logs()     { bash "$ROOT/scripts/collect-logs.sh" "$@"; }
+
+main() {
+  local sub="${1:-}"; [[ $# -gt 0 ]] && shift
+  case "$sub" in
+    start)        cmd_start "$@" ;;
+    stop)         cmd_stop ;;
+    browser)      browser_start "$@" ;;
+    browser-stop) browser_stop ;;
+    browser-status) browser_status ;;
+    run)          cmd_run "$@" ;;
+    status)       cmd_status "$@" ;;
+    model)        cmd_model "$@" ;;
+    extensions)   browser_install_extensions "$@" ;;
+    audit)        cmd_audit "$@" ;;
+    logs)         cmd_logs "$@" ;;
+    cron)         cmd_cron "$@" ;;
+    burn-in)      cmd_burnin "$@" ;;
+    test-workers) cmd_testworkers "$@" ;;
+    chat)         cmd_chat "$@" ;;
+    latih|train)  cmd_latih "$@" ;;
+    "")           cmd_chat ;;
+    -h|--help)    usage ;;
+    *) _err "perintah tidak dikenal: $sub"; echo; usage; exit 1 ;;
+  esac
+}
+
+main "$@"
