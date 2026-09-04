@@ -3843,3 +3843,139 @@ berpagar. Blok kode sekarang dibuang dulu, baru heading-nya diperiksa.
 **Tidak bisa diuji dari sandbox:** apakah model benar-benar mematuhi
 kepribadiannya dan benar-benar memperbarui buku besar metode saat run sungguhan.
 Keduanya hanya bisa dinilai dari hasil run di mesin operator.
+
+## Arc 43 — Terminal untuk koordinator, dan `install.sh` yang tidak pernah menghentikan apa pun
+
+Dua permintaan operator:
+
+> "ini kalau di install semua worker tidak punya akses terminal dan kalau ada
+> cacat di code dia tidak bisa perbaiki sendiri ini tidak efesien seharusnya
+> cordinator punya akses ke semua tools bisa call apabila di perlukan , arc
+> sekarang terminal dimatikan semua , selain ketika install.sh di run itu
+> restart semua service termasuk getaway hermes dan semua PID dimatikan dulu ,
+> jika tidak ini akan overload ram."
+
+### Temuan 1 — `agentdrop stop` di install.sh selama ini cuma DICETAK
+
+Ini bukan "perintah stop-nya kurang tepat". Perintahnya **tidak pernah
+dijalankan sama sekali**.
+
+Setiap baris `agentdrop …` di `install.sh` berada di dalam blok `cat <<'EOF'`
+berisi teks bantuan akhir instalasi. `agentdrop stop` ada di sana sebagai teks
+yang ditampilkan ke operator, bukan sebagai perintah yang dieksekusi. Jadi
+menjalankan `install.sh` berulang tidak pernah menghentikan apa pun.
+
+Dan kalaupun dipanggil, `cmd_stop()` di CLI hanya membaca berkas PID:
+
+```bash
+[[ -f "$PID_DIR/gateway.pid" ]] || { _warn "gateway tidak jalan"; return 0; }
+```
+
+Baris pertama itu keluar lebih awal kalau berkasnya tidak ada. Gateway yang
+berkas PID-nya hilang, basi, atau ditinggal instalasi sebelumnya tidak pernah
+tersentuh. Ini kelas cacat yang sama dengan AZ di daftar cacat — nasihat yang
+dicetak di dalam heredoc dan karena itu tidak pernah terjadi.
+
+**Perbaikan:**
+
+- `stage_stop_services()` ditambahkan sebagai **stage pertama** `install.sh`,
+  sebelum `stage_install_code`. Urutan pemanggilan sekarang:
+  `stop_services → install_code → credentials → setup → deps → browser → verify`.
+- `cmd_stop()` ditulis ulang: berkas PID tetap dipakai sebagai jalur sopan, lalu
+  ditutup sapuan pola yang tidak bergantung padanya.
+- Keduanya memakai satu helper bersama di `lib/00-common.sh`:
+  `hentikan_pola_proses` + `_pid_layak_dimatikan`.
+
+Lima sasaran: gateway Hermes, Chrome (dikenali dari `--user-data-dir` profilnya,
+bukan nama proses, supaya Chrome operator tidak ikut mati), Xvfb, x11vnc, dan
+websockify (dikenali dari display dan portnya, supaya tumpukan layar aplikasi
+lain aman). SIGTERM → 2 detik → SIGKILL. Berkas `run/*.pid` dihapus.
+
+### Temuan 2 — `pgrep -f` mencocokkan shell yang menjalankannya
+
+`pgrep -f` mencocokkan **substring di seluruh baris perintah**. Dalam pengujian,
+kelima pola penghentian cocok ke shell penguji sekaligus, hanya karena teks
+polanya ada di baris perintah shell itu. Tanpa penyaring, `install.sh` bisa
+mematikan shell operator. Ini kejadian keempat dari kelas yang sama (AS).
+
+`_pid_layak_dimatikan` mencoret: diri sendiri, `$PPID`, proses satu grup dengan
+kita, dan proses `sh -c`/`bash -c`.
+
+**Teruji, bukan diperkirakan.** Lima proses tiruan dijalankan dengan `exec -a`
+dan `setsid` supaya argv[0] dan grup prosesnya menyerupai sasaran sungguhan:
+
+| sasaran | pid | sebelum | sesudah |
+|---|---|---|---|
+| hermes gateway start | 2115 | HIDUP | mati |
+| chrome --user-data-dir=…/chrome-profile | 2120 | HIDUP | mati |
+| Xvfb :99 | 2125 | HIDUP | mati |
+| x11vnc -rfbport 5900 | 2130 | HIDUP | mati |
+| websockify … 6080 … 5900 | 2135 | HIDUP | mati |
+
+Kelima-limanya mati, shell penguji selamat, dan `cmd_stop()` mematikan gateway
+tiruan **tanpa** berkas PID — persis cacat yang diperbaiki.
+
+### Temuan 3 — jalur Telegram koordinator memuat `hermes-cli`
+
+`platform_toolsets.telegram` berisi `hermes-cli`. Komentar di berkas config itu
+sendiri sudah mencatat bahwa `hermes-cli` memetakan ke `_HERMES_CORE_TOOLS`
+berisi 53 tool — **termasuk `computer_use`**. Jadi pintu masuk Telegram yang
+dinyatakan "tidak boleh punya shell" sebenarnya punya shell dan desktop control
+sekaligus, lewat satu id toolset. Itu juga melanggar larangan operator atas
+`hermes-cli` dan `computer_use`.
+
+Diganti daftar eksplisit. `hermes-cli` dan `computer_use` tidak ada di sana lagi,
+dan kini ada aturan validator yang menolaknya.
+
+### Wewenang koordinator
+
+Alasan operator spesifik: *memperbaiki cacat kode*. Yang dibutuhkan untuk itu
+adalah `terminal` dan `coding` — bukan `browser`.
+
+| | sebelum | sesudah |
+|---|---|---|
+| `toolsets` | file, web, todo, memory, skills, delegation, clarify | + **terminal**, **coding** |
+| `agent.disabled_toolsets` | `[terminal, code_execution]` | `[code_execution]` |
+| `platform_toolsets.telegram` | hermes-cli, browser, file, web, memory, todo, delegation | terminal, coding, browser, file, web, memory, todo, skills, clarify, delegation |
+
+`browser` **sengaja tidak** diberikan di jalur CLI: mengeksekusi task airdrop
+tetap pekerjaan worker, dan memberikannya ke koordinator meruntuhkan batas
+antar-agent yang jadi alasan pembagian kerja ini. Tujuh worker lain tidak
+berubah — `terminal` tetap mati untuk mereka. `code_execution` tetap mati untuk
+semua profil.
+
+SOUL.md koordinator mendapat bagian baru "Saya boleh memperbaiki kode — dan hanya
+itu", lengkap dengan batasnya: tidak menjalankan `agentdrop run`, tidak membuka
+browser, setiap perubahan kode dilaporkan dengan bukti, dan berhenti bertanya
+kalau perbaikannya menyentuh batas antar-agent, keamanan, atau uang.
+
+### Aturan validator `[50]`
+
+Yang diperiksa **strukturnya**, bukan ada/tidaknya sebuah kata: fungsi
+terdefinisi di tingkat atas, benar-benar dipanggil, jadi stage pertama, memuat
+kelima pola, `install.sh` me-source `lib/*.sh`, ketiga penjaga ada di helper,
+SIGKILL ada, dan `cmd_stop()` tidak keluar lebih awal tanpa berkas PID.
+
+**12/12 injeksi cacat terdeteksi.** Empat di antaranya lolos pada percobaan
+pertama, semuanya karena sebab yang sama: pemeriksaan substring ikut cocok
+dengan **teks komentar**. Kata "websockify", "SIGKILL", dan "sh -c" masih ada di
+komentar walau kodenya sudah dihapus. Komentar sekarang dibuang dulu lewat
+`buang_komentar_shell()`, dan pemeriksaan panggilan helper menuntut nama fungsi
+diikuti spasi atau baris-lanjut — bukan sekadar substring, karena
+`hentikan_pola_proses_palsu` pernah lolos.
+
+Jumlah check: **482 → 503**. Aturan `[50]` menyumbang 20; sisa +1 dari tiga
+aturan lama yang disesuaikan ke kebijakan baru.
+
+### Yang tidak bisa diuji dari sandbox
+
+Hermes sungguhan tidak terpasang di sini, jadi kelima proses yang dimatikan
+adalah tiruan dengan argv[0] dan grup proses yang dibuat menyerupai aslinya.
+Apakah gateway Hermes sungguhan, Chrome for Testing sungguhan, dan Xvfb sungguhan
+mati di mesin operator **belum terbukti** — polanya cocok, penjaganya teruji,
+tapi sasarannya belum pernah yang asli. Run `install.sh` sungguhan di VPS
+operator adalah uji yang sebenarnya.
+
+Begitu juga: apakah koordinator benar-benar memakai terminalnya untuk
+memperbaiki kode, dan apakah ia tetap menahan diri dari pekerjaan worker, hanya
+bisa dinilai dari run sungguhan.

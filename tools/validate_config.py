@@ -788,12 +788,18 @@ def check_delegation_architecture() -> None:
             err("pekerja-koordinator: subagent_auto_approve=true — child bisa "
                 "menyetujui aksinya sendiri tanpa manusia")
 
-    # Pintu masuk publik tidak boleh punya shell
+    # ARC 43: `terminal` di jalur Telegram sekarang DIIJINKAN untuk koordinator,
+    # atas permintaan operator supaya ia bisa memperbaiki kode dari mana pun ia
+    # dipanggil. Yang tetap dilarang adalah `hermes-cli`: id itu memetakan ke 53
+    # tool termasuk computer_use, jadi satu baris di daftar ini diam-diam
+    # membuka desktop control yang dilarang K7.
     pt = data.get("platform_toolsets") or {}
     tg = pt.get("telegram") or []
-    if "terminal" in tg:
-        err("pekerja-koordinator: platform_toolsets.telegram memuat 'terminal' — "
-            "pintu masuk Telegram tidak boleh punya akses shell")
+    if "hermes-cli" in tg:
+        err("pekerja-koordinator: platform_toolsets.telegram memuat 'hermes-cli' — "
+            "bundle 53 tool itu menyertakan computer_use yang dilarang K7")
+    if "computer_use" in tg:
+        err("pekerja-koordinator: platform_toolsets.telegram memuat 'computer_use'")
 
     # Setiap worker harus disebut di routing orchestrator. Profil yang terpasang
     # tapi tidak pernah dirutekan tidak akan pernah dipakai — pekerja-x sempat
@@ -1540,13 +1546,23 @@ def check_shell_disabled(configs: list[Path]) -> None:
     everything above"), jadi hanya itu yang benar-benar menutup bundle.
     """
     global checks
-    dilarang = {"terminal", "code_execution"}
+    # ARC 43: kebijakan berubah. Koordinator BOLEH punya `terminal` -- operator
+    # meminta agar ia bisa memperbaiki cacat kode sendiri, dan tanpa shell tidak
+    # ada satu pun agent yang bisa melakukannya. Tujuh worker lain tetap tidak
+    # boleh: menjalankan perintah bukan pekerjaan mereka, dan batas antar-agent
+    # adalah satu-satunya yang mencegah mereka saling menimpa.
+    #
+    # `code_execution` tetap mati untuk SEMUA profil: mengeksekusi kode arbitrer
+    # dari dalam percakapan berbeda dengan menjalankan perintah di shell yang
+    # tercatat di log audit.
     for c in configs:
         if "/profiles/" not in str(c):
             continue
         checks += 1
         name = c.parent.name
         data = yaml.safe_load(c.read_text()) or {}
+        dilarang = {"code_execution"} if name == "pekerja-koordinator" \
+            else {"terminal", "code_execution"}
 
         dt = set((data.get("agent") or {}).get("disabled_toolsets") or [])
         for need in sorted(dilarang - dt):
@@ -2048,6 +2064,16 @@ def check_model_vars_and_delegation(configs: list[Path]) -> None:
     for _c in sorted((REPO / "config/hermes/profiles").glob("*/config.yaml")):
         _d = yaml.safe_load(_c.read_text()) or {}
         for _jalan, _harap in WAJIB_SAMA.items():
+            # ARC 43: koordinator sengaja menyimpang pada satu kunci ini saja.
+            if (_jalan == ("agent", "disabled_toolsets")
+                    and _c.parent.name == "pekerja-koordinator"):
+                if _harap != ["terminal", "code_execution"]:
+                    continue
+                checks += 1
+                if (_d.get("agent") or {}).get("disabled_toolsets") != ["code_execution"]:
+                    err(f"{_c.relative_to(REPO)}: agent.disabled_toolsets koordinator "
+                        f"seharusnya ['code_execution'] — terminal dinyalakan di Arc 43")
+                continue
             _simpul = _d
             for _k in _jalan:
                 _simpul = (_simpul or {}).get(_k) if isinstance(_simpul, dict) else None
@@ -2975,6 +3001,147 @@ def check_kepribadian_dan_buku_besar() -> None:
                 "menimpa pelajaran yang sudah dikumpulkan agent.")
 
 
+def check_stage_stop_services() -> None:
+    """[50] install.sh harus mematikan semua service lama lebih dulu.
+
+    Cacat yang dilaporkan operator: menjalankan install.sh berulang menumpuk
+    proses. Gateway Hermes, Chrome, Xvfb, x11vnc dan websockify yang lama tidak
+    pernah dimatikan, sehingga RAM habis.
+
+    Akar masalahnya bukan cuma "tidak ada perintah stop". Semua baris
+    `agentdrop ...` di install.sh berada di dalam blok `cat <<'EOF'` -- artinya
+    `agentdrop stop` selama ini cuma DICETAK sebagai teks bantuan, tidak pernah
+    dieksekusi. Dan `cmd_stop()` di CLI hanya membaca berkas PID, jadi gateway
+    yang berkas PID-nya hilang atau basi tidak pernah tersentuh sama sekali.
+
+    Yang diperiksa di sini adalah STRUKTURNYA, bukan ada/tidaknya sebuah kata:
+    fungsi penghentian harus terdefinisi di tingkat atas, harus dipanggil,
+    harus jadi stage PERTAMA, dan harus memuat pola untuk kelima service.
+    """
+    global checks
+    inst = (REPO / "install.sh").read_text()
+
+    checks += 1
+    if not re.search(r"^stage_stop_services\(\) \{", inst, re.M):
+        err("install.sh: stage_stop_services() tidak terdefinisi di tingkat atas — "
+            "helper yang disisipkan di dalam fungsi lain lolos `bash -n` "
+            "tapi gagal saat dipanggil")
+
+    checks += 1
+    tubuh = re.search(r"^stage_stop_services\(\) \{.*?^\}", inst, re.M | re.S)
+    if not tubuh:
+        err("install.sh: badan stage_stop_services() tidak bisa dibaca")
+        return
+    isi = tubuh.group(0)
+
+    # Lima service yang harus dimatikan. Polanya dibangun dari potongan variabel
+    # supaya cocok dengan yang benar-benar dipakai di badan fungsi.
+    # Komentar dibuang lebih dulu. Empat dari sembilan injeksi cacat di arc ini
+    # lolos karena kata yang dicari masih ada di KOMENTAR badan fungsi -- kelas
+    # cacat yang sama dengan aturan [49] yang dulu cocok ke contoh di dalam
+    # pagar kode.
+    isi_k = buang_komentar_shell(isi)
+    for label, fragmen in [
+        ("gateway Hermes", "hermes"),
+        ("Chrome", "chrome-profile"),
+        ("Xvfb", "Xvfb"),
+        ("x11vnc", "x11vnc"),
+        ("websockify", "websockify"),
+    ]:
+        checks += 1
+        if fragmen not in isi_k:
+            err(f"install.sh: stage_stop_services tidak memuat pola untuk {label}")
+
+    # Penjaga anti-bunuh-diri dan SIGKILL hidup di helper bersama
+    # lib/00-common.sh, karena `agentdrop stop` membutuhkannya juga. Yang
+    # diperiksa di sini adalah KESATUANNYA: install.sh harus benar-benar
+    # me-source lib, helper harus terdefinisi di tingkat atas, dan isinya
+    # harus memuat ketiga penjaga.
+    checks += 1
+    if not re.search(r'for m in "\$REPO_ROOT"/lib/\*\.sh', inst):
+        err("install.sh tidak me-source lib/*.sh — helper penghentian tidak "
+            "akan pernah ada saat stage_stop_services dipanggil")
+
+    lib = (REPO / "lib/00-common.sh").read_text()
+    checks += 1
+    if not re.search(r"^hentikan_pola_proses\(\) \{", lib, re.M):
+        err("lib/00-common.sh: hentikan_pola_proses() tidak terdefinisi di "
+            "tingkat atas")
+    checks += 1
+    if not re.search(r"^_pid_layak_dimatikan\(\) \{", lib, re.M):
+        err("lib/00-common.sh: _pid_layak_dimatikan() tidak terdefinisi di "
+            "tingkat atas")
+    checks += 1
+    # Dicari sebagai PEMANGGILAN: nama fungsi diikuti spasi atau baris-lanjut.
+    # Pemeriksaan substring murni lolos ketika namanya cuma jadi bagian dari
+    # identifier lain (`hentikan_pola_proses_tidak_dipakai`) -- injeksi itu
+    # benar-benar lolos pada percobaan pertama.
+    if not re.search(r"hentikan_pola_proses[\s\\]", isi_k):
+        err("install.sh: stage_stop_services tidak memanggil "
+            "hentikan_pola_proses — penjaga anti-bunuh-diri dilewati")
+
+    # `pgrep -f` mencocokkan seluruh baris perintah, jadi pola yang dicari bisa
+    # muncul di baris perintah shell yang sedang menjalankannya. Dalam
+    # pengujian, kelima pola cocok ke shell penguji sekaligus.
+    penjaga = buang_komentar_shell(lib)
+    checks += 1
+    # Bukan sekadar "ada kata pgid": _grup harus benar-benar diisi dari grup
+    # proses shell yang sedang berjalan. Mengosongkannya mematikan penjaga
+    # tanpa menghilangkan satu pun kata "pgid" dari berkas.
+    if not re.search(r'_grup="\$\(ps -o pgid= -p \$\$', penjaga):
+        err("lib/00-common.sh: _grup tidak diisi dari `ps -o pgid= -p $$` — "
+            "penjaga process group mati, pgrep -f bisa mencocokkan shell yang "
+            "sedang menjalankannya")
+    checks += 1
+    if "PPID" not in penjaga:
+        err("lib/00-common.sh: tidak mengecualikan $PPID")
+    checks += 1
+    if not re.search(r"sh\\\s?-c\*\)", penjaga):
+        err("lib/00-common.sh: tidak mencoret proses `sh -c` — cara paling umum "
+            "pola ikut cocok ke shell penguji")
+    checks += 1
+    if "kill -9" not in penjaga:
+        err("lib/00-common.sh: tidak ada SIGKILL — proses yang mengabaikan "
+            "SIGTERM akan tetap hidup dan tetap memakan RAM")
+
+    # Harus dipanggil, dan harus jadi stage pertama. Memanggilnya setelah
+    # stage_deps berarti dependensi sudah terpasang di atas service yang
+    # sebentar lagi dimatikan.
+    checks += 1
+    urutan = re.findall(r"^stage_[a-z_]+$", inst, re.M)
+    if not urutan:
+        err("install.sh: urutan pemanggilan stage tidak ditemukan")
+    elif urutan[0] != "stage_stop_services":
+        err(f"install.sh: stage pertama adalah {urutan[0]}, seharusnya "
+            f"stage_stop_services — service lama harus mati sebelum apa pun")
+
+    # Berkas PID harus dibersihkan, kalau tidak `agentdrop stop` berikutnya
+    # percaya pada berkas basi dan menyimpulkan gateway sudah mati.
+    checks += 1
+    if "run/*.pid" not in isi and 'run"' not in isi:
+        err("install.sh: stage_stop_services tidak menghapus berkas PID basi")
+
+    # `agentdrop stop` sendiri juga tidak boleh bergantung pada berkas PID saja.
+    checks += 1
+    cli = (REPO / "agentdrop").read_text()
+    badan_stop = re.search(r"^cmd_stop\(\) \{.*?^\}", cli, re.M | re.S)
+    if not badan_stop:
+        err("agentdrop: cmd_stop() tidak ditemukan")
+    else:
+        badan = badan_stop.group(0)
+        checks += 1
+        # Boleh lewat pgrep langsung, atau lewat helper bersama. Yang tidak
+        # boleh adalah bergantung pada berkas PID saja.
+        if ("hentikan_pola_proses" not in badan and "pgrep" not in badan
+                and "/proc/" not in badan):
+            err("agentdrop: cmd_stop() hanya membaca berkas PID — gateway dengan "
+                "berkas PID hilang/basi tidak akan pernah dimatikan")
+        checks += 1
+        if re.search(r'\[\[ -f "\$PID_DIR/gateway\.pid" \]\] \|\| .*return', badan):
+            err("agentdrop: cmd_stop() masih keluar lebih awal ketika berkas PID "
+                "tidak ada — sapuan pola tidak akan pernah dijalankan")
+
+
 def main() -> int:
     print("=" * 62)
     print("  AgentDrop — validator statis")
@@ -3100,6 +3267,9 @@ def main() -> int:
 
     print("\n[49] Kepribadian worker dan buku besar metode")
     check_kepribadian_dan_buku_besar()
+
+    print("\n[50] install.sh mematikan semua service lama lebih dulu")
+    check_stage_stop_services()
 
     print("\n" + "=" * 62)
     check_model_vars_and_delegation(configs)

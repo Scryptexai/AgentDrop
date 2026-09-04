@@ -105,16 +105,32 @@ cmd_start() {
 }
 
 cmd_stop() {
-  [[ -f "$PID_DIR/gateway.pid" ]] || { _warn "gateway tidak jalan"; return 0; }
-  local pid; pid="$(cat "$PID_DIR/gateway.pid")"
-  if kill -0 "$pid" 2>/dev/null; then
-    kill "$pid" 2>/dev/null; sleep 2
-    kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null
-    _ok "gateway dihentikan (pid $pid)"
-  else
-    _warn "pid $pid sudah tidak ada"
+  # ARC 43: sebelumnya fungsi ini HANYA membaca berkas PID dan langsung
+  # `return 0` kalau berkasnya tidak ada. Akibatnya gateway yang berkas PID-nya
+  # hilang, basi, atau ditulis oleh instalasi lain tidak pernah dimatikan sama
+  # sekali -- dan itulah yang membuat RAM menumpuk tiap install ulang.
+  #
+  # Sekarang berkas PID tetap dipakai (jalur yang sopan), lalu ditutup dengan
+  # sapuan pola yang tidak bergantung padanya.
+  local mati=0 pid
+  if [[ -f "$PID_DIR/gateway.pid" ]]; then
+    pid="$(cat "$PID_DIR/gateway.pid" 2>/dev/null)"
+    if [[ -n "$pid" ]] && kill -0 "$pid" 2>/dev/null; then
+      kill "$pid" 2>/dev/null; mati=$((mati + 1))
+    fi
   fi
-  rm -f "$PID_DIR/gateway.pid"
+
+  # Sapuan pola: menangkap gateway yang tidak punya berkas PID, termasuk yang
+  # ditinggal instalasi sebelumnya. Penjaga anti-bunuh-diri ada di
+  # _pid_layak_dimatikan (lib/00-common.sh).
+  local n
+  n="$(hentikan_pola_proses "hermes .*gateway" "hermes gateway")"
+  [[ "$n" =~ ^[0-9]+$ ]] && mati=$((mati + n))
+
+  rm -f "$PID_DIR/gateway.pid" 2>/dev/null || true
+
+  if [[ "$mati" -gt 0 ]]; then _ok "gateway dihentikan ($mati proses)"
+  else _warn "gateway tidak jalan"; fi
 }
 
 # ---------------------------------------------------------------------------

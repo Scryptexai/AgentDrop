@@ -53,3 +53,57 @@ python_hermes() {
   done
   return 1
 }
+
+# ---------------------------------------------------------------------------
+# hentikan_pola_proses <pola> [<pola> ...]
+#
+# Mematikan proses yang baris perintahnya cocok dengan salah satu pola:
+# SIGTERM, tunggu, lalu SIGKILL untuk yang masih hidup. Mengembalikan jumlah
+# proses yang berhasil di-SIGTERM.
+#
+# Kenapa tidak `pkill -f` saja: `pgrep`/`pkill -f` mencocokkan SUBSTRING di
+# baris perintah proses apa pun. Pola "hermes .*gateway" ikut mencocokkan
+# shell yang sedang menjalankan perintah grep itu sendiri. Dalam pengujian,
+# KELIMA pola penghentian cocok ke shell penguji sekaligus hanya karena teks
+# polanya ada di baris perintahnya. Jadi setiap kandidat disaring dulu.
+# ---------------------------------------------------------------------------
+_pid_layak_dimatikan() {  # _pid_layak_dimatikan <pid>
+  [[ "$1" =~ ^[0-9]+$ ]] || return 1
+  case " $$ ${PPID:-0} " in *" $1 "*) return 1 ;; esac
+  # Satu grup proses dengan kita = shell yang menjalankan skrip ini, atau
+  # saudaranya. Service yang asli selalu di grupnya sendiri.
+  local _g _grup
+  _grup="$(ps -o pgid= -p $$ 2>/dev/null | tr -d ' ')"
+  _g="$(ps -o pgid= -p "$1" 2>/dev/null | tr -d ' ')"
+  [[ -n "$_g" && -n "$_grup" && "$_g" == "$_grup" ]] && return 1
+  # Shell sebaris (`bash -c ...`, `sh -c ...`) dicoret: itu cara pola ini
+  # biasanya ikut cocok. Gateway/Chrome/Xvfb/x11vnc/websockify yang asli
+  # bukan shell sebaris.
+  local _c
+  _c="$(tr '\0' ' ' < "/proc/$1/cmdline" 2>/dev/null)"
+  case "$_c" in
+    */bash\ -c*|*/sh\ -c*|bash\ -c*|sh\ -c*) return 1 ;;
+  esac
+  return 0
+}
+
+hentikan_pola_proses() {  # hentikan_pola_proses <pola>...
+  local _pola _pid _mati=0 _calon=""
+  _kandidat_proses() {
+    local _p
+    for _p in "$@"; do pgrep -f -- "$_p" 2>/dev/null; done
+  }
+  for _pid in $(_kandidat_proses "$@"); do
+    _pid_layak_dimatikan "$_pid" || continue
+    case " $_calon " in *" $_pid "*) continue ;; esac
+    _calon="$_calon $_pid"
+  done
+  for _pid in $_calon; do
+    kill "$_pid" 2>/dev/null && _mati=$((_mati + 1))
+  done
+  [[ -n "${_calon// /}" ]] && sleep 2
+  for _pid in $_calon; do
+    kill -0 "$_pid" 2>/dev/null && kill -9 "$_pid" 2>/dev/null
+  done
+  echo "$_mati"
+}

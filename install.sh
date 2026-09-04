@@ -97,6 +97,54 @@ done
 HERMES_HOME_DIR="${HERMES_HOME:-$HOME/.hermes}"
 STATE_DIR="$HOME/.agentdrop"
 
+# ---------------------------------------------------------------------------
+# HENTIKAN SEMUA PROSES LEBIH DULU.
+#
+# Ini bukan kebersihan. install.sh yang dijalankan ulang dulunya membiarkan
+# gateway, Chrome, Xvfb, x11vnc, dan websockify yang lama tetap hidup sambil
+# menyalakan yang baru. Tiap install menambah satu set proses, dan RAM VPS
+# habis -- keluhan yang masuk persis seperti itu.
+#
+# `agentdrop stop` saja tidak cukup: ia hanya membaca berkas PID, jadi gateway
+# yang berkas PID-nya hilang atau basi tidak pernah tersentuh. Karena itu di
+# sini PID file dipakai sebagai petunjuk, lalu pola proses dipakai sebagai
+# jaring pengaman.
+# ---------------------------------------------------------------------------
+stage_stop_services() {
+  _log "Menghentikan service lama"
+
+  # `agentdrop stop` dipanggil lebih dulu sebagai cara yang sopan, tapi ia
+  # sendiri pun kini menyapu pola (lihat cmd_stop di agentdrop). Yang di bawah
+  # ini tetap dijalankan karena install bisa jalan sebelum CLI terpasang.
+  if command -v agentdrop >/dev/null 2>&1; then
+    agentdrop stop >/dev/null 2>&1 || true
+  fi
+
+  # Chrome dikenali dari direktori profilnya, bukan dari nama proses, supaya
+  # Chrome milik operator tidak ikut mati. Xvfb/x11vnc/websockify dikenali dari
+  # display dan portnya supaya tumpukan layar aplikasi lain aman.
+  #
+  # Penjaga anti-bunuh-diri ada di _pid_layak_dimatikan (lib/00-common.sh):
+  # pgrep -f mencocokkan substring baris perintah, dan dalam pengujian kelima
+  # pola ini cocok ke shell penguji sekaligus hanya karena teks polanya ada di
+  # baris perintahnya.
+  local mati
+  mati="$(hentikan_pola_proses \
+    "hermes .*gateway|hermes gateway" \
+    "--user-data-dir=${STATE_DIR}/chrome-profile" \
+    "Xvfb :${CDP_DISPLAY:-${DISPLAY_NUM:-99}}" \
+    "x11vnc .*${VNC_PORT:-5900}" \
+    "websockify .*${NOVNC_PORT:-6080}")"
+  [[ "$mati" =~ ^[0-9]+$ ]] || mati=0
+
+  # Berkas PID dibersihkan. PID basi yang ditinggal membuat `agentdrop stop`
+  # berikutnya mengira sudah tidak ada yang jalan.
+  rm -f "${STATE_DIR}"/run/*.pid 2>/dev/null || true
+
+  if [[ "$mati" -gt 0 ]]; then _ok "$mati proses lama dihentikan"
+  else _log "tidak ada service lama yang jalan"; fi
+}
+
 banner() {
   printf '\n\033[1;35m'
   echo "┌───────────────────────────────────────────────────────┐"
@@ -310,6 +358,7 @@ fi
 # terpasang, profil dan skill tetap ada di disk, dan menjalankan ulang
 # ./install.sh sesudah jaringan pulih akan menyambung dari situ — bukan mengulang
 # dari nol.
+stage_stop_services
 stage_install_code
 stage_credentials
 stage_setup
