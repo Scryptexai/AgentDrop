@@ -83,6 +83,44 @@ Aturan entri:
   tidak relevan lebih baik ditandai usang daripada dihapus — jejaknya berguna
   untuk melihat pola.
 
+### Buku besar metode — apa yang berhasil, apa yang tidak
+
+Entri harian menjawab "apa yang terjadi hari itu". Yang tidak dijawabnya adalah
+pertanyaan yang paling sering dibutuhkan: **metode mana yang sudah terbukti
+jalan?** Tanpa itu, agent mencoba ulang pendekatan yang sudah tiga kali gagal.
+
+Karena itu di **paling atas** `memory/lessons/<profil>.md` ada satu tabel. Tabel
+ini **diperbarui**, bukan ditumpuk — satu metode satu baris.
+
+```markdown
+# Buku besar metode — pekerja-x
+
+| Metode | Status | Terakhir | Bukti |
+|---|---|---|---|
+| Posting lewat composer web, tunggu 8 detik | BEKERJA | 2026-09-04 | 3 run, URL tweet terbaca |
+| Tekan Verify berulang sampai aktif | GAGAL | 2026-09-01 | verifikasi jalan lewat cron proyek |
+| Ambil URL tweet dari address bar | BELUM DIUJI | — | — |
+```
+
+Status hanya empat: **BEKERJA**, **GAGAL**, **BELUM DIUJI**, **USANG**.
+
+Aturan tabel:
+
+- **Satu metode satu baris.** Kalau metode yang sama diuji lagi, barisnya
+  diperbarui — bukan ditambah. Dua baris untuk satu metode berarti tidak ada
+  yang tahu mana yang berlaku.
+- **Status tidak boleh naik tanpa bukti.** Kolom Bukti menyebut apa yang
+  dilihat, bukan apa yang dirasakan. "Sepertinya berhasil" bukan bukti.
+- **GAGAL lebih berharga daripada BEKERJA.** Metode yang terbukti gagal harus
+  tetap terlihat; menghapusnya berarti agent akan mencobanya lagi.
+- **USANG untuk cara yang sudah tidak berlaku** karena situsnya berubah. Jangan
+  dihapus — jejaknya menjelaskan kenapa cara lama ditinggalkan.
+- Entri harian di bawah tabel **tetap append-only**. Tabel adalah ringkasannya.
+
+Sesudah menulis entri harian, periksa: apakah entri ini mengubah status sebuah
+metode? Kalau ya, perbarui barisnya di putaran yang sama. Menundanya berarti
+tabelnya berbohong.
+
 ### Menaikkan pelajaran menjadi pengetahuan
 
 Pelajaran yang ternyata **berlaku lintas proyek** tidak boleh berhenti di berkas

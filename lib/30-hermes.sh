@@ -121,6 +121,32 @@ _render_all_configs() {  # render ulang config utama + semua profil dari .env
   done
 }
 
+# Isi awal berkas pelajaran: buku besar metode kosong + penjelasannya.
+# Dibuat dengan isi, bukan kosong, karena agent yang menemukan berkas kosong
+# tidak tahu apakah itu berarti "belum ada pelajaran" atau "saya salah path" --
+# dan kalau ia menyimpulkan yang kedua, memory loop berhenti di langkah pertama.
+seed_berkas_pelajaran() {  # seed_berkas_pelajaran <profil> <berkas>
+  local profil="$1" berkas="$2"
+  [[ -f "$berkas" ]] && return 0
+  mkdir -p "$(dirname "$berkas")"
+  cat > "$berkas" <<EOF
+# Buku besar metode — $profil
+
+Satu metode satu baris. Barisnya DIPERBARUI, bukan ditambah.
+Status: BEKERJA / GAGAL / BELUM DIUJI / USANG.
+
+| Metode | Status | Terakhir | Bukti |
+|---|---|---|---|
+| _(belum ada metode yang diuji)_ | BELUM DIUJI | — | — |
+
+Entri harian ditulis di bawah garis ini, append-only, satu pelajaran per entri.
+Format lengkapnya ada di skill self-improvement.
+
+---
+
+EOF
+}
+
 hermes_install() {
   _log "Config utama"
   mkdir -p "$HERMES_HOME_DIR"
@@ -148,6 +174,10 @@ hermes_install() {
     # berkas yang tidak pernah ada — dan memory loop yang jadi alasan K12
     # tidak pernah benar-benar berputar.
     mkdir -p "$dst/memories" "$dst/logs" "$dst/cron" "$dst/memory/lessons"
+    # Berkasnya juga harus ada DI SINI, bukan hanya di $STATE_DIR. cwd agent
+    # adalah home profil ini, jadi `memory/lessons/<profil>.md` menunjuk ke sini;
+    # berkas yang di-seed di tempat lain tidak pernah dibaca oleh siapa pun.
+    seed_berkas_pelajaran "$p" "$dst/memory/lessons/$p.md"
     # config.yaml dirender, bukan disalin mentah: placeholder
     # __AGENTDROP_HOOK__ diganti path ABSOLUT ke audit-log.py.
     #
@@ -299,7 +329,7 @@ hermes_install_memory() {
   local p n=0
   for p in "${PROFILES[@]}"; do
     [[ -f "$STATE_DIR/memory/lessons/$p.md" ]] && continue
-    : > "$STATE_DIR/memory/lessons/$p.md"; n=$((n+1))
+    seed_berkas_pelajaran "$p" "$STATE_DIR/memory/lessons/$p.md"; n=$((n+1))
   done
   _ok "$STATE_DIR/memory/lessons/ (append-only, per profil, $n berkas baru)"
 }

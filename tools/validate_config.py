@@ -2881,6 +2881,100 @@ def check_pilih_mode_dan_dependensi() -> None:
                 break
 
 
+def check_kepribadian_dan_buku_besar() -> None:
+    """[49] Tiap worker punya kepribadian sendiri, dan metode tercatat berhasil/gagal.
+
+    Dua permintaan operator: kepribadian per agent, dan memory persisten yang
+    menyimpan "metode mana yang work mana yang tidak".
+
+    Yang dikunci:
+    1. Setiap SOUL.md punya bagian kepribadian, dan isinya BEDA antar worker.
+       Delapan salinan teks yang sama bukan kepribadian, hanya duplikasi.
+    2. Setiap kepribadian menegaskan batas wewenangnya, supaya menambah suara
+       tidak berarti menambah wewenang.
+    3. Berkas pelajaran di-seed DI HOME PROFIL, karena cwd agent ada di sana.
+       Di-seed di $STATE_DIR saja berarti tidak pernah dibaca siapa pun.
+    4. Seeding idempoten -- install ulang tidak boleh menghapus pelajaran.
+    """
+    global checks
+
+    profiles = sorted((REPO / "config/hermes/profiles").glob("*/SOUL.md"))
+    checks += 1
+    if not profiles:
+        err("tidak ada SOUL.md di config/hermes/profiles/")
+        return
+
+    isi_kepribadian = {}
+    for f in profiles:
+        checks += 1
+        t = f.read_text()
+        if "## Kepribadian saya" not in t:
+            err(f"{f.parent.name}: SOUL.md tidak punya bagian '## Kepribadian "
+                f"saya'. Worker tanpa kepribadian terdengar sama dengan yang lain.")
+            continue
+        m = re.search(r'## Kepribadian saya[^\n]*\n(.*?)(?=\n## )', t, re.S)
+        badan = m.group(1) if m else ""
+        isi_kepribadian[f.parent.name] = badan.strip()
+
+        checks += 1
+        if "wewenang" not in badan:
+            err(f"{f.parent.name}: bagian kepribadian tidak menegaskan batas "
+                f"wewenang. Menambah suara tanpa batas membuat worker merasa "
+                f"boleh mengerjakan tugas worker lain.")
+
+    # isi harus berbeda antar worker
+    checks += 1
+    nilai = list(isi_kepribadian.values())
+    if len(nilai) > 1 and len(set(nilai)) != len(nilai):
+        err("ada SOUL.md yang bagian kepribadiannya identik dengan yang lain. "
+            "Kepribadian yang disalin-tempel tidak membedakan apa pun.")
+
+    # skill self-improvement harus mengajarkan buku besar metode
+    sk = REPO / "skills" / "self-improvement" / "SKILL.md"
+    checks += 1
+    if not sk.is_file():
+        err("skills/self-improvement/SKILL.md tidak ada.")
+    else:
+        t = sk.read_text()
+        checks += 1
+        # Blok kode berpagar dibuang dulu: contoh format di dalamnya juga
+        # dimulai dengan '#', jadi heading asli tidak bisa dibedakan dari contoh
+        # kalau keduanya ikut dihitung.
+        tanpa_kode = re.sub(r'```.*?```', '', t, flags=re.S)
+        if not re.search(r'^#+\s*Buku besar metode', tanpa_kode, re.M):
+            err("self-improvement tidak mengajarkan buku besar metode. Tanpa itu "
+                "agent menumpuk catatan harian tapi tidak pernah tahu metode "
+                "mana yang sudah terbukti jalan.")
+        checks += 1
+        if not all(s in t for s in ("BEKERJA", "GAGAL", "BELUM DIUJI", "USANG")):
+            err("status buku besar tidak lengkap. Empat status harus ada: "
+                "BEKERJA, GAGAL, BELUM DIUJI, USANG.")
+
+    # seeding di home profil, bukan hanya di STATE_DIR
+    h = REPO / "lib" / "30-hermes.sh"
+    checks += 1
+    if not h.is_file():
+        err("lib/30-hermes.sh tidak ada.")
+        return
+    t = h.read_text()
+    checks += 1
+    if "seed_berkas_pelajaran" not in t:
+        err("lib/30-hermes.sh tidak men-seed berkas pelajaran. Agent yang "
+            "menemukan berkas tidak ada tidak tahu apakah itu 'belum ada "
+            "pelajaran' atau 'saya salah path'.")
+    else:
+        checks += 1
+        if 'seed_berkas_pelajaran "$p" "$dst/memory/lessons/$p.md"' not in t:
+            err("berkas pelajaran tidak di-seed di HOME PROFIL ($dst). cwd agent "
+                "adalah home profil, jadi berkas di lokasi lain tidak pernah "
+                "dibaca -- memory loop berhenti di langkah pertama.")
+        checks += 1
+        if not re.search(r'seed_berkas_pelajaran\(\)[^\n]*\n(.*?)\n\}', t, re.S) \
+           or '[[ -f "$berkas" ]] && return 0' not in t:
+            err("seed_berkas_pelajaran tidak idempoten. Install ulang akan "
+                "menimpa pelajaran yang sudah dikumpulkan agent.")
+
+
 def main() -> int:
     print("=" * 62)
     print("  AgentDrop — validator statis")
@@ -3003,6 +3097,9 @@ def main() -> int:
 
     print("\n[48] Pilihan mode browser dan dependensi per jalur")
     check_pilih_mode_dan_dependensi()
+
+    print("\n[49] Kepribadian worker dan buku besar metode")
+    check_kepribadian_dan_buku_besar()
 
     print("\n" + "=" * 62)
     check_model_vars_and_delegation(configs)

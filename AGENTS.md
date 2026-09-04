@@ -3730,3 +3730,116 @@ Injeksi: `[46]` 2/2 · `[47]` 6/6 · `[48]` **6/6** terdeteksi.
 paket yang benar di distro beliau, dan Chrome yang benar-benar muncul di Xvfb.
 Kalau pemasangan gagal, sekarang pesannya menyebut paket mana yang tetap tidak
 ada sesudah dipasang.
+
+## Arc 42 — Kepribadian tiap worker, dan buku besar metode
+
+Operator menutup persoalan noVNC sendiri ("vnc sudah di perbaiki secara manual di
+terminal") dan memindahkan pekerjaan ke dua hal: **kepribadian setiap agent** dan
+**memory persisten yang menyimpan metode mana yang berhasil dan mana yang tidak**.
+
+### Catatan jujur tentang noVNC
+
+Lima arc saya klaim noVNC "sudah diverifikasi". Yang benar: yang saya verifikasi
+adalah kode yang **saya jalankan di sandbox dengan proses tiruan**. Di mesin
+operator kode itu berkali-kali tidak pernah dieksekusi, dan saya tidak punya cara
+melihatnya. Itu bukan verifikasi — itu pengujian terhadap diri sendiri.
+
+Satu temuan yang bisa dibuktikan dari kode dan layak dicatat: `browser_start`
+hanya mematikan **Chrome** lama (`browser_stop` + `pkill --user-data-dir`).
+Xvfb, x11vnc, dan websockify bergantung pada berkas PID; kalau berkasnya basi,
+prosesnya bocor setiap run. Log operator menunjukkan `Too many open files` dan
+`Empty reply from server` — konsisten dengan kebocoran itu, dan dengan
+`✓ noVNC sudah berjalan di port 6080` yang muncul dari pemeriksaan saat port itu
+masih menjawab sesaat. Operator sudah menanganinya manual; jalur VNC tidak
+disentuh lagi di arc ini.
+
+### 1. Kepribadian tiap worker
+
+Kedelapan `SOUL.md` sebelumnya prosedural dan bersuara sama: "Workflow",
+"Aturan", "Yang tidak saya lakukan". Sekarang masing-masing membuka dengan
+`## Kepribadian saya`, dan isinya berakar pada cakupan kerja worker itu — bukan
+kosmetik yang bisa ditukar:
+
+| Worker | Kepribadian | Akarnya |
+|---|---|---|
+| koordinator | mandor | mengarahkan, tidak pernah menyentuh alat |
+| quest | tukang cek | berurutan, curiga pada yang terlalu mudah |
+| harian | penjaga rutinitas | menghafal urutan, penyimpangan adalah biaya |
+| riset | penyelidik | memisahkan fakta dari opini, angka tanpa sumber dibuang |
+| x | penulis | membenci bahasa templated, tidak mengarang angka |
+| discord | tamu yang sabar | membaca suasana ruangan sebelum bicara |
+| daftar | penjaga uang | membaca apa yang disetujui, bukan hanya menekan tombol |
+| pantau | auditor | hanya menulis apa yang ada di jejak |
+
+Setiap bagian ditutup dengan penegasan batas: **"Kepribadian ini tidak menambah
+wewenang."** Menambah suara tanpa batas akan membuat worker merasa boleh
+mengerjakan tugas worker lain — persis pelanggaran yang sudah berkali-kali
+ditegakkan secara struktural lewat toolset.
+
+### 2. Buku besar metode
+
+Protokol memory yang lama sudah bagus untuk mencatat **kegagalan**, tapi tidak
+menjawab pertanyaan yang paling sering dibutuhkan: *metode mana yang sudah
+terbukti jalan?* Tanpa itu agent mencoba ulang pendekatan yang sudah tiga kali
+gagal.
+
+Jadi di **paling atas** `memory/lessons/<profil>.md` sekarang ada satu tabel —
+satu metode satu baris, **diperbarui bukan ditumpuk**:
+
+```markdown
+| Metode | Status | Terakhir | Bukti |
+|---|---|---|---|
+| Posting lewat composer web, tunggu 8 detik | BEKERJA | 2026-09-04 | 3 run, URL tweet terbaca |
+| Tekan Verify berulang sampai aktif | GAGAL | 2026-09-01 | verifikasi jalan lewat cron proyek |
+```
+
+Status hanya empat: `BEKERJA` / `GAGAL` / `BELUM DIUJI` / `USANG`. Aturannya:
+satu metode satu baris · status tidak naik tanpa bukti · **GAGAL tidak boleh
+dihapus** (menghapusnya berarti agent mencobanya lagi) · `USANG` untuk cara yang
+sudah tidak berlaku karena situsnya berubah. Entri harian di bawah tabel tetap
+append-only.
+
+### 3. Cacat yang ditemukan saat mengerjakan ini
+
+**Berkas pelajaran di-seed di tempat yang tidak pernah dibaca.**
+`hermes_install_memory()` membuat `$STATE_DIR/memory/lessons/<profil>.md`, tapi
+cwd agent adalah **home profil**, jadi `memory/lessons/<profil>.md` menunjuk ke
+`$HERMES_HOME/profiles/<worker>/memory/lessons/`. Direktori itu dibuat
+(`lib/30-hermes.sh`), berkasnya tidak. Komentar di kode bahkan sudah menulis
+alasan yang benar — tapi di baris yang salah. Akibatnya langkah pertama setiap
+agent adalah membaca berkas yang tidak ada, persis yang dikhawatirkan komentar
+itu sendiri.
+
+Sekarang `seed_berkas_pelajaran()` menulis berkas berisi header buku besar ke
+**kedua** lokasi, dan idempoten: `[[ -f "$berkas" ]] && return 0`, jadi install
+ulang tidak menghapus pelajaran yang sudah dikumpulkan agent. Diuji.
+
+**Helper saya tersisip di dalam fungsi lain.** Sisipan pertama menaruh
+`seed_berkas_pelajaran()` di tengah loop `for p in "${PROFILES[@]}"` di dalam
+`hermes_install()`. `bash -n` lolos — mendefinisikan fungsi di dalam fungsi itu
+sintaks yang sah. Baru ketahuan saat dijalankan: `command not found`.
+
+### Verifikasi
+
+`tools/validate_config.py` → **482 checks, SEMUA LOLOS** (dari 457; rule `[49]`
+menyumbang 25 saat runtime karena dua bagiannya berjalan per SOUL.md). `bash -n`
+13 skrip bersih. `pyflakes` bersih.
+
+Konten diverifikasi: **8/8** SOUL.md punya bagian kepribadian, dan **8/8 isinya
+unik** (dihitung lewat md5 tiap bagian, bukan dengan mata).
+
+`seed_berkas_pelajaran` dijalankan langsung: menulis header buku besar yang
+benar, dan panggilan kedua pada berkas yang sudah berisi **tidak mengubah apa
+pun** (15 baris sebelum, 15 sesudah, baris terakhir tetap milik operator).
+
+Rule `[49]` — **6/6 injeksi terdeteksi**: kepribadian dihapus, batas wewenang
+dibuang, dua kepribadian dibuat identik, buku besar metode dibuang, seeding di
+home profil dibuang, seeding tidak idempoten.
+
+Dua kali injeksi keempat lolos sebelum aturannya dibetulkan: pemeriksaan
+substring `"Buku besar metode"` ikut cocok dengan contoh di dalam blok kode
+berpagar. Blok kode sekarang dibuang dulu, baru heading-nya diperiksa.
+
+**Tidak bisa diuji dari sandbox:** apakah model benar-benar mematuhi
+kepribadiannya dan benar-benar memperbarui buku besar metode saat run sungguhan.
+Keduanya hanya bisa dinilai dari hasil run di mesin operator.
